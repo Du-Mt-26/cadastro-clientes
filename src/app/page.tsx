@@ -46,6 +46,8 @@ import {
   ArrowUpAZ,
   ArrowDownZA,
   ArrowUpDown,
+  ArrowUpNarrowWide,
+  ArrowDownWideNarrow,
   UserPlus,
   Loader2,
   Clock,
@@ -97,13 +99,14 @@ interface ApiResponse {
 
 interface ColumnDef {
   key: string; label: string; editable?: boolean;
-  sticky?: 'left'; stickyOffset?: number; minWidth?: string
+  sticky?: 'left'; stickyOffset?: number; minWidth?: string;
+  numericSort?: boolean
 }
 
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
   { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
-  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '90px' },
+  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '90px', numericSort: true },
   { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
   { key: 'cnpj', label: 'CNPJ', minWidth: '150px' },
   { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
@@ -323,7 +326,13 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
         {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
         {col.label}
         {isEditable && <Pencil className="size-2.5 text-teal-500 dark:text-teal-400 shrink-0" />}
-        {isActive ? (sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />) : <ArrowUpDown className="size-3 text-slate-300 dark:text-slate-600 shrink-0" />}
+        {isActive ? (
+          col.numericSort ? (
+            sortOrder === 'asc' ? <ArrowUpNarrowWide className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" /> : <ArrowDownWideNarrow className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+          ) : (
+            sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+          )
+        ) : <ArrowUpDown className="size-3 text-slate-300 dark:text-slate-600 shrink-0" />}
       </span>
     </TableHead>
   )
@@ -445,12 +454,16 @@ export default function Home() {
     return () => clearTimeout(timer)
   }, [search])
 
+  // Client-side sort keys (computed fields not in DB)
+  const CLIENT_SORT_KEYS = new Set(['dias_sem_venda'])
+
   const buildFilterParams = useCallback(() => {
     const params = new URLSearchParams()
     if (situacaoCadastral && situacaoCadastral !== 'all') params.set('situacao_cadastral', situacaoCadastral)
     if (vendedor && vendedor !== 'all') params.set('vendedor', vendedor)
     if (debouncedSearch) params.set('search', debouncedSearch)
-    if (sortBy) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
+    // Only send sort to server if it's not a client-side sort key
+    if (sortBy && !CLIENT_SORT_KEYS.has(sortBy)) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
     return params
   }, [situacaoCadastral, vendedor, debouncedSearch, sortBy, sortOrder])
 
@@ -485,6 +498,23 @@ export default function Home() {
       }
     })
   }, [data?.data, diasSemVendaFilter])
+
+  // Apply client-side sorting for computed fields (e.g. dias_sem_venda)
+  const sortedData = useMemo(() => {
+    if (!sortBy || !CLIENT_SORT_KEYS.has(sortBy)) return filteredData
+    return [...filteredData].sort((a, b) => {
+      if (sortBy === 'dias_sem_venda') {
+        const aVal = calcDiasSemVenda(a.parsed.ultima_venda)
+        const bVal = calcDiasSemVenda(b.parsed.ultima_venda)
+        // nulls go to the end
+        if (aVal === null && bVal === null) return 0
+        if (aVal === null) return 1
+        if (bVal === null) return -1
+        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
+      }
+      return 0
+    })
+  }, [filteredData, sortBy, sortOrder])
 
   const dsvStats = useMemo(() => {
     if (!data?.data) return { verde: 0, amarelo: 0, laranja: 0, vermelho: 0, semInfo: 0 }
@@ -754,8 +784,8 @@ export default function Home() {
                 <TableBody>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (<TableRow key={i}>{columns.map((col) => (<TableCell key={col.key}><div className="h-3 bg-slate-100 dark:bg-slate-700 rounded animate-pulse w-16" /></TableCell>))}</TableRow>))
-                  ) : filteredData.length > 0 ? (
-                    filteredData.map((r, idx) => {
+                  ) : sortedData.length > 0 ? (
+                    sortedData.map((r, idx) => {
                       const isEven = idx % 2 === 0
                       const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-50/60 dark:bg-slate-800/60'
                       const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
@@ -814,8 +844,8 @@ export default function Home() {
             </div>
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Mostrando <span className="font-medium text-slate-700 dark:text-slate-200">{filteredData.length}</span> de <span className="font-medium text-slate-700 dark:text-slate-200">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
-                {sortBy && <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'}</span>}
+                Mostrando <span className="font-medium text-slate-700 dark:text-slate-200">{sortedData.length}</span> de <span className="font-medium text-slate-700 dark:text-slate-200">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
+                {sortBy && <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortBy === 'dias_sem_venda' ? (sortOrder === 'asc' ? '↑ Menor→Maior' : '↓ Maior→Menor') : (sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A')}</span>}
                 {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
               </p>
               {!showingAll && (
