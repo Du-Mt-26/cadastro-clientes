@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Table,
   TableBody,
@@ -33,6 +33,7 @@ import {
   PauseCircle,
   FileX2,
   LayoutGrid,
+  Download,
 } from 'lucide-react'
 
 interface ParsedFields {
@@ -156,12 +157,14 @@ function SituacaoBadge({ value }: { value: string }) {
 export default function Home() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [situacaoCadastral, setSituacaoCadastral] = useState('all')
   const [situacao, setSituacao] = useState('all')
   const [vendedor, setVendedor] = useState('all')
   const [page, setPage] = useState(1)
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const tableContainerRef = useRef<HTMLDivElement>(null)
 
   const limit = 50
 
@@ -200,6 +203,42 @@ export default function Home() {
     fetchData()
   }, [fetchData])
 
+  // Scroll to top of table when page changes
+  useEffect(() => {
+    if (tableContainerRef.current) {
+      tableContainerRef.current.scrollTop = 0
+    }
+  }, [page])
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      if (situacaoCadastral && situacaoCadastral !== 'all')
+        params.set('situacao_cadastral', situacaoCadastral)
+      if (situacao && situacao !== 'all') params.set('situacao', situacao)
+      if (vendedor && vendedor !== 'all') params.set('vendedor', vendedor)
+
+      const res = await fetch(`/api/clientes/export?${params.toString()}`)
+      if (!res.ok) throw new Error('Erro na exportação')
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Cadastro_Clientes_Mtech_${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error exporting:', error)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
 
@@ -222,16 +261,27 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchData}
-              disabled={loading}
-              className="self-start sm:self-auto"
-            >
-              <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={exporting}
+                className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"
+              >
+                <Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />
+                {exporting ? 'Exportando...' : 'Exportar XLSX'}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchData}
+                disabled={loading}
+              >
+                <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -397,39 +447,43 @@ export default function Home() {
         {/* Data Table */}
         <Card className="border-0 shadow-sm">
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div
+              ref={tableContainerRef}
+              className="overflow-auto"
+              style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '300px' }}
+            >
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-slate-50 hover:bg-slate-50">
-                    <TableHead className="font-semibold text-slate-700 text-xs">Código</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">IE/RG</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs min-w-[140px]">Razão Social</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Nome Fantasia</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Sit. Cadastral</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">CNPJ</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Endereço</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Número</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Complemento</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Bairro</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Cidade</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">CEP</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">UF</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Telefone 1</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Telefone 2</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Celular</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Fax</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Email</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Pessoa Contato</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Data Situação</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Data Abertura</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">CNAE Principal</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Natureza Jurídica</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Porte</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Cadastro</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Última Venda</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Reg. Simples</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Situação</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs">Vendedor</TableHead>
+                  <TableRow className="bg-slate-50 hover:bg-slate-50 sticky top-0 z-[5]">
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Código</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">IE/RG</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs min-w-[140px] bg-slate-50">Razão Social</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Nome Fantasia</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Sit. Cadastral</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CNPJ</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Endereço</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Número</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Complemento</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Bairro</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cidade</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CEP</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">UF</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Telefone 1</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Telefone 2</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Celular</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Fax</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Email</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Pessoa Contato</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Situação</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Abertura</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CNAE Principal</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Natureza Jurídica</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Porte</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cadastro</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Última Venda</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Reg. Simples</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Situação</TableHead>
+                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Vendedor</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
