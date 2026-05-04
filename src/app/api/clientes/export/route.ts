@@ -17,6 +17,31 @@ function excelSerialToDate(serial: string): string {
   return `${day}/${month}/${year}`;
 }
 
+// Phone formatting for export
+function formatPhone(raw: string): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0800") && digits.length >= 11) {
+    return `0800-${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
+  }
+  if (digits.startsWith("0800") && digits.length >= 7) {
+    return `0800-${digits.slice(4, 7)}`;
+  }
+  if (digits.length === 11 && digits[2] === "9") {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
+  }
+  if (digits.length === 9 && digits[0] === "9") {
+    return `${digits.slice(0, 5)}-${digits.slice(5, 9)}`;
+  }
+  if (digits.length === 8) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`;
+  }
+  return raw;
+}
+
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -63,6 +88,8 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const vendedor = searchParams.get("vendedor") || "";
+    const sortBy = searchParams.get("sort_by") || "";
+    const sortOrder = searchParams.get("sort_order") || "asc";
 
     const filePath = path.join(
       process.cwd(),
@@ -102,10 +129,10 @@ export async function GET(request: NextRequest) {
           "Cidade": row["Cidade"] || "",
           "CEP": row["CEP"] || "",
           "UF": row["UF"] || "",
-          "Telefone 1": edit?.telefone1 || row["Telefone 1"] || "",
-          "Telefone 2": edit?.telefone2 || row["Telefone 2"] || "",
-          "Telefone 3": edit?.telefone3 || parsed.celular || "",
-          "Telefone 4": edit?.telefone4 || parsed.fax || "",
+          "Telefone 1": formatPhone(edit?.telefone1 || row["Telefone 1"] || ""),
+          "Telefone 2": formatPhone(edit?.telefone2 || row["Telefone 2"] || ""),
+          "Telefone 3": formatPhone(edit?.telefone3 || parsed.celular || ""),
+          "Telefone 4": formatPhone(edit?.telefone4 || parsed.fax || ""),
           "Email 1": edit?.email1 || row["Email 1"] || "",
           "Email 2": edit?.email2 || "",
           "Email 3": edit?.email3 || "",
@@ -150,6 +177,51 @@ export async function GET(request: NextRequest) {
       filtered = filtered.filter(
         (r) => r["Vendedor"].toLowerCase() === vendedor.toLowerCase()
       );
+    }
+
+    // Sorting
+    if (sortBy) {
+      const columnMap: Record<string, string> = {
+        codigo: "Código",
+        ie_rg: "IE/RG",
+        razao_social: "Razão Social",
+        nome_fantasia: "Nome Fantasia",
+        situacao_cadastral: "Situação Cadastral",
+        cnpj: "CNPJ",
+        endereco: "Endereço Rua/Avenida",
+        numero: "Numero",
+        complemento: "Complemento",
+        bairro: "Bairro",
+        cidade: "Cidade",
+        cep: "CEP",
+        uf: "UF",
+        telefone1: "Telefone 1",
+        telefone2: "Telefone 2",
+        telefone3: "Telefone 3",
+        telefone4: "Telefone 4",
+        email1: "Email 1",
+        email2: "Email 2",
+        email3: "Email 3",
+        pessoa_contato: "Pessoa de contato",
+        data_situacao: "Data Situação",
+        data_abertura: "Data Abertura",
+        cnae_principal: "CNAE Principal",
+        natureza_juridica: "Natureza Jurídica",
+        porte: "Porte",
+        cadastro: "Cadastro",
+        ultima_venda: "Última Venda",
+        reg_simples: "Reg. Simples",
+        vendedor: "Vendedor",
+      };
+      const colName = columnMap[sortBy] || "";
+      if (colName) {
+        filtered = [...filtered].sort((a, b) => {
+          const valA = (a[colName as keyof typeof a] || "").toLowerCase();
+          const valB = (b[colName as keyof typeof b] || "").toLowerCase();
+          const cmp = valA.localeCompare(valB, "pt-BR");
+          return sortOrder === "desc" ? -cmp : cmp;
+        });
+      }
     }
 
     // Create new workbook
