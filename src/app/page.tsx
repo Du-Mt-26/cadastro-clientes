@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Table,
   TableBody,
@@ -40,7 +40,6 @@ import {
   AlertTriangle,
   PauseCircle,
   FileX2,
-  LayoutGrid,
   Download,
   Pencil,
   ArrowUpAZ,
@@ -48,6 +47,8 @@ import {
   ArrowUpDown,
   UserPlus,
   Loader2,
+  Clock,
+  TrendingDown,
 } from 'lucide-react'
 
 interface ParsedFields {
@@ -103,66 +104,108 @@ interface ClienteRecord {
 
 interface ApiResponse {
   data: ClienteRecord[]
-  pagination: {
-    page: number
-    limit: number
-    total: number
-    totalPages: number
-    showAll: boolean
-  }
-  filters: {
-    situacao_cadastral: string[]
-    vendedores: string[]
-  }
-  stats: {
-    total: number
-    situacao_cadastral: Record<string, number>
-  }
+  pagination: { page: number; limit: number; total: number; totalPages: number; showAll: boolean }
+  filters: { situacao_cadastral: string[]; vendedores: string[] }
+  stats: { total: number; situacao_cadastral: Record<string, number> }
 }
 
-// Column definition for sortable headers
+// Column definition
 interface ColumnDef {
   key: string
   label: string
   editable?: boolean
+  sticky?: 'left' | 'right'
+  stickyOffset?: number
+  minWidth?: string
 }
 
+// Reordered: Código → Razão Social (sticky) → Dias S/ Venda → Sit. Cadastral → rest
 const COLUMNS: ColumnDef[] = [
-  { key: 'codigo', label: 'Código' },
-  { key: 'ie_rg', label: 'IE/RG' },
-  { key: 'razao_social', label: 'Razão Social' },
-  { key: 'nome_fantasia', label: 'Nome Fantasia' },
-  { key: 'situacao_cadastral', label: 'Sit. Cadastral' },
-  { key: 'cnpj', label: 'CNPJ' },
-  { key: 'endereco', label: 'Endereço' },
-  { key: 'numero', label: 'Número' },
-  { key: 'complemento', label: 'Complemento' },
-  { key: 'bairro', label: 'Bairro' },
-  { key: 'cidade', label: 'Cidade' },
-  { key: 'cep', label: 'CEP' },
-  { key: 'uf', label: 'UF' },
-  { key: 'telefone1', label: 'Telefone 1', editable: true },
-  { key: 'telefone2', label: 'Telefone 2', editable: true },
-  { key: 'telefone3', label: 'Telefone 3', editable: true },
-  { key: 'telefone4', label: 'Telefone 4', editable: true },
-  { key: 'email1', label: 'Email 1', editable: true },
-  { key: 'email2', label: 'Email 2', editable: true },
-  { key: 'email3', label: 'Email 3', editable: true },
-  { key: 'pessoa_contato', label: 'Pessoa Contato', editable: true },
-  { key: 'data_situacao', label: 'Data Situação' },
-  { key: 'data_abertura', label: 'Data Abertura' },
-  { key: 'cnae_principal', label: 'CNAE Principal' },
-  { key: 'natureza_juridica', label: 'Natureza Jurídica' },
-  { key: 'porte', label: 'Porte' },
-  { key: 'cadastro', label: 'Cadastro' },
-  { key: 'ultima_venda', label: 'Última Venda' },
-  { key: 'reg_simples', label: 'Reg. Simples' },
-  { key: 'vendedor', label: 'Vendedor' },
+  { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
+  { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
+  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '110px' },
+  { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
+  { key: 'cnpj', label: 'CNPJ', minWidth: '140px' },
+  { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
+  { key: 'ie_rg', label: 'IE/RG', minWidth: '100px' },
+  { key: 'vendedor', label: 'Vendedor', minWidth: '140px' },
+  { key: 'reg_simples', label: 'Reg. Simples', minWidth: '90px' },
+  { key: 'endereco', label: 'Endereço', minWidth: '180px' },
+  { key: 'numero', label: 'Número', minWidth: '70px' },
+  { key: 'complemento', label: 'Complemento', minWidth: '110px' },
+  { key: 'bairro', label: 'Bairro', minWidth: '130px' },
+  { key: 'cidade', label: 'Cidade', minWidth: '120px' },
+  { key: 'cep', label: 'CEP', minWidth: '90px' },
+  { key: 'uf', label: 'UF', minWidth: '50px' },
+  { key: 'telefone1', label: 'Telefone 1 ✏️', editable: true, minWidth: '140px' },
+  { key: 'telefone2', label: 'Telefone 2 ✏️', editable: true, minWidth: '140px' },
+  { key: 'telefone3', label: 'Telefone 3 ✏️', editable: true, minWidth: '140px' },
+  { key: 'telefone4', label: 'Telefone 4 ✏️', editable: true, minWidth: '140px' },
+  { key: 'email1', label: 'Email 1 ✏️', editable: true, minWidth: '160px' },
+  { key: 'email2', label: 'Email 2 ✏️', editable: true, minWidth: '140px' },
+  { key: 'email3', label: 'Email 3 ✏️', editable: true, minWidth: '140px' },
+  { key: 'pessoa_contato', label: 'Pessoa Contato ✏️', editable: true, minWidth: '140px' },
+  { key: 'data_situacao', label: 'Data Situação', minWidth: '100px' },
+  { key: 'data_abertura', label: 'Data Abertura', minWidth: '100px' },
+  { key: 'cnae_principal', label: 'CNAE Principal', minWidth: '200px' },
+  { key: 'natureza_juridica', label: 'Natureza Jurídica', minWidth: '160px' },
+  { key: 'porte', label: 'Porte', minWidth: '100px' },
+  { key: 'cadastro', label: 'Cadastro', minWidth: '100px' },
+  { key: 'ultima_venda', label: 'Última Venda', minWidth: '100px' },
 ]
 
 const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
-// Phone formatting: (XX) XXXXX-XXXX or (XX) XXXX-XXXX or 0800-NNN-NNNN
+// ─── Helpers ───────────────────────────────────────
+
+// Current date in UTC-3 (Brasília)
+function getNowBrasilia(): Date {
+  const now = new Date()
+  // Get UTC-3 offset
+  const utc3 = new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000)
+  return utc3
+}
+
+// Parse dd/mm/aaaa to Date
+function parseDdMmYyyy(dateStr: string): Date | null {
+  if (!dateStr) return null
+  const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (!match) return null
+  const [, day, month, year] = match
+  const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+  if (isNaN(d.getTime())) return null
+  return d
+}
+
+// Calculate days since last sale
+function calcDiasSemVenda(ultimaVenda: string): number | null {
+  if (!ultimaVenda) return null
+  const saleDate = parseDdMmYyyy(ultimaVenda)
+  if (!saleDate) return null
+  const now = getNowBrasilia()
+  // Zero out time to count full days
+  const sale = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate())
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffMs = today.getTime() - sale.getTime()
+  return Math.floor(diffMs / 86400000)
+}
+
+function getDiasSemVendaColor(dias: number | null): string {
+  if (dias === null) return 'slate'
+  if (dias <= 30) return 'emerald'
+  if (dias <= 60) return 'amber'
+  if (dias <= 90) return 'orange'
+  return 'red'
+}
+
+function getDiasSemVendaBg(dias: number | null): string {
+  if (dias === null) return 'bg-slate-50 text-slate-400 border-slate-200'
+  if (dias <= 30) return 'bg-emerald-100 text-emerald-800 border-emerald-300'
+  if (dias <= 60) return 'bg-amber-100 text-amber-800 border-amber-300'
+  if (dias <= 90) return 'bg-orange-100 text-orange-800 border-orange-300'
+  return 'bg-red-100 text-red-800 border-red-300'
+}
+
 function formatPhone(raw: string): string {
   if (!raw) return ''
   const digits = raw.replace(/\D/g, '')
@@ -200,6 +243,8 @@ function toEditableKey(key: string): keyof EditableFields | null {
 
 const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4'])
 
+// ─── Sub-components ────────────────────────────────
+
 function SituacaoCadastralBadge({ value }: { value: string }) {
   if (!value) return <span className="text-slate-400">—</span>
   const lower = value.toLowerCase()
@@ -210,7 +255,16 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
   return <Badge variant="outline" className="text-xs">{value}</Badge>
 }
 
-// Editable cell component
+function DiasSemVendaBadge({ dias }: { dias: number | null }) {
+  if (dias === null) return <span className="text-slate-400 text-xs">—</span>
+  const colorClass = getDiasSemVendaBg(dias)
+  return (
+    <Badge className={`${colorClass} text-xs font-bold border hover:opacity-90`}>
+      {dias}d
+    </Badge>
+  )
+}
+
 function EditableCell({ value, codigo, field, onSave, isPhone }: {
   value: string; codigo: string; field: keyof EditableFields;
   onSave: (codigo: string, field: keyof EditableFields, value: string) => void; isPhone: boolean
@@ -245,34 +299,16 @@ function EditableCell({ value, codigo, field, onSave, isPhone }: {
   )
 }
 
-// New Client Form Fields
+// ─── New Client Form ───────────────────────────────
+
 interface NewClientForm {
-  cnpj: string
-  ieRg: string
-  razaoSocial: string
-  nomeFantasia: string
-  situacaoCadastral: string
-  endereco: string
-  numero: string
-  complemento: string
-  bairro: string
-  cidade: string
-  cep: string
-  uf: string
-  telefone1: string
-  telefone2: string
-  telefone3: string
-  telefone4: string
-  email1: string
-  email2: string
-  email3: string
-  pessoaContato: string
-  dataAbertura: string
-  cnaePrincipal: string
-  naturezaJuridica: string
-  porte: string
-  regSimples: string
-  vendedor: string
+  cnpj: string; ieRg: string; razaoSocial: string; nomeFantasia: string;
+  situacaoCadastral: string; endereco: string; numero: string; complemento: string;
+  bairro: string; cidade: string; cep: string; uf: string;
+  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
+  email1: string; email2: string; email3: string; pessoaContato: string;
+  dataAbertura: string; cnaePrincipal: string; naturezaJuridica: string;
+  porte: string; regSimples: string; vendedor: string
 }
 
 const EMPTY_FORM: NewClientForm = {
@@ -284,6 +320,8 @@ const EMPTY_FORM: NewClientForm = {
   regSimples: '', vendedor: '',
 }
 
+// ─── Main Component ────────────────────────────────
+
 export default function Home() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -291,6 +329,7 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [situacaoCadastral, setSituacaoCadastral] = useState('all')
   const [vendedor, setVendedor] = useState('all')
+  const [diasSemVendaFilter, setDiasSemVendaFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState<string>('50')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -299,7 +338,7 @@ export default function Home() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const tableContainerRef = useRef<HTMLDivElement>(null)
 
-  // New client modal state
+  // New client modal
   const [showNewClient, setShowNewClient] = useState(false)
   const [form, setForm] = useState<NewClientForm>(EMPTY_FORM)
   const [consulting, setConsulting] = useState(false)
@@ -335,6 +374,38 @@ export default function Home() {
 
   useEffect(() => { fetchData() }, [fetchData])
   useEffect(() => { if (tableContainerRef.current) tableContainerRef.current.scrollTop = 0 }, [page])
+
+  // Client-side filtering for Dias Sem Venda
+  const filteredData = useMemo(() => {
+    if (!data?.data) return []
+    if (diasSemVendaFilter === 'all') return data.data
+    return data.data.filter((r) => {
+      const dias = calcDiasSemVenda(r.parsed.ultima_venda)
+      if (dias === null) return false
+      switch (diasSemVendaFilter) {
+        case '0-30': return dias <= 30
+        case '31-60': return dias > 30 && dias <= 60
+        case '61-90': return dias > 60 && dias <= 90
+        case '90+': return dias > 90
+        default: return true
+      }
+    })
+  }, [data?.data, diasSemVendaFilter])
+
+  // Dias Sem Venda stats (computed from ALL records, not just current page)
+  const dsvStats = useMemo(() => {
+    if (!data?.data) return { verde: 0, amarelo: 0, laranja: 0, vermelho: 0, semInfo: 0 }
+    let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, semInfo = 0
+    for (const r of data.data) {
+      const dias = calcDiasSemVenda(r.parsed.ultima_venda)
+      if (dias === null) { semInfo++; continue }
+      if (dias <= 30) verde++
+      else if (dias <= 60) amarelo++
+      else if (dias <= 90) laranja++
+      else vermelho++
+    }
+    return { verde, amarelo, laranja, vermelho, semInfo }
+  }, [data?.data])
 
   const handleSort = (key: string) => {
     if (sortBy === key) {
@@ -372,7 +443,6 @@ export default function Home() {
     finally { setExporting(false) }
   }
 
-  // CNPJ mask: XX.XXX.XXX/XXXX-XX
   const maskCnpj = (val: string) => {
     const d = val.replace(/\D/g, '').slice(0, 14)
     if (d.length <= 2) return d
@@ -382,7 +452,6 @@ export default function Home() {
     return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
   }
 
-  // Consult ReceitaWS
   const consultReceita = async (cnpj: string) => {
     const digits = cnpj.replace(/\D/g, '')
     if (digits.length !== 14) { setConsultError('CNPJ deve conter 14 dígitos'); return }
@@ -397,15 +466,10 @@ export default function Home() {
         razaoSocial: d.razao_social || f.razaoSocial,
         nomeFantasia: d.nome_fantasia || f.nomeFantasia,
         situacaoCadastral: d.situacao_cadastral || f.situacaoCadastral,
-        endereco: d.endereco || f.endereco,
-        numero: d.numero || f.numero,
-        complemento: d.complemento || f.complemento,
-        bairro: d.bairro || f.bairro,
-        cidade: d.cidade || f.cidade,
-        cep: d.cep || f.cep,
-        uf: d.uf || f.uf,
-        telefone1: d.telefone1 || f.telefone1,
-        email1: d.email1 || f.email1,
+        endereco: d.endereco || f.endereco, numero: d.numero || f.numero,
+        complemento: d.complemento || f.complemento, bairro: d.bairro || f.bairro,
+        cidade: d.cidade || f.cidade, cep: d.cep || f.cep, uf: d.uf || f.uf,
+        telefone1: d.telefone1 || f.telefone1, email1: d.email1 || f.email1,
         dataAbertura: d.data_abertura || f.dataAbertura,
         cnaePrincipal: d.cnae_principal || f.cnaePrincipal,
         naturezaJuridica: d.natureza_juridica || f.naturezaJuridica,
@@ -419,31 +483,30 @@ export default function Home() {
     if (!form.cnpj.replace(/\D/g, '')) { setConsultError('CNPJ é obrigatório'); return }
     setSavingNew(true); setConsultError('')
     try {
-      const res = await fetch('/api/clientes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      })
+      const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const json = await res.json()
       if (!res.ok) { setConsultError(json.error || 'Erro ao criar cliente'); return }
-      setShowNewClient(false); setForm(EMPTY_FORM); cachedRecords = null; fetchData()
+      setShowNewClient(false); setForm(EMPTY_FORM); fetchData()
     } catch { setConsultError('Erro ao criar cliente') }
     finally { setSavingNew(false) }
   }
 
   const openNewClient = () => { setForm(EMPTY_FORM); setConsultError(''); setShowNewClient(true) }
+  const updateForm = (field: keyof NewClientForm, value: string) => setForm((f) => ({ ...f, [field]: value }))
 
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
   const showingAll = limit === 'all'
 
-  const updateForm = (field: keyof NewClientForm, value: string) => setForm((f) => ({ ...f, [field]: value }))
+  // Brasília time display
+  const nowBrasilia = getNowBrasilia()
+  const todayStr = nowBrasilia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
       <header className="bg-white border-b shadow-sm sticky top-0 z-10">
-        <div className="max-w-[1800px] mx-auto px-4 sm:px-6 py-4">
+        <div className="max-w-[1900px] mx-auto px-4 sm:px-6 py-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center size-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md">
@@ -451,21 +514,18 @@ export default function Home() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Cadastro de Clientes</h1>
-                <p className="text-sm text-slate-500">Mtech Geral — Ativos e Inativos</p>
+                <p className="text-sm text-slate-500">Mtech Geral — {todayStr} (UTC-3)</p>
               </div>
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
               <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600">
-                <UserPlus className="size-4 mr-1.5" />
-                Novo Cliente
+                <UserPlus className="size-4 mr-1.5" />Novo Cliente
               </Button>
               <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700">
-                <Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />
-                {exporting ? 'Exportando...' : 'Exportar XLSX'}
+                <Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}
               </Button>
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-                <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-                Atualizar
+                <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar
               </Button>
             </div>
           </div>
@@ -473,9 +533,9 @@ export default function Home() {
       </header>
 
       {/* Main */}
-      <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-6 py-6">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-6">
+      <main className="flex-1 max-w-[1900px] mx-auto w-full px-4 sm:px-6 py-4">
+        {/* Stats Cards Row 1: Situação Cadastral */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
           <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
             <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Users className="size-4" /></div>
             <div><p className="text-xs text-slate-500">Total</p><p className="text-lg font-bold text-slate-900">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div>
@@ -496,20 +556,55 @@ export default function Home() {
             <div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><PauseCircle className="size-4" /></div>
             <div><p className="text-xs text-slate-500">Suspensa</p><p className="text-lg font-bold text-orange-700">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')}</p></div>
           </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-teal-100 text-teal-600 shrink-0"><LayoutGrid className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Página</p><p className="text-lg font-bold text-teal-700">{showingAll ? 'Todos' : `${page}/${totalPages || 1}`}</p></div>
-          </CardContent></Card>
         </div>
 
-        {/* Edit hint */}
+        {/* Stats Cards Row 2: Dias Sem Venda */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
+          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-emerald-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-30' ? 'all' : '0-30'); setPage(1) }}>
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><Clock className="size-4" /></div>
+              <div><p className="text-xs text-slate-500">0–30 dias</p><p className="text-lg font-bold text-emerald-700">{dsvStats.verde}</p></div>
+              {diasSemVendaFilter === '0-30' && <Badge className="ml-auto text-[10px] bg-emerald-200 text-emerald-800">Filtro</Badge>}
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-amber-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '31-60' ? 'all' : '31-60'); setPage(1) }}>
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><Clock className="size-4" /></div>
+              <div><p className="text-xs text-slate-500">31–60 dias</p><p className="text-lg font-bold text-amber-700">{dsvStats.amarelo}</p></div>
+              {diasSemVendaFilter === '31-60' && <Badge className="ml-auto text-[10px] bg-amber-200 text-amber-800">Filtro</Badge>}
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-orange-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '61-90' ? 'all' : '61-90'); setPage(1) }}>
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><Clock className="size-4" /></div>
+              <div><p className="text-xs text-slate-500">61–90 dias</p><p className="text-lg font-bold text-orange-700">{dsvStats.laranja}</p></div>
+              {diasSemVendaFilter === '61-90' && <Badge className="ml-auto text-[10px] bg-orange-200 text-orange-800">Filtro</Badge>}
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-red-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '90+' ? 'all' : '90+'); setPage(1) }}>
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-red-100 text-red-600 shrink-0"><TrendingDown className="size-4" /></div>
+              <div><p className="text-xs text-slate-500">90+ dias</p><p className="text-lg font-bold text-red-700">{dsvStats.vermelho}</p></div>
+              {diasSemVendaFilter === '90+' && <Badge className="ml-auto text-[10px] bg-red-200 text-red-800">Filtro</Badge>}
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-slate-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === 'all' ? 'all' : 'all'); setPage(1) }}>
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Clock className="size-4" /></div>
+              <div><p className="text-xs text-slate-500">Sem info</p><p className="text-lg font-bold text-slate-700">{dsvStats.semInfo}</p></div>
+              {diasSemVendaFilter === 'all' && <Badge className="ml-auto text-[10px] bg-slate-200 text-slate-600">Todos</Badge>}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Hint */}
         <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
           <Pencil className="size-3" />
-          <span>Clique nos campos de <strong>telefone, email e pessoa de contato</strong> para editar</span>
+          <span>Clique nos campos <strong>telefone, email e pessoa de contato</strong> para editar · Clique nos cards de <strong>Dias S/ Venda</strong> para filtrar</span>
         </div>
 
         {/* Filters */}
-        <Card className="border-0 shadow-sm mb-6">
+        <Card className="border-0 shadow-sm mb-4">
           <CardContent className="p-4">
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
@@ -517,23 +612,33 @@ export default function Home() {
                 <Input placeholder="Buscar por razão social, CNPJ, código, cidade, vendedor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
               </div>
               <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Situação Cadastral</SelectItem>
                   {data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
                 </SelectContent>
               </Select>
               <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[200px]"><SelectValue placeholder="Vendedor" /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos Vendedores</SelectItem>
                   {data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}
                 </SelectContent>
               </Select>
-              <Select value={limit} onValueChange={handleLimitChange}>
-                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Por página" /></SelectTrigger>
+              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}>
+                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger>
                 <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n} por página</SelectItem>))}
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="0-30">0–30 dias (🟢)</SelectItem>
+                  <SelectItem value="31-60">31–60 dias (🟡)</SelectItem>
+                  <SelectItem value="61-90">61–90 dias (🟠)</SelectItem>
+                  <SelectItem value="90+">90+ dias (🔴)</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={limit} onValueChange={handleLimitChange}>
+                <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}
                   <SelectItem value="all">Todos</SelectItem>
                 </SelectContent>
               </Select>
@@ -545,20 +650,29 @@ export default function Home() {
         <Card className="border-0 shadow-sm">
           <CardContent className="p-0">
             <div ref={tableContainerRef} className="overflow-auto custom-scrollbar" style={{ maxHeight: showingAll ? '80vh' : '60vh', minHeight: '200px' }}>
-              <Table>
+              <Table className="border-separate border-spacing-0">
                 <TableHeader>
-                  <TableRow className="bg-slate-50 hover:bg-slate-50 sticky top-0 z-[5]">
+                  <TableRow className="hover:bg-transparent">
                     {COLUMNS.map((col) => {
                       const isActive = sortBy === col.key
                       const isEditable = col.editable
-                      const headerBg = isEditable ? 'bg-teal-50' : 'bg-slate-50'
-                      const headerText = isEditable ? 'text-teal-700' : 'text-slate-700'
-                      const borderClass = isEditable ? 'border-b-2 border-teal-300' : ''
+                      const isSticky = col.sticky === 'left'
+
+                      let headerBg = 'bg-slate-50'
+                      let headerText = 'text-slate-700'
+                      let borderBottom = ''
+                      if (isEditable) { headerBg = 'bg-teal-50'; headerText = 'text-teal-700'; borderBottom = 'border-b-2 border-teal-300' }
+                      if (isSticky) { headerBg = 'bg-slate-100' }
+
                       return (
-                        <TableHead key={col.key} className={`font-semibold ${headerText} text-xs ${headerBg} ${borderClass} cursor-pointer select-none hover:bg-slate-100 transition-colors`} onClick={() => handleSort(col.key)}>
-                          <span className="flex items-center gap-1 whitespace-nowrap">
+                        <TableHead
+                          key={col.key}
+                          className={`font-semibold ${headerText} text-xs ${headerBg} ${borderBottom} cursor-pointer select-none hover:bg-slate-200/60 transition-colors whitespace-nowrap ${isSticky ? 'sticky z-[6]' : ''}`}
+                          style={isSticky ? { left: col.stickyOffset, minWidth: col.minWidth } : { minWidth: col.minWidth }}
+                          onClick={() => handleSort(col.key)}
+                        >
+                          <span className="flex items-center gap-1">
                             {col.label}
-                            {isEditable && ' ✏️'}
                             {isActive ? (sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />) : <ArrowUpDown className="size-3 text-slate-300 shrink-0" />}
                           </span>
                         </TableHead>
@@ -569,27 +683,72 @@ export default function Home() {
                 <TableBody>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (<TableRow key={i}>{Array.from({ length: COLUMNS.length }).map((_, j) => (<TableCell key={j}><div className="h-3 bg-slate-100 rounded animate-pulse w-16" /></TableCell>))}</TableRow>))
-                  ) : data?.data && data.data.length > 0 ? (
-                    data.data.map((r, idx) => (
-                      <TableRow key={idx} className="hover:bg-slate-50/80">
-                        {COLUMNS.map((col) => {
-                          const val = getRecordValue(r, col.key)
-                          const editableKey = toEditableKey(col.key)
-                          if (col.key === 'situacao_cadastral') return <TableCell key={col.key} className="whitespace-nowrap"><SituacaoCadastralBadge value={val} /></TableCell>
-                          if (col.key === 'reg_simples') return <TableCell key={col.key} className="whitespace-nowrap">{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</TableCell>
-                          if (col.editable && editableKey) {
-                            const isPhone = PHONE_FIELDS.has(col.key)
-                            return <TableCell key={col.key} className="bg-teal-50/40 whitespace-nowrap"><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} /></TableCell>
-                          }
-                          const isMono = ['codigo', 'ie_rg', 'cnpj', 'cep'].includes(col.key)
-                          const isTruncate = ['razao_social', 'nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
-                          const truncateMax: Record<string, string> = { razao_social: 'max-w-[200px]', nome_fantasia: 'max-w-[140px]', endereco: 'max-w-[160px]', complemento: 'max-w-[100px]', bairro: 'max-w-[120px]', cnae_principal: 'max-w-[200px]', natureza_juridica: 'max-w-[140px]' }
-                          return <TableCell key={col.key} className={`text-xs whitespace-nowrap ${isMono ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''}`} title={isTruncate ? val : undefined}>
-                            {col.key === 'codigo' ? <span className="font-medium text-teal-700">{val || '—'}</span> : col.key === 'vendedor' ? <span className="font-medium">{val || '—'}</span> : val || '—'}
-                          </TableCell>
-                        })}
-                      </TableRow>
-                    ))
+                  ) : filteredData.length > 0 ? (
+                    filteredData.map((r, idx) => {
+                      const isEven = idx % 2 === 0
+                      const rowBg = isEven ? 'bg-white' : 'bg-slate-50/60'
+                      const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
+                      const diasColor = getDiasSemVendaColor(diasSemVenda)
+
+                      return (
+                        <TableRow key={idx} className={`${rowBg} hover:bg-teal-50/40 transition-colors`}>
+                          {COLUMNS.map((col) => {
+                            const isSticky = col.sticky === 'left'
+                            const editableKey = toEditableKey(col.key)
+
+                            // Dias Sem Venda column
+                            if (col.key === 'dias_sem_venda') {
+                              return (
+                                <TableCell key={col.key} className="whitespace-nowrap px-3">
+                                  <DiasSemVendaBadge dias={diasSemVenda} />
+                                </TableCell>
+                              )
+                            }
+
+                            const val = getRecordValue(r, col.key)
+
+                            // Situação Cadastral
+                            if (col.key === 'situacao_cadastral') {
+                              return <TableCell key={col.key} className={`whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}><SituacaoCadastralBadge value={val} /></TableCell>
+                            }
+                            // Reg Simples
+                            if (col.key === 'reg_simples') {
+                              return <TableCell key={col.key} className={`whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</TableCell>
+                            }
+                            // Editable
+                            if (col.editable && editableKey) {
+                              const isPhone = PHONE_FIELDS.has(col.key)
+                              return <TableCell key={col.key} className={`bg-teal-50/30 whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} /></TableCell>
+                            }
+
+                            // Sticky columns (Código, Razão Social)
+                            if (isSticky) {
+                              return (
+                                <TableCell
+                                  key={col.key}
+                                  className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 text-xs' : 'text-xs max-w-[220px] truncate'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent after:to-slate-200/40`}
+                                  style={{ left: col.stickyOffset, minWidth: col.minWidth }}
+                                  title={col.key === 'razao_social' ? val : undefined}
+                                >
+                                  {val || '—'}
+                                </TableCell>
+                              )
+                            }
+
+                            // Default cells
+                            const isMono = ['ie_rg', 'cnpj', 'cep'].includes(col.key)
+                            const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
+                            const truncateMax: Record<string, string> = { nome_fantasia: 'max-w-[160px]', endereco: 'max-w-[180px]', complemento: 'max-w-[110px]', bairro: 'max-w-[130px]', cnae_principal: 'max-w-[200px]', natureza_juridica: 'max-w-[160px]' }
+
+                            return (
+                              <TableCell key={col.key} className={`text-xs whitespace-nowrap ${isMono ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''}`} title={isTruncate ? val : undefined}>
+                                {col.key === 'vendedor' ? <span className="font-medium">{val || '—'}</span> : val || '—'}
+                              </TableCell>
+                            )
+                          })}
+                        </TableRow>
+                      )
+                    })
                   ) : (
                     <TableRow><TableCell colSpan={COLUMNS.length} className="h-24 text-center text-slate-500">Nenhum registro encontrado.</TableCell></TableRow>
                   )}
@@ -599,9 +758,10 @@ export default function Home() {
             {/* Pagination */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-slate-50/50">
               <p className="text-sm text-slate-500">
-                Mostrando <span className="font-medium text-slate-700">{data?.data?.length ?? 0}</span> de{' '}
+                Mostrando <span className="font-medium text-slate-700">{filteredData.length}</span> de{' '}
                 <span className="font-medium text-slate-700">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
                 {sortBy && <span className="ml-2 text-xs text-slate-400">Ordenado por {COLUMNS.find(c => c.key === sortBy)?.label} {sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'}</span>}
+                {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
               </p>
               {!showingAll && (
                 <div className="flex items-center gap-1">
@@ -618,8 +778,8 @@ export default function Home() {
       </main>
 
       {/* Footer */}
-      <footer className="mt-auto bg-white border-t py-4">
-        <div className="max-w-[1800px] mx-auto px-4 sm:px-6">
+      <footer className="mt-auto bg-white border-t py-3">
+        <div className="max-w-[1900px] mx-auto px-4 sm:px-6">
           <p className="text-center text-sm text-slate-400">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
         </div>
       </footer>
@@ -629,89 +789,59 @@ export default function Home() {
         <DialogContent className="max-w-4xl max-h-[90vh] p-0">
           <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle className="flex items-center gap-2 text-lg">
-              <UserPlus className="size-5 text-teal-600" />
-              Novo Cliente
+              <UserPlus className="size-5 text-teal-600" />Novo Cliente
             </DialogTitle>
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] px-6">
             <div className="space-y-5 pb-4">
-              {/* CNPJ with auto-consult */}
               <div className="space-y-2">
                 <Label className="text-sm font-semibold text-slate-700">CNPJ <span className="text-red-500">*</span></Label>
                 <div className="flex gap-2">
-                  <Input
-                    placeholder="00.000.000/0000-00"
-                    value={form.cnpj}
-                    onChange={(e) => {
-                      const masked = maskCnpj(e.target.value)
-                      updateForm('cnpj', masked)
-                      setConsultError('')
-                    }}
-                    className="flex-1 font-mono"
-                    maxLength={18}
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => consultReceita(form.cnpj)}
-                    disabled={consulting || form.cnpj.replace(/\D/g, '').length !== 14}
-                    className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
-                  >
+                  <Input placeholder="00.000.000/0000-00" value={form.cnpj} onChange={(e) => { updateForm('cnpj', maskCnpj(e.target.value)); setConsultError('') }} className="flex-1 font-mono" maxLength={18} />
+                  <Button type="button" onClick={() => consultReceita(form.cnpj)} disabled={consulting || form.cnpj.replace(/\D/g, '').length !== 14} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
                     {consulting ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Consultando...</> : 'Consultar Receita'}
                   </Button>
                 </div>
                 {consultError && <p className="text-xs text-red-500">{consultError}</p>}
-                <p className="text-xs text-slate-400">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente os dados</p>
+                <p className="text-xs text-slate-400">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente</p>
               </div>
-
-              {/* Dados da Empresa */}
               <fieldset className="border rounded-lg p-4 space-y-3">
                 <legend className="text-sm font-semibold text-slate-600 px-2">Dados da Empresa</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2"><Label className="text-xs text-slate-500">Razão Social</Label><Input value={form.razaoSocial} onChange={(e) => updateForm('razaoSocial', e.target.value)} placeholder="Razão Social" /></div>
-                  <div><Label className="text-xs text-slate-500">Nome Fantasia</Label><Input value={form.nomeFantasia} onChange={(e) => updateForm('nomeFantasia', e.target.value)} placeholder="Nome Fantasia" /></div>
-                  <div><Label className="text-xs text-slate-500">IE/RG</Label><Input value={form.ieRg} onChange={(e) => updateForm('ieRg', e.target.value)} placeholder="Inscrição Estadual / RG" /></div>
-                  <div><Label className="text-xs text-slate-500">Situação Cadastral</Label><Input value={form.situacaoCadastral} onChange={(e) => updateForm('situacaoCadastral', e.target.value)} placeholder="ATIVA, BAIXADA..." /></div>
+                  <div className="sm:col-span-2"><Label className="text-xs text-slate-500">Razão Social</Label><Input value={form.razaoSocial} onChange={(e) => updateForm('razaoSocial', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Nome Fantasia</Label><Input value={form.nomeFantasia} onChange={(e) => updateForm('nomeFantasia', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">IE/RG</Label><Input value={form.ieRg} onChange={(e) => updateForm('ieRg', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Situação Cadastral</Label><Input value={form.situacaoCadastral} onChange={(e) => updateForm('situacaoCadastral', e.target.value)} /></div>
                   <div><Label className="text-xs text-slate-500">Data Abertura</Label><Input value={form.dataAbertura} onChange={(e) => updateForm('dataAbertura', e.target.value)} placeholder="dd/mm/aaaa" /></div>
-                  <div><Label className="text-xs text-slate-500">CNAE Principal</Label><Input value={form.cnaePrincipal} onChange={(e) => updateForm('cnaePrincipal', e.target.value)} placeholder="CNAE Principal" /></div>
-                  <div><Label className="text-xs text-slate-500">Natureza Jurídica</Label><Input value={form.naturezaJuridica} onChange={(e) => updateForm('naturezaJuridica', e.target.value)} placeholder="Natureza Jurídica" /></div>
-                  <div><Label className="text-xs text-slate-500">Porte</Label><Input value={form.porte} onChange={(e) => updateForm('porte', e.target.value)} placeholder="MICRO, PEQUENO, MÉDIO..." /></div>
+                  <div><Label className="text-xs text-slate-500">CNAE Principal</Label><Input value={form.cnaePrincipal} onChange={(e) => updateForm('cnaePrincipal', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Natureza Jurídica</Label><Input value={form.naturezaJuridica} onChange={(e) => updateForm('naturezaJuridica', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Porte</Label><Input value={form.porte} onChange={(e) => updateForm('porte', e.target.value)} /></div>
                   <div><Label className="text-xs text-slate-500">Reg. Simples</Label>
                     <Select value={form.regSimples || '_empty'} onValueChange={(v) => updateForm('regSimples', v === '_empty' ? '' : v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty">—</SelectItem>
-                        <SelectItem value="SIMPLES">SIMPLES</SelectItem>
-                        <SelectItem value="NÃO">NÃO</SelectItem>
-                      </SelectContent>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent><SelectItem value="_empty">—</SelectItem><SelectItem value="SIMPLES">SIMPLES</SelectItem><SelectItem value="NÃO">NÃO</SelectItem></SelectContent>
                     </Select>
                   </div>
                   <div><Label className="text-xs text-slate-500">Vendedor</Label>
                     <Select value={form.vendedor || '_empty'} onValueChange={(v) => updateForm('vendedor', v === '_empty' ? '' : v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione o vendedor" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_empty">—</SelectItem>
-                        {data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}
-                      </SelectContent>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent><SelectItem value="_empty">—</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent>
                     </Select>
                   </div>
                 </div>
               </fieldset>
-
-              {/* Endereço */}
               <fieldset className="border rounded-lg p-4 space-y-3">
                 <legend className="text-sm font-semibold text-slate-600 px-2">Endereço</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2"><Label className="text-xs text-slate-500">Endereço</Label><Input value={form.endereco} onChange={(e) => updateForm('endereco', e.target.value)} placeholder="Rua / Avenida" /></div>
-                  <div><Label className="text-xs text-slate-500">Número</Label><Input value={form.numero} onChange={(e) => updateForm('numero', e.target.value)} placeholder="Número" /></div>
-                  <div><Label className="text-xs text-slate-500">Complemento</Label><Input value={form.complemento} onChange={(e) => updateForm('complemento', e.target.value)} placeholder="Complemento" /></div>
-                  <div><Label className="text-xs text-slate-500">Bairro</Label><Input value={form.bairro} onChange={(e) => updateForm('bairro', e.target.value)} placeholder="Bairro" /></div>
-                  <div><Label className="text-xs text-slate-500">Cidade</Label><Input value={form.cidade} onChange={(e) => updateForm('cidade', e.target.value)} placeholder="Cidade" /></div>
+                  <div className="sm:col-span-2"><Label className="text-xs text-slate-500">Endereço</Label><Input value={form.endereco} onChange={(e) => updateForm('endereco', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Número</Label><Input value={form.numero} onChange={(e) => updateForm('numero', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Complemento</Label><Input value={form.complemento} onChange={(e) => updateForm('complemento', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Bairro</Label><Input value={form.bairro} onChange={(e) => updateForm('bairro', e.target.value)} /></div>
+                  <div><Label className="text-xs text-slate-500">Cidade</Label><Input value={form.cidade} onChange={(e) => updateForm('cidade', e.target.value)} /></div>
                   <div><Label className="text-xs text-slate-500">CEP</Label><Input value={form.cep} onChange={(e) => updateForm('cep', e.target.value)} placeholder="00000-000" /></div>
-                  <div><Label className="text-xs text-slate-500">UF</Label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} placeholder="UF" maxLength={2} className="uppercase" /></div>
+                  <div><Label className="text-xs text-slate-500">UF</Label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} maxLength={2} className="uppercase" /></div>
                 </div>
               </fieldset>
-
-              {/* Contato */}
               <fieldset className="border rounded-lg p-4 space-y-3">
                 <legend className="text-sm font-semibold text-slate-600 px-2">Contato</legend>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -719,10 +849,10 @@ export default function Home() {
                   <div><Label className="text-xs text-slate-500">Telefone 2</Label><Input value={form.telefone2} onChange={(e) => updateForm('telefone2', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
                   <div><Label className="text-xs text-slate-500">Telefone 3</Label><Input value={form.telefone3} onChange={(e) => updateForm('telefone3', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
                   <div><Label className="text-xs text-slate-500">Telefone 4</Label><Input value={form.telefone4} onChange={(e) => updateForm('telefone4', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
-                  <div><Label className="text-xs text-slate-500">Email 1</Label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value)} placeholder="email@exemplo.com" type="email" /></div>
-                  <div><Label className="text-xs text-slate-500">Email 2</Label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value)} placeholder="email2@exemplo.com" type="email" /></div>
-                  <div><Label className="text-xs text-slate-500">Email 3</Label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value)} placeholder="email3@exemplo.com" type="email" /></div>
-                  <div><Label className="text-xs text-slate-500">Pessoa de Contato</Label><Input value={form.pessoaContato} onChange={(e) => updateForm('pessoaContato', e.target.value)} placeholder="Nome da pessoa de contato" /></div>
+                  <div><Label className="text-xs text-slate-500">Email 1</Label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value)} type="email" /></div>
+                  <div><Label className="text-xs text-slate-500">Email 2</Label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value)} type="email" /></div>
+                  <div><Label className="text-xs text-slate-500">Email 3</Label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value)} type="email" /></div>
+                  <div><Label className="text-xs text-slate-500">Pessoa de Contato</Label><Input value={form.pessoaContato} onChange={(e) => updateForm('pessoaContato', e.target.value)} /></div>
                 </div>
               </fieldset>
             </div>
