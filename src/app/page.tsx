@@ -36,7 +36,7 @@ import {
   Pencil,
   ArrowUpAZ,
   ArrowDownZA,
-  ArrowsUpDown,
+  ArrowUpDown,
 } from 'lucide-react'
 
 interface ParsedFields {
@@ -738,7 +738,7 @@ export default function Home() {
                                 <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />
                               )
                             ) : (
-                              <ArrowsUpDown className="size-3 text-slate-300 shrink-0" />
+                              <ArrowUpDown className="size-3 text-slate-300 shrink-0" />
                             )}
                           </span>
                         </TableHead>
