@@ -92,9 +92,9 @@ interface ColumnDef {
 const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
   { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
-  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '110px' },
+  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '90px' },
   { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
-  { key: 'cnpj', label: 'CNPJ', minWidth: '140px' },
+  { key: 'cnpj', label: 'CNPJ', minWidth: '150px' },
   { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
   { key: 'ie_rg', label: 'IE/RG', minWidth: '100px' },
   { key: 'vendedor', label: 'Vendedor', minWidth: '140px' },
@@ -106,14 +106,14 @@ const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'cidade', label: 'Cidade', minWidth: '120px' },
   { key: 'cep', label: 'CEP', minWidth: '90px' },
   { key: 'uf', label: 'UF', minWidth: '50px' },
-  { key: 'telefone1', label: 'Telefone 1 ✏️', editable: true, minWidth: '140px' },
-  { key: 'telefone2', label: 'Telefone 2 ✏️', editable: true, minWidth: '140px' },
-  { key: 'telefone3', label: 'Telefone 3 ✏️', editable: true, minWidth: '140px' },
-  { key: 'telefone4', label: 'Telefone 4 ✏️', editable: true, minWidth: '140px' },
-  { key: 'email1', label: 'Email 1 ✏️', editable: true, minWidth: '160px' },
-  { key: 'email2', label: 'Email 2 ✏️', editable: true, minWidth: '140px' },
-  { key: 'email3', label: 'Email 3 ✏️', editable: true, minWidth: '140px' },
-  { key: 'pessoa_contato', label: 'Pessoa Contato ✏️', editable: true, minWidth: '140px' },
+  { key: 'telefone1', label: 'Tel. 1', editable: true, minWidth: '140px' },
+  { key: 'telefone2', label: 'Tel. 2', editable: true, minWidth: '140px' },
+  { key: 'telefone3', label: 'Tel. 3', editable: true, minWidth: '140px' },
+  { key: 'telefone4', label: 'Tel. 4', editable: true, minWidth: '140px' },
+  { key: 'email1', label: 'Email 1', editable: true, minWidth: '160px' },
+  { key: 'email2', label: 'Email 2', editable: true, minWidth: '140px' },
+  { key: 'email3', label: 'Email 3', editable: true, minWidth: '140px' },
+  { key: 'pessoa_contato', label: 'Contato', editable: true, minWidth: '140px' },
   { key: 'data_situacao', label: 'Data Situação', minWidth: '100px' },
   { key: 'data_abertura', label: 'Data Abertura', minWidth: '100px' },
   { key: 'cnae_principal', label: 'CNAE Principal', minWidth: '200px' },
@@ -156,6 +156,18 @@ function getDiasSemVendaBg(dias: number | null): string {
   if (dias <= 60) return 'bg-amber-100 text-amber-800 border-amber-300'
   if (dias <= 90) return 'bg-orange-100 text-orange-800 border-orange-300'
   return 'bg-red-100 text-red-800 border-red-300'
+}
+
+function formatCnpj(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.length !== 14) return raw
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+}
+
+function formatCep(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.length !== 8) return raw
+  return `${d.slice(0, 5)}-${d.slice(5)}`
 }
 
 function formatPhone(raw: string): string {
@@ -207,9 +219,13 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
   return <Badge variant="outline" className="text-xs">{value}</Badge>
 }
 
-function DiasSemVendaBadge({ dias }: { dias: number | null }) {
+function DiasSemVendaBadge({ dias, ultimaVenda }: { dias: number | null; ultimaVenda: string }) {
   if (dias === null) return <span className="text-slate-400 text-xs">—</span>
-  return <Badge className={`${getDiasSemVendaBg(dias)} text-xs font-bold border`}>{dias}d</Badge>
+  return (
+    <Badge className={`${getDiasSemVendaBg(dias)} text-xs font-bold border tabular-nums`} title={ultimaVenda ? `Última venda: ${ultimaVenda}` : undefined}>
+      {dias}
+    </Badge>
+  )
 }
 
 function EditableCell({ value, codigo, field, onSave, isPhone }: {
@@ -273,6 +289,7 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
       <span className="flex items-center gap-1">
         {!isSticky && <GripVertical className="size-3 text-slate-300 shrink-0 cursor-grab active:cursor-grabbing" />}
         {col.label}
+        {isEditable && <Pencil className="size-2.5 text-teal-500 shrink-0" />}
         {isActive ? (sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />) : <ArrowUpDown className="size-3 text-slate-300 shrink-0" />}
       </span>
     </TableHead>
@@ -591,7 +608,7 @@ export default function Home() {
         {/* Hint */}
         <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
           <Pencil className="size-3" />
-          <span>Clique nos campos <strong>telefone, email e contato</strong> para editar · Arraste os headers <GripVertical className="size-3 inline" /> para reordenar colunas</span>
+          <span>Clique nos campos com <Pencil className="size-2.5 inline text-teal-500" /> para editar · Arraste <GripVertical className="size-3 inline" /> para reordenar colunas · Passe o mouse sobre o número de dias para ver a data</span>
         </div>
 
         {/* Filters */}
@@ -649,7 +666,7 @@ export default function Home() {
                             const editableKey = toEditableKey(col.key)
 
                             if (col.key === 'dias_sem_venda') {
-                              return <TableCell key={col.key} className="whitespace-nowrap px-3"><DiasSemVendaBadge dias={diasSemVenda} /></TableCell>
+                              return <TableCell key={col.key} className="whitespace-nowrap px-3"><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></TableCell>
                             }
 
                             const val = getRecordValue(r, col.key)
@@ -670,13 +687,17 @@ export default function Home() {
                               )
                             }
 
-                            const isMono = ['ie_rg', 'cnpj', 'cep'].includes(col.key)
+                            const isMono = ['ie_rg', 'cep'].includes(col.key)
                             const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
                             const truncateMax: Record<string, string> = { nome_fantasia: 'max-w-[160px]', endereco: 'max-w-[180px]', complemento: 'max-w-[110px]', bairro: 'max-w-[130px]', cnae_principal: 'max-w-[200px]', natureza_juridica: 'max-w-[160px]' }
 
+                            let displayVal = val || '—'
+                            if (col.key === 'cnpj' && val) displayVal = formatCnpj(val)
+                            else if (col.key === 'cep' && val) displayVal = formatCep(val)
+
                             return (
-                              <TableCell key={col.key} className={`text-xs whitespace-nowrap ${isMono ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''}`} title={isTruncate ? val : undefined}>
-                                {col.key === 'vendedor' ? <span className="font-medium">{val || '—'}</span> : val || '—'}
+                              <TableCell key={col.key} className={`text-xs whitespace-nowrap ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''}`} title={isTruncate ? val : undefined}>
+                                {col.key === 'vendedor' ? <span className="font-medium">{displayVal}</span> : displayVal}
                               </TableCell>
                             )
                           })}
