@@ -3,8 +3,10 @@ import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
 
+// All parsed fields from Observações column
 interface ParsedFields {
   codigo: string;
+  fantasia: string;
   ie_rg: string;
   celular: string;
   fax: string;
@@ -16,15 +18,28 @@ interface ParsedFields {
   [key: string]: string;
 }
 
+// Full record with ALL columns from the spreadsheet
 interface ClienteRecord {
   razao_social: string;
   nome_fantasia: string;
-  cnpj: string;
-  cidade: string;
-  uf: string;
   situacao_cadastral: string;
+  cnpj: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  cep: string;
+  uf: string;
+  telefone1: string;
+  telefone2: string;
   email: string;
-  telefone: string;
+  pessoa_contato: string;
+  data_situacao: string;
+  data_abertura: string;
+  cnae_principal: string;
+  natureza_juridica: string;
+  porte: string;
   parsed: ParsedFields;
 }
 
@@ -32,24 +47,30 @@ interface ClienteRecord {
 function excelSerialToDate(serial: string): string {
   if (!serial) return "";
   const num = parseInt(serial, 10);
-  if (isNaN(num) || num <= 0) return serial; // return as-is if not a valid serial
-
-  // Excel serial date: Day 1 = Jan 1, 1900 (with leap year bug, effective epoch = Dec 30, 1899)
-  const epoch = new Date(1899, 11, 30); // Dec 30, 1899
-  const date = new Date(epoch.getTime() + num * 86400000); // add days in ms
-
-  if (isNaN(date.getTime())) return serial; // fallback
-
+  if (isNaN(num) || num <= 0) return serial;
+  const epoch = new Date(1899, 11, 30);
+  const date = new Date(epoch.getTime() + num * 86400000);
+  if (isNaN(date.getTime())) return serial;
   const day = String(date.getDate()).padStart(2, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
-
   return `${day}/${month}/${year}`;
+}
+
+// Format date string from yyyy-mm-dd to dd/mm/aaaa
+function formatDate(dateStr: string): string {
+  if (!dateStr) return "";
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    return `${match[3]}/${match[2]}/${match[1]}`;
+  }
+  return dateStr;
 }
 
 function parseObservacoes(obs: string): ParsedFields {
   const defaults: ParsedFields = {
     codigo: "",
+    fantasia: "",
     ie_rg: "",
     celular: "",
     fax: "",
@@ -83,7 +104,7 @@ function parseObservacoes(obs: string): ParsedFields {
 // Cache the parsed data in memory
 let cachedRecords: ClienteRecord[] | null = null;
 let cachedTimestamp = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 5 * 60 * 1000;
 
 function getRecords(): ClienteRecord[] {
   const now = Date.now();
@@ -106,12 +127,24 @@ function getRecords(): ClienteRecord[] {
   cachedRecords = rawData.map((row) => ({
     razao_social: row["Razão Social"] || "",
     nome_fantasia: row["Nome Fantasia"] || "",
-    cnpj: row["CNPJ"] || "",
-    cidade: row["Cidade"] || "",
-    uf: row["UF"] || "",
     situacao_cadastral: row["Situação Cadastral"] || "",
+    cnpj: row["CNPJ"] || "",
+    endereco: row["Endereço Rua/Avenida"] || "",
+    numero: row["Numero"] || "",
+    complemento: row["Complemento"] || "",
+    bairro: row["Bairro"] || "",
+    cidade: row["Cidade"] || "",
+    cep: row["CEP"] || "",
+    uf: row["UF"] || "",
+    telefone1: row["Telefone 1"] || "",
+    telefone2: row["Telefone 2"] || "",
     email: row["Email 1"] || "",
-    telefone: row["Telefone 1"] || "",
+    pessoa_contato: row["Pessoa de contato"] || "",
+    data_situacao: formatDate(row["Data Situação"] || ""),
+    data_abertura: formatDate(row["Data Abertura"] || ""),
+    cnae_principal: row["CNAE Principal"] || "",
+    natureza_juridica: row["Natureza Jurídica"] || "",
+    porte: row["Porte"] || "",
     parsed: parseObservacoes(row["Observações"] || ""),
   }));
   cachedTimestamp = now;
@@ -125,6 +158,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const search = searchParams.get("search") || "";
+    const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const situacao = searchParams.get("situacao") || "";
     const vendedor = searchParams.get("vendedor") || "";
 
@@ -153,7 +187,15 @@ export async function GET(request: NextRequest) {
           r.parsed.codigo.includes(search) ||
           r.cidade.toLowerCase().includes(searchLower) ||
           r.parsed.vendedor.toLowerCase().includes(searchLower) ||
-          r.email.toLowerCase().includes(searchLower)
+          r.email.toLowerCase().includes(searchLower) ||
+          r.bairro.toLowerCase().includes(searchLower) ||
+          r.uf.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (situacaoCadastral) {
+      filtered = filtered.filter(
+        (r) => r.situacao_cadastral.toLowerCase() === situacaoCadastral.toLowerCase()
       );
     }
 
@@ -170,10 +212,18 @@ export async function GET(request: NextRequest) {
     }
 
     // Get unique values for filters
+    const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
     const uniqueSituacoes = [...new Set(allRecords.map((r) => r.parsed.situacao).filter(Boolean))];
     const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
 
-    // Summary stats
+    // Summary stats - Situação Cadastral (from XLSX column)
+    const situacaoCadastralStats: Record<string, number> = {};
+    for (const r of allRecords) {
+      const key = r.situacao_cadastral || "Sem info";
+      situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
+    }
+
+    // Summary stats - Situação (from Observações parsed field)
     const totalAtivos = allRecords.filter((r) => r.parsed.situacao.toLowerCase() === "ativo").length;
     const totalInativos = allRecords.filter((r) => r.parsed.situacao.toLowerCase() === "inativo").length;
 
@@ -192,6 +242,7 @@ export async function GET(request: NextRequest) {
         totalPages,
       },
       filters: {
+        situacao_cadastral: uniqueSituacaoCadastral.sort(),
         situacoes: uniqueSituacoes.sort(),
         vendedores: uniqueVendedores.sort(),
       },
@@ -199,6 +250,7 @@ export async function GET(request: NextRequest) {
         total: allRecords.length,
         ativos: totalAtivos,
         inativos: totalInativos,
+        situacao_cadastral: situacaoCadastralStats,
       },
     });
   } catch (error) {
