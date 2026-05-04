@@ -110,6 +110,88 @@ function parseObservacoes(obs: string): ParsedFields {
   return defaults;
 }
 
+// Convert a DB ClienteNovo record to ClienteRecord format
+function dbToRecord(c: {
+  id: string;
+  codigo: string;
+  ieRg: string;
+  razaoSocial: string;
+  nomeFantasia: string;
+  situacaoCadastral: string;
+  cnpj: string;
+  endereco: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  cep: string;
+  uf: string;
+  telefone1: string;
+  telefone2: string;
+  telefone3: string;
+  telefone4: string;
+  email1: string;
+  email2: string;
+  email3: string;
+  pessoaContato: string;
+  dataSituacao: string;
+  dataAbertura: string;
+  cnaePrincipal: string;
+  naturezaJuridica: string;
+  porte: string;
+  cadastro: string;
+  ultimaVenda: string;
+  regSimples: string;
+  vendedor: string;
+}): ClienteRecord {
+  return {
+    razao_social: c.razaoSocial,
+    nome_fantasia: c.nomeFantasia,
+    situacao_cadastral: c.situacaoCadastral,
+    cnpj: c.cnpj,
+    endereco: c.endereco,
+    numero: c.numero,
+    complemento: c.complemento,
+    bairro: c.bairro,
+    cidade: c.cidade,
+    cep: c.cep,
+    uf: c.uf,
+    telefone1: c.telefone1,
+    telefone2: c.telefone2,
+    telefone3: c.telefone3,
+    telefone4: c.telefone4,
+    email1: c.email1,
+    email2: c.email2,
+    email3: c.email3,
+    pessoa_contato: c.pessoaContato,
+    data_situacao: c.dataSituacao,
+    data_abertura: c.dataAbertura,
+    cnae_principal: c.cnaePrincipal,
+    natureza_juridica: c.naturezaJuridica,
+    porte: c.porte,
+    parsed: {
+      codigo: c.codigo,
+      ie_rg: c.ieRg,
+      celular: "",
+      fax: "",
+      cadastro: c.cadastro,
+      ultima_venda: c.ultimaVenda,
+      reg_simples: c.regSimples,
+      vendedor: c.vendedor,
+    },
+    editable: {
+      telefone1: c.telefone1,
+      telefone2: c.telefone2,
+      telefone3: c.telefone3,
+      telefone4: c.telefone4,
+      email1: c.email1,
+      email2: c.email2,
+      email3: c.email3,
+      pessoaContato: c.pessoaContato,
+    },
+  };
+}
+
 // Cache the parsed data in memory
 let cachedRecords: ClienteRecord[] | null = null;
 let cachedTimestamp = 0;
@@ -180,6 +262,12 @@ async function getRecords(): Promise<ClienteRecord[]> {
       };
     })
     .filter((r) => r.parsed.codigo !== "000000");
+
+  // Also load new clients from DB
+  const novos = await db.clienteNovo.findMany();
+  const novoRecords = novos.map(dbToRecord);
+  cachedRecords = [...cachedRecords, ...novoRecords];
+
   cachedTimestamp = now;
 
   return cachedRecords;
@@ -332,6 +420,86 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// POST - Create a new client
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { cnpj } = body;
+
+    if (!cnpj) {
+      return NextResponse.json({ error: "CNPJ é obrigatório" }, { status: 400 });
+    }
+
+    const cnpjDigits = cnpj.replace(/\D/g, "");
+    if (cnpjDigits.length !== 14) {
+      return NextResponse.json({ error: "CNPJ deve conter 14 dígitos" }, { status: 400 });
+    }
+
+    // Check if CNPJ already exists
+    const existing = await db.clienteNovo.findUnique({ where: { cnpj: cnpjDigits } });
+    if (existing) {
+      return NextResponse.json({ error: "CNPJ já cadastrado" }, { status: 409 });
+    }
+
+    // Generate next codigo
+    const lastNovo = await db.clienteNovo.findFirst({
+      orderBy: { codigo: "desc" },
+    });
+    let nextNum = 1;
+    if (lastNovo?.codigo) {
+      const parsed = parseInt(lastNovo.codigo, 10);
+      if (!isNaN(parsed)) nextNum = parsed + 1;
+    }
+    const codigo = String(nextNum).padStart(6, "0");
+
+    const novo = await db.clienteNovo.create({
+      data: {
+        codigo,
+        ieRg: body.ieRg || "",
+        razaoSocial: body.razaoSocial || "",
+        nomeFantasia: body.nomeFantasia || "",
+        situacaoCadastral: body.situacaoCadastral || "",
+        cnpj: cnpjDigits,
+        endereco: body.endereco || "",
+        numero: body.numero || "",
+        complemento: body.complemento || "",
+        bairro: body.bairro || "",
+        cidade: body.cidade || "",
+        cep: body.cep || "",
+        uf: body.uf || "",
+        telefone1: body.telefone1 || "",
+        telefone2: body.telefone2 || "",
+        telefone3: body.telefone3 || "",
+        telefone4: body.telefone4 || "",
+        email1: body.email1 || "",
+        email2: body.email2 || "",
+        email3: body.email3 || "",
+        pessoaContato: body.pessoaContato || "",
+        dataSituacao: body.dataSituacao || "",
+        dataAbertura: body.dataAbertura || "",
+        cnaePrincipal: body.cnaePrincipal || "",
+        naturezaJuridica: body.naturezaJuridica || "",
+        porte: body.porte || "",
+        cadastro: new Date().toLocaleDateString("pt-BR"),
+        ultimaVenda: "",
+        regSimples: body.regSimples || "",
+        vendedor: body.vendedor || "",
+      },
+    });
+
+    // Invalidate cache
+    cachedRecords = null;
+
+    return NextResponse.json({ success: true, cliente: dbToRecord(novo) }, { status: 201 });
+  } catch (error) {
+    console.error("Error creating client:", error);
+    return NextResponse.json(
+      { error: "Erro ao criar cliente" },
+      { status: 500 }
+    );
+  }
+}
+
 // PATCH - Save editable fields for a client
 export async function PATCH(request: NextRequest) {
   try {
@@ -342,6 +510,28 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
     }
 
+    // Check if this is a DB-created client (ClienteNovo)
+    const novo = await db.clienteNovo.findUnique({ where: { codigo } });
+    if (novo) {
+      // Update directly in ClienteNovo
+      const updated = await db.clienteNovo.update({
+        where: { codigo },
+        data: {
+          telefone1: telefone1 ?? undefined,
+          telefone2: telefone2 ?? undefined,
+          telefone3: telefone3 ?? undefined,
+          telefone4: telefone4 ?? undefined,
+          email1: email1 ?? undefined,
+          email2: email2 ?? undefined,
+          email3: email3 ?? undefined,
+          pessoaContato: pessoaContato ?? undefined,
+        },
+      });
+      cachedRecords = null;
+      return NextResponse.json({ success: true, edit: dbToRecord(updated) });
+    }
+
+    // Otherwise, use ClienteEdit for XLSX-sourced records
     const edit = await db.clienteEdit.upsert({
       where: { codigo },
       update: {
