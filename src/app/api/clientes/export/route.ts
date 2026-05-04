@@ -63,7 +63,6 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
-    const situacao = searchParams.get("situacao") || "";
     const vendedor = searchParams.get("vendedor") || "";
 
     const filePath = path.join(
@@ -82,41 +81,42 @@ export async function GET(request: NextRequest) {
     const worksheet = workbook.Sheets[sheetName];
     const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
 
-    // Parse all records and flatten for export
-    const allRecords = rawData.map((row) => {
-      const parsed = parseObservacoes(row["Observações"] || "");
-      return {
-        "Código": parsed.codigo,
-        "IE/RG": parsed.ie_rg,
-        "Razão Social": row["Razão Social"] || "",
-        "Nome Fantasia": row["Nome Fantasia"] || "",
-        "Situação Cadastral": row["Situação Cadastral"] || "",
-        "CNPJ": row["CNPJ"] || "",
-        "Endereço Rua/Avenida": row["Endereço Rua/Avenida"] || "",
-        "Numero": row["Numero"] || "",
-        "Complemento": row["Complemento"] || "",
-        "Bairro": row["Bairro"] || "",
-        "Cidade": row["Cidade"] || "",
-        "CEP": row["CEP"] || "",
-        "UF": row["UF"] || "",
-        "Telefone 1": row["Telefone 1"] || "",
-        "Telefone 2": row["Telefone 2"] || "",
-        "Celular": parsed.celular,
-        "Fax": parsed.fax,
-        "Email 1": row["Email 1"] || "",
-        "Pessoa de contato": row["Pessoa de contato"] || "",
-        "Data Situação": formatDate(row["Data Situação"] || ""),
-        "Data Abertura": formatDate(row["Data Abertura"] || ""),
-        "CNAE Principal": row["CNAE Principal"] || "",
-        "Natureza Jurídica": row["Natureza Jurídica"] || "",
-        "Porte": row["Porte"] || "",
-        "Cadastro": parsed.cadastro,
-        "Última Venda": parsed.ultima_venda,
-        "Reg. Simples": parsed.reg_simples,
-        "Situação": parsed.situacao,
-        "Vendedor": parsed.vendedor,
-      };
-    });
+    // Parse all records, flatten, and eliminate código 000000
+    const allRecords = rawData
+      .map((row) => {
+        const parsed = parseObservacoes(row["Observações"] || "");
+        return {
+          "Código": parsed.codigo,
+          "IE/RG": parsed.ie_rg,
+          "Razão Social": row["Razão Social"] || "",
+          "Nome Fantasia": row["Nome Fantasia"] || "",
+          "Situação Cadastral": row["Situação Cadastral"] || "",
+          "CNPJ": row["CNPJ"] || "",
+          "Endereço Rua/Avenida": row["Endereço Rua/Avenida"] || "",
+          "Numero": row["Numero"] || "",
+          "Complemento": row["Complemento"] || "",
+          "Bairro": row["Bairro"] || "",
+          "Cidade": row["Cidade"] || "",
+          "CEP": row["CEP"] || "",
+          "UF": row["UF"] || "",
+          "Telefone 1": row["Telefone 1"] || "",
+          "Telefone 2": row["Telefone 2"] || "",
+          "Celular": parsed.celular,
+          "Fax": parsed.fax,
+          "Email 1": row["Email 1"] || "",
+          "Pessoa de contato": row["Pessoa de contato"] || "",
+          "Data Situação": formatDate(row["Data Situação"] || ""),
+          "Data Abertura": formatDate(row["Data Abertura"] || ""),
+          "CNAE Principal": row["CNAE Principal"] || "",
+          "Natureza Jurídica": row["Natureza Jurídica"] || "",
+          "Porte": row["Porte"] || "",
+          "Cadastro": parsed.cadastro,
+          "Última Venda": parsed.ultima_venda,
+          "Reg. Simples": parsed.reg_simples,
+          "Vendedor": parsed.vendedor,
+        };
+      })
+      .filter((r) => r["Código"] !== "000000");
 
     // Apply filters
     let filtered = allRecords;
@@ -138,12 +138,6 @@ export async function GET(request: NextRequest) {
     if (situacaoCadastral) {
       filtered = filtered.filter(
         (r) => r["Situação Cadastral"].toLowerCase() === situacaoCadastral.toLowerCase()
-      );
-    }
-
-    if (situacao) {
-      filtered = filtered.filter(
-        (r) => r["Situação"].toLowerCase() === situacao.toLowerCase()
       );
     }
 
