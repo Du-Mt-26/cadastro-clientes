@@ -49,57 +49,30 @@ import {
   Loader2,
   Clock,
   TrendingDown,
+  GripVertical,
+  AlertCircle,
 } from 'lucide-react'
 
+// ─── Types ─────────────────────────────────────────
+
 interface ParsedFields {
-  codigo: string
-  ie_rg: string
-  celular: string
-  fax: string
-  cadastro: string
-  ultima_venda: string
-  reg_simples: string
-  vendedor: string
+  codigo: string; ie_rg: string; celular: string; fax: string;
+  cadastro: string; ultima_venda: string; reg_simples: string; vendedor: string
 }
 
 interface EditableFields {
-  telefone1: string
-  telefone2: string
-  telefone3: string
-  telefone4: string
-  email1: string
-  email2: string
-  email3: string
-  pessoaContato: string
+  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
+  email1: string; email2: string; email3: string; pessoaContato: string
 }
 
 interface ClienteRecord {
-  razao_social: string
-  nome_fantasia: string
-  situacao_cadastral: string
-  cnpj: string
-  endereco: string
-  numero: string
-  complemento: string
-  bairro: string
-  cidade: string
-  cep: string
-  uf: string
-  telefone1: string
-  telefone2: string
-  telefone3: string
-  telefone4: string
-  email1: string
-  email2: string
-  email3: string
-  pessoa_contato: string
-  data_situacao: string
-  data_abertura: string
-  cnae_principal: string
-  natureza_juridica: string
-  porte: string
-  parsed: ParsedFields
-  editable: EditableFields
+  razao_social: string; nome_fantasia: string; situacao_cadastral: string; cnpj: string;
+  endereco: string; numero: string; complemento: string; bairro: string;
+  cidade: string; cep: string; uf: string; telefone1: string; telefone2: string;
+  telefone3: string; telefone4: string; email1: string; email2: string; email3: string;
+  pessoa_contato: string; data_situacao: string; data_abertura: string;
+  cnae_principal: string; natureza_juridica: string; porte: string;
+  parsed: ParsedFields; editable: EditableFields
 }
 
 interface ApiResponse {
@@ -109,18 +82,14 @@ interface ApiResponse {
   stats: { total: number; situacao_cadastral: Record<string, number> }
 }
 
-// Column definition
+// ─── Column definitions ────────────────────────────
+
 interface ColumnDef {
-  key: string
-  label: string
-  editable?: boolean
-  sticky?: 'left' | 'right'
-  stickyOffset?: number
-  minWidth?: string
+  key: string; label: string; editable?: boolean;
+  sticky?: 'left'; stickyOffset?: number; minWidth?: string
 }
 
-// Reordered: Código → Razão Social (sticky) → Dias S/ Venda → Sit. Cadastral → rest
-const COLUMNS: ColumnDef[] = [
+const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
   { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
   { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '110px' },
@@ -158,44 +127,27 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 
 // ─── Helpers ───────────────────────────────────────
 
-// Current date in UTC-3 (Brasília)
 function getNowBrasilia(): Date {
   const now = new Date()
-  // Get UTC-3 offset
-  const utc3 = new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000)
-  return utc3
+  return new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000)
 }
 
-// Parse dd/mm/aaaa to Date
 function parseDdMmYyyy(dateStr: string): Date | null {
   if (!dateStr) return null
   const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
   if (!match) return null
-  const [, day, month, year] = match
-  const d = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
-  if (isNaN(d.getTime())) return null
-  return d
+  const d = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]))
+  return isNaN(d.getTime()) ? null : d
 }
 
-// Calculate days since last sale
 function calcDiasSemVenda(ultimaVenda: string): number | null {
   if (!ultimaVenda) return null
   const saleDate = parseDdMmYyyy(ultimaVenda)
   if (!saleDate) return null
   const now = getNowBrasilia()
-  // Zero out time to count full days
   const sale = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate())
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const diffMs = today.getTime() - sale.getTime()
-  return Math.floor(diffMs / 86400000)
-}
-
-function getDiasSemVendaColor(dias: number | null): string {
-  if (dias === null) return 'slate'
-  if (dias <= 30) return 'emerald'
-  if (dias <= 60) return 'amber'
-  if (dias <= 90) return 'orange'
-  return 'red'
+  return Math.floor((today.getTime() - sale.getTime()) / 86400000)
 }
 
 function getDiasSemVendaBg(dias: number | null): string {
@@ -257,12 +209,7 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
 
 function DiasSemVendaBadge({ dias }: { dias: number | null }) {
   if (dias === null) return <span className="text-slate-400 text-xs">—</span>
-  const colorClass = getDiasSemVendaBg(dias)
-  return (
-    <Badge className={`${colorClass} text-xs font-bold border hover:opacity-90`}>
-      {dias}d
-    </Badge>
-  )
+  return <Badge className={`${getDiasSemVendaBg(dias)} text-xs font-bold border`}>{dias}d</Badge>
 }
 
 function EditableCell({ value, codigo, field, onSave, isPhone }: {
@@ -274,28 +221,61 @@ function EditableCell({ value, codigo, field, onSave, isPhone }: {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setEditValue(value) }, [value])
-  useEffect(() => {
-    if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select() }
-  }, [editing])
+  useEffect(() => { if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select() } }, [editing])
 
-  const handleSave = () => {
-    if (editValue !== value) onSave(codigo, field, editValue)
-    setEditing(false)
-  }
+  const handleSave = () => { if (editValue !== value) onSave(codigo, field, editValue); setEditing(false) }
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleSave()
     else if (e.key === 'Escape') { setEditValue(value); setEditing(false) }
   }
 
-  if (editing) {
-    return <Input ref={inputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={handleSave} onKeyDown={handleKeyDown} className="h-7 text-xs w-full min-w-[100px] border-teal-400 focus:border-teal-600" placeholder={isPhone ? '(XX) XXXXX-XXXX' : ''} />
-  }
+  if (editing) return <Input ref={inputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={handleSave} onKeyDown={handleKeyDown} className="h-7 text-xs w-full min-w-[100px] border-teal-400 focus:border-teal-600" placeholder={isPhone ? '(XX) XXXXX-XXXX' : ''} />
+
   const displayValue = isPhone ? formatPhone(value) : (value || '—')
   return (
     <span className="cursor-pointer group flex items-center gap-1" onClick={() => setEditing(true)} title="Clique para editar">
       <span className="text-xs">{displayValue}</span>
       <Pencil className="size-2.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
     </span>
+  )
+}
+
+// ─── Draggable Column Header ───────────────────────
+
+function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, onDragOver, onDrop, isDragging, isDragOver }: {
+  col: ColumnDef; isActive: boolean; sortOrder: 'asc' | 'desc';
+  onSort: (key: string) => void;
+  onDragStart: (e: React.DragEvent, key: string) => void;
+  onDragOver: (e: React.DragEvent, key: string) => void;
+  onDrop: (e: React.DragEvent, key: string) => void;
+  isDragging: boolean; isDragOver: boolean
+}) {
+  const isSticky = col.sticky === 'left'
+  const isEditable = col.editable
+  let headerBg = 'bg-slate-50'
+  let headerText = 'text-slate-700'
+  if (isEditable) { headerBg = 'bg-teal-50'; headerText = 'text-teal-700' }
+  if (isSticky) headerBg = 'bg-slate-100'
+  if (isDragging) { headerBg = 'bg-teal-100'; headerText = 'text-teal-800' }
+  if (isDragOver) headerBg = 'bg-amber-100'
+
+  return (
+    <TableHead
+      key={col.key}
+      className={`font-semibold ${headerText} text-xs ${headerBg} cursor-pointer select-none transition-colors whitespace-nowrap ${isSticky ? 'sticky z-[6]' : ''} ${isDragging ? 'opacity-60' : ''}`}
+      style={isSticky ? { left: col.stickyOffset, minWidth: col.minWidth } : { minWidth: col.minWidth }}
+      onClick={() => onSort(col.key)}
+      draggable={!isSticky}
+      onDragStart={(e) => !isSticky && onDragStart(e, col.key)}
+      onDragOver={(e) => { e.preventDefault(); if (!isSticky) onDragOver(e, col.key) }}
+      onDrop={(e) => !isSticky && onDrop(e, col.key)}
+    >
+      <span className="flex items-center gap-1">
+        {!isSticky && <GripVertical className="size-3 text-slate-300 shrink-0 cursor-grab active:cursor-grabbing" />}
+        {col.label}
+        {isActive ? (sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />) : <ArrowUpDown className="size-3 text-slate-300 shrink-0" />}
+      </span>
+    </TableHead>
   )
 }
 
@@ -320,7 +300,7 @@ const EMPTY_FORM: NewClientForm = {
   regSimples: '', vendedor: '',
 }
 
-// ─── Main Component ────────────────────────────────
+// ─── Main ──────────────────────────────────────────
 
 export default function Home() {
   const [data, setData] = useState<ApiResponse | null>(null)
@@ -338,12 +318,67 @@ export default function Home() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const tableContainerRef = useRef<HTMLDivElement>(null)
 
+  // Column ordering state - load from localStorage
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('columnOrder')
+      if (saved) {
+        try { return JSON.parse(saved) } catch { /* ignore */ }
+      }
+    }
+    return DEFAULT_COLUMNS.map(c => c.key)
+  })
+
+  const [dragKey, setDragKey] = useState<string | null>(null)
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null)
+
   // New client modal
   const [showNewClient, setShowNewClient] = useState(false)
   const [form, setForm] = useState<NewClientForm>(EMPTY_FORM)
   const [consulting, setConsulting] = useState(false)
   const [consultError, setConsultError] = useState('')
+  const [consultWarning, setConsultWarning] = useState('')
   const [savingNew, setSavingNew] = useState(false)
+
+  // Reorder columns based on state
+  const columns = useMemo(() => {
+    const colMap = new Map(DEFAULT_COLUMNS.map(c => [c.key, c]))
+    // Always keep sticky columns first
+    const stickyKeys = columnOrder.filter(k => { const c = colMap.get(k); return c?.sticky === 'left' })
+    const normalKeys = columnOrder.filter(k => { const c = colMap.get(k); return !c?.sticky })
+    // Put any missing columns at the end
+    const allKeys = [...stickyKeys, ...normalKeys]
+    const missing = DEFAULT_COLUMNS.filter(c => !allKeys.includes(c.key)).map(c => c.key)
+    return [...allKeys, ...missing].map(k => colMap.get(k)!).filter(Boolean)
+  }, [columnOrder])
+
+  // Save column order to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('columnOrder', JSON.stringify(columnOrder))
+    }
+  }, [columnOrder])
+
+  // Drag handlers
+  const handleDragStart = (_e: React.DragEvent, key: string) => { setDragKey(key) }
+  const handleDragOver = (_e: React.DragEvent, key: string) => { setDragOverKey(key) }
+  const handleDrop = (_e: React.DragEvent, key: string) => {
+    if (!dragKey || dragKey === key) { setDragKey(null); setDragOverKey(null); return }
+    // Don't allow dropping on sticky columns
+    const targetCol = DEFAULT_COLUMNS.find(c => c.key === key)
+    if (targetCol?.sticky) { setDragKey(null); setDragOverKey(null); return }
+
+    const sourceIdx = columnOrder.indexOf(dragKey)
+    const targetIdx = columnOrder.indexOf(key)
+    if (sourceIdx === -1 || targetIdx === -1) { setDragKey(null); setDragOverKey(null); return }
+
+    const newOrder = [...columnOrder]
+    newOrder.splice(sourceIdx, 1)
+    newOrder.splice(targetIdx > sourceIdx ? targetIdx - 1 : targetIdx, 0, dragKey)
+    setColumnOrder(newOrder)
+    setDragKey(null)
+    setDragOverKey(null)
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => { setDebouncedSearch(search); setPage(1) }, 300)
@@ -375,7 +410,6 @@ export default function Home() {
   useEffect(() => { fetchData() }, [fetchData])
   useEffect(() => { if (tableContainerRef.current) tableContainerRef.current.scrollTop = 0 }, [page])
 
-  // Client-side filtering for Dias Sem Venda
   const filteredData = useMemo(() => {
     if (!data?.data) return []
     if (diasSemVendaFilter === 'all') return data.data
@@ -392,7 +426,6 @@ export default function Home() {
     })
   }, [data?.data, diasSemVendaFilter])
 
-  // Dias Sem Venda stats (computed from ALL records, not just current page)
   const dsvStats = useMemo(() => {
     if (!data?.data) return { verde: 0, amarelo: 0, laranja: 0, vermelho: 0, semInfo: 0 }
     let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, semInfo = 0
@@ -455,26 +488,41 @@ export default function Home() {
   const consultReceita = async (cnpj: string) => {
     const digits = cnpj.replace(/\D/g, '')
     if (digits.length !== 14) { setConsultError('CNPJ deve conter 14 dígitos'); return }
-    setConsulting(true); setConsultError('')
+    setConsulting(true); setConsultError(''); setConsultWarning('')
     try {
       const res = await fetch(`/api/clientes/receita?cnpj=${digits}`)
       const json = await res.json()
-      if (!res.ok) { setConsultError(json.error || 'Erro ao consultar'); return }
+
+      if (!res.ok) {
+        setConsultError(json.error || 'Erro ao consultar')
+        return
+      }
+
+      // Check if client already exists
+      if (json.exists) {
+        setConsultWarning(json.message || 'Cliente já cadastrado')
+        // Still pre-fill data if available
+        return
+      }
+
+      // Pre-fill from ReceitaWS data
       const d = json.data
-      setForm((f) => ({
-        ...f,
-        razaoSocial: d.razao_social || f.razaoSocial,
-        nomeFantasia: d.nome_fantasia || f.nomeFantasia,
-        situacaoCadastral: d.situacao_cadastral || f.situacaoCadastral,
-        endereco: d.endereco || f.endereco, numero: d.numero || f.numero,
-        complemento: d.complemento || f.complemento, bairro: d.bairro || f.bairro,
-        cidade: d.cidade || f.cidade, cep: d.cep || f.cep, uf: d.uf || f.uf,
-        telefone1: d.telefone1 || f.telefone1, email1: d.email1 || f.email1,
-        dataAbertura: d.data_abertura || f.dataAbertura,
-        cnaePrincipal: d.cnae_principal || f.cnaePrincipal,
-        naturezaJuridica: d.natureza_juridica || f.naturezaJuridica,
-        porte: d.porte || f.porte,
-      }))
+      if (d) {
+        setForm((f) => ({
+          ...f,
+          razaoSocial: d.razao_social || f.razaoSocial,
+          nomeFantasia: d.nome_fantasia || f.nomeFantasia,
+          situacaoCadastral: d.situacao_cadastral || f.situacaoCadastral,
+          endereco: d.endereco || f.endereco, numero: d.numero || f.numero,
+          complemento: d.complemento || f.complemento, bairro: d.bairro || f.bairro,
+          cidade: d.cidade || f.cidade, cep: d.cep || f.cep, uf: d.uf || f.uf,
+          telefone1: d.telefone1 || f.telefone1, email1: d.email1 || f.email1,
+          dataAbertura: d.data_abertura || f.dataAbertura,
+          cnaePrincipal: d.cnae_principal || f.cnaePrincipal,
+          naturezaJuridica: d.natureza_juridica || f.naturezaJuridica,
+          porte: d.porte || f.porte,
+        }))
+      }
     } catch { setConsultError('Erro ao consultar a Receita Federal') }
     finally { setConsulting(false) }
   }
@@ -486,121 +534,64 @@ export default function Home() {
       const res = await fetch('/api/clientes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const json = await res.json()
       if (!res.ok) { setConsultError(json.error || 'Erro ao criar cliente'); return }
-      setShowNewClient(false); setForm(EMPTY_FORM); fetchData()
+      setShowNewClient(false); setForm(EMPTY_FORM); setConsultWarning(''); fetchData()
     } catch { setConsultError('Erro ao criar cliente') }
     finally { setSavingNew(false) }
   }
 
-  const openNewClient = () => { setForm(EMPTY_FORM); setConsultError(''); setShowNewClient(true) }
+  const openNewClient = () => { setForm(EMPTY_FORM); setConsultError(''); setConsultWarning(''); setShowNewClient(true) }
   const updateForm = (field: keyof NewClientForm, value: string) => setForm((f) => ({ ...f, [field]: value }))
 
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
   const showingAll = limit === 'all'
-
-  // Brasília time display
   const nowBrasilia = getNowBrasilia()
   const todayStr = nowBrasilia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Header */}
       <header className="bg-white border-b shadow-sm sticky top-0 z-10">
         <div className="max-w-[1900px] mx-auto px-4 sm:px-6 py-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md">
-                <Building2 className="size-5" />
-              </div>
+              <div className="flex items-center justify-center size-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md"><Building2 className="size-5" /></div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">Cadastro de Clientes</h1>
                 <p className="text-sm text-slate-500">Mtech Geral — {todayStr} (UTC-3)</p>
               </div>
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-              <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600">
-                <UserPlus className="size-4 mr-1.5" />Novo Cliente
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700">
-                <Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}
-              </Button>
-              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-                <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar
-              </Button>
+              <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"><UserPlus className="size-4 mr-1.5" />Novo Cliente</Button>
+              <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700"><Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}</Button>
+              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Main */}
       <main className="flex-1 max-w-[1900px] mx-auto w-full px-4 sm:px-6 py-4">
-        {/* Stats Cards Row 1: Situação Cadastral */}
+        {/* Stats Row 1 */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Users className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Total</p><p className="text-lg font-bold text-slate-900">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div>
-          </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><CheckCircle2 className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Ativa</p><p className="text-lg font-bold text-emerald-700">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div>
-          </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-red-100 text-red-600 shrink-0"><FileX2 className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Baixada</p><p className="text-lg font-bold text-red-700">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')}</p></div>
-          </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><AlertTriangle className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Inapta</p><p className="text-lg font-bold text-amber-700">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')}</p></div>
-          </CardContent></Card>
-          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2">
-            <div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><PauseCircle className="size-4" /></div>
-            <div><p className="text-xs text-slate-500">Suspensa</p><p className="text-lg font-bold text-orange-700">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')}</p></div>
-          </CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500">Total</p><p className="text-lg font-bold text-slate-900">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500">Ativa</p><p className="text-lg font-bold text-emerald-700">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 text-red-600 shrink-0"><FileX2 className="size-4" /></div><div><p className="text-xs text-slate-500">Baixada</p><p className="text-lg font-bold text-red-700">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><AlertTriangle className="size-4" /></div><div><p className="text-xs text-slate-500">Inapta</p><p className="text-lg font-bold text-amber-700">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
+          <Card className="border-0 shadow-sm"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><PauseCircle className="size-4" /></div><div><p className="text-xs text-slate-500">Suspensa</p><p className="text-lg font-bold text-orange-700">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
         </div>
 
-        {/* Stats Cards Row 2: Dias Sem Venda */}
+        {/* Stats Row 2: Dias Sem Venda */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-emerald-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-30' ? 'all' : '0-30'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><Clock className="size-4" /></div>
-              <div><p className="text-xs text-slate-500">0–30 dias</p><p className="text-lg font-bold text-emerald-700">{dsvStats.verde}</p></div>
-              {diasSemVendaFilter === '0-30' && <Badge className="ml-auto text-[10px] bg-emerald-200 text-emerald-800">Filtro</Badge>}
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-amber-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '31-60' ? 'all' : '31-60'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><Clock className="size-4" /></div>
-              <div><p className="text-xs text-slate-500">31–60 dias</p><p className="text-lg font-bold text-amber-700">{dsvStats.amarelo}</p></div>
-              {diasSemVendaFilter === '31-60' && <Badge className="ml-auto text-[10px] bg-amber-200 text-amber-800">Filtro</Badge>}
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-orange-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '61-90' ? 'all' : '61-90'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><Clock className="size-4" /></div>
-              <div><p className="text-xs text-slate-500">61–90 dias</p><p className="text-lg font-bold text-orange-700">{dsvStats.laranja}</p></div>
-              {diasSemVendaFilter === '61-90' && <Badge className="ml-auto text-[10px] bg-orange-200 text-orange-800">Filtro</Badge>}
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-red-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '90+' ? 'all' : '90+'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-red-100 text-red-600 shrink-0"><TrendingDown className="size-4" /></div>
-              <div><p className="text-xs text-slate-500">90+ dias</p><p className="text-lg font-bold text-red-700">{dsvStats.vermelho}</p></div>
-              {diasSemVendaFilter === '90+' && <Badge className="ml-auto text-[10px] bg-red-200 text-red-800">Filtro</Badge>}
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm cursor-pointer hover:ring-2 hover:ring-slate-300 transition-all" onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === 'all' ? 'all' : 'all'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Clock className="size-4" /></div>
-              <div><p className="text-xs text-slate-500">Sem info</p><p className="text-lg font-bold text-slate-700">{dsvStats.semInfo}</p></div>
-              {diasSemVendaFilter === 'all' && <Badge className="ml-auto text-[10px] bg-slate-200 text-slate-600">Todos</Badge>}
-            </CardContent>
-          </Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '0-30' ? 'ring-2 ring-emerald-400' : 'hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-30' ? 'all' : '0-30'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 text-emerald-600 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500">0–30 dias</p><p className="text-lg font-bold text-emerald-700">{dsvStats.verde}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '31-60' ? 'ring-2 ring-amber-400' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '31-60' ? 'all' : '31-60'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 text-amber-600 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500">31–60 dias</p><p className="text-lg font-bold text-amber-700">{dsvStats.amarelo}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '61-90' ? 'ring-2 ring-orange-400' : 'hover:ring-2 hover:ring-orange-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '61-90' ? 'all' : '61-90'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 text-orange-600 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500">61–90 dias</p><p className="text-lg font-bold text-orange-700">{dsvStats.laranja}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '90+' ? 'ring-2 ring-red-400' : 'hover:ring-2 hover:ring-red-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '90+' ? 'all' : '90+'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 text-red-600 shrink-0"><TrendingDown className="size-4" /></div><div><p className="text-xs text-slate-500">90+ dias</p><p className="text-lg font-bold text-red-700">{dsvStats.vermelho}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === 'all' ? 'ring-2 ring-slate-400' : 'hover:ring-2 hover:ring-slate-300'}`} onClick={() => { setDiasSemVendaFilter('all'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 text-slate-600 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500">Sem info</p><p className="text-lg font-bold text-slate-700">{dsvStats.semInfo}</p></div></CardContent></Card>
         </div>
 
         {/* Hint */}
         <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
           <Pencil className="size-3" />
-          <span>Clique nos campos <strong>telefone, email e pessoa de contato</strong> para editar · Clique nos cards de <strong>Dias S/ Venda</strong> para filtrar</span>
+          <span>Clique nos campos <strong>telefone, email e contato</strong> para editar · Arraste os headers <GripVertical className="size-3 inline" /> para reordenar colunas</span>
         </div>
 
         {/* Filters */}
@@ -611,37 +602,10 @@ export default function Home() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input placeholder="Buscar por razão social, CNPJ, código, cidade, vendedor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
               </div>
-              <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Situação Cadastral</SelectItem>
-                  {data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}
-                </SelectContent>
-              </Select>
-              <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos Vendedores</SelectItem>
-                  {data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}
-                </SelectContent>
-              </Select>
-              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}>
-                <SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="0-30">0–30 dias (🟢)</SelectItem>
-                  <SelectItem value="31-60">31–60 dias (🟡)</SelectItem>
-                  <SelectItem value="61-90">61–90 dias (🟠)</SelectItem>
-                  <SelectItem value="90+">90+ dias (🔴)</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={limit} onValueChange={handleLimitChange}>
-                <SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger>
-                <SelectContent>
-                  {PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}
-                  <SelectItem value="all">Todos</SelectItem>
-                </SelectContent>
-              </Select>
+              <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger><SelectContent><SelectItem value="all">Situação Cadastral</SelectItem>{data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select>
+              <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
+              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-30">0–30 dias 🟢</SelectItem><SelectItem value="31-60">31–60 dias 🟡</SelectItem><SelectItem value="61-90">61–90 dias 🟠</SelectItem><SelectItem value="90+">90+ dias 🔴</SelectItem></SelectContent></Select>
+              <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
             </div>
           </CardContent>
         </Card>
@@ -653,89 +617,59 @@ export default function Home() {
               <Table className="border-separate border-spacing-0">
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    {COLUMNS.map((col) => {
-                      const isActive = sortBy === col.key
-                      const isEditable = col.editable
-                      const isSticky = col.sticky === 'left'
-
-                      let headerBg = 'bg-slate-50'
-                      let headerText = 'text-slate-700'
-                      let borderBottom = ''
-                      if (isEditable) { headerBg = 'bg-teal-50'; headerText = 'text-teal-700'; borderBottom = 'border-b-2 border-teal-300' }
-                      if (isSticky) { headerBg = 'bg-slate-100' }
-
-                      return (
-                        <TableHead
-                          key={col.key}
-                          className={`font-semibold ${headerText} text-xs ${headerBg} ${borderBottom} cursor-pointer select-none hover:bg-slate-200/60 transition-colors whitespace-nowrap ${isSticky ? 'sticky z-[6]' : ''}`}
-                          style={isSticky ? { left: col.stickyOffset, minWidth: col.minWidth } : { minWidth: col.minWidth }}
-                          onClick={() => handleSort(col.key)}
-                        >
-                          <span className="flex items-center gap-1">
-                            {col.label}
-                            {isActive ? (sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />) : <ArrowUpDown className="size-3 text-slate-300 shrink-0" />}
-                          </span>
-                        </TableHead>
-                      )
-                    })}
+                    {columns.map((col) => (
+                      <DraggableColumnHeader
+                        key={col.key}
+                        col={col}
+                        isActive={sortBy === col.key}
+                        sortOrder={sortOrder}
+                        onSort={handleSort}
+                        onDragStart={handleDragStart}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        isDragging={dragKey === col.key}
+                        isDragOver={dragOverKey === col.key}
+                      />
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    Array.from({ length: 10 }).map((_, i) => (<TableRow key={i}>{Array.from({ length: COLUMNS.length }).map((_, j) => (<TableCell key={j}><div className="h-3 bg-slate-100 rounded animate-pulse w-16" /></TableCell>))}</TableRow>))
+                    Array.from({ length: 10 }).map((_, i) => (<TableRow key={i}>{columns.map((col) => (<TableCell key={col.key}><div className="h-3 bg-slate-100 rounded animate-pulse w-16" /></TableCell>))}</TableRow>))
                   ) : filteredData.length > 0 ? (
                     filteredData.map((r, idx) => {
                       const isEven = idx % 2 === 0
                       const rowBg = isEven ? 'bg-white' : 'bg-slate-50/60'
                       const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
-                      const diasColor = getDiasSemVendaColor(diasSemVenda)
 
                       return (
                         <TableRow key={idx} className={`${rowBg} hover:bg-teal-50/40 transition-colors`}>
-                          {COLUMNS.map((col) => {
+                          {columns.map((col) => {
                             const isSticky = col.sticky === 'left'
                             const editableKey = toEditableKey(col.key)
 
-                            // Dias Sem Venda column
                             if (col.key === 'dias_sem_venda') {
-                              return (
-                                <TableCell key={col.key} className="whitespace-nowrap px-3">
-                                  <DiasSemVendaBadge dias={diasSemVenda} />
-                                </TableCell>
-                              )
+                              return <TableCell key={col.key} className="whitespace-nowrap px-3"><DiasSemVendaBadge dias={diasSemVenda} /></TableCell>
                             }
 
                             const val = getRecordValue(r, col.key)
 
-                            // Situação Cadastral
-                            if (col.key === 'situacao_cadastral') {
-                              return <TableCell key={col.key} className={`whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}><SituacaoCadastralBadge value={val} /></TableCell>
-                            }
-                            // Reg Simples
-                            if (col.key === 'reg_simples') {
-                              return <TableCell key={col.key} className={`whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</TableCell>
-                            }
-                            // Editable
+                            if (col.key === 'situacao_cadastral') return <TableCell key={col.key} className="whitespace-nowrap"><SituacaoCadastralBadge value={val} /></TableCell>
+                            if (col.key === 'reg_simples') return <TableCell key={col.key} className="whitespace-nowrap">{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</TableCell>
+
                             if (col.editable && editableKey) {
                               const isPhone = PHONE_FIELDS.has(col.key)
-                              return <TableCell key={col.key} className={`bg-teal-50/30 whitespace-nowrap ${isSticky ? 'sticky z-[4]' : ''}`} style={isSticky ? { left: col.stickyOffset } : undefined}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} /></TableCell>
+                              return <TableCell key={col.key} className="bg-teal-50/30 whitespace-nowrap"><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} /></TableCell>
                             }
 
-                            // Sticky columns (Código, Razão Social)
                             if (isSticky) {
                               return (
-                                <TableCell
-                                  key={col.key}
-                                  className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 text-xs' : 'text-xs max-w-[220px] truncate'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent after:to-slate-200/40`}
-                                  style={{ left: col.stickyOffset, minWidth: col.minWidth }}
-                                  title={col.key === 'razao_social' ? val : undefined}
-                                >
+                                <TableCell key={col.key} className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 text-xs' : 'text-xs max-w-[220px] truncate'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent after:to-slate-200/40`} style={{ left: col.stickyOffset, minWidth: col.minWidth }} title={col.key === 'razao_social' ? val : undefined}>
                                   {val || '—'}
                                 </TableCell>
                               )
                             }
 
-                            // Default cells
                             const isMono = ['ie_rg', 'cnpj', 'cep'].includes(col.key)
                             const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
                             const truncateMax: Record<string, string> = { nome_fantasia: 'max-w-[160px]', endereco: 'max-w-[180px]', complemento: 'max-w-[110px]', bairro: 'max-w-[130px]', cnae_principal: 'max-w-[200px]', natureza_juridica: 'max-w-[160px]' }
@@ -750,17 +684,15 @@ export default function Home() {
                       )
                     })
                   ) : (
-                    <TableRow><TableCell colSpan={COLUMNS.length} className="h-24 text-center text-slate-500">Nenhum registro encontrado.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={columns.length} className="h-24 text-center text-slate-500">Nenhum registro encontrado.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
             </div>
-            {/* Pagination */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t bg-slate-50/50">
               <p className="text-sm text-slate-500">
-                Mostrando <span className="font-medium text-slate-700">{filteredData.length}</span> de{' '}
-                <span className="font-medium text-slate-700">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
-                {sortBy && <span className="ml-2 text-xs text-slate-400">Ordenado por {COLUMNS.find(c => c.key === sortBy)?.label} {sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'}</span>}
+                Mostrando <span className="font-medium text-slate-700">{filteredData.length}</span> de <span className="font-medium text-slate-700">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
+                {sortBy && <span className="ml-2 text-xs text-slate-400">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'}</span>}
                 {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
               </p>
               {!showingAll && (
@@ -777,33 +709,27 @@ export default function Home() {
         </Card>
       </main>
 
-      {/* Footer */}
-      <footer className="mt-auto bg-white border-t py-3">
-        <div className="max-w-[1900px] mx-auto px-4 sm:px-6">
-          <p className="text-center text-sm text-slate-400">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
-        </div>
-      </footer>
+      <footer className="mt-auto bg-white border-t py-3"><div className="max-w-[1900px] mx-auto px-4 sm:px-6"><p className="text-center text-sm text-slate-400">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p></div></footer>
 
       {/* New Client Modal */}
       <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
         <DialogContent className="max-w-4xl max-h-[90vh] p-0">
           <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <UserPlus className="size-5 text-teal-600" />Novo Cliente
-            </DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-lg"><UserPlus className="size-5 text-teal-600" />Novo Cliente</DialogTitle>
           </DialogHeader>
           <ScrollArea className="max-h-[65vh] px-6">
             <div className="space-y-5 pb-4">
               <div className="space-y-2">
                 <Label className="text-sm font-semibold text-slate-700">CNPJ <span className="text-red-500">*</span></Label>
                 <div className="flex gap-2">
-                  <Input placeholder="00.000.000/0000-00" value={form.cnpj} onChange={(e) => { updateForm('cnpj', maskCnpj(e.target.value)); setConsultError('') }} className="flex-1 font-mono" maxLength={18} />
+                  <Input placeholder="00.000.000/0000-00" value={form.cnpj} onChange={(e) => { updateForm('cnpj', maskCnpj(e.target.value)); setConsultError(''); setConsultWarning('') }} className="flex-1 font-mono" maxLength={18} />
                   <Button type="button" onClick={() => consultReceita(form.cnpj)} disabled={consulting || form.cnpj.replace(/\D/g, '').length !== 14} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
                     {consulting ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Consultando...</> : 'Consultar Receita'}
                   </Button>
                 </div>
-                {consultError && <p className="text-xs text-red-500">{consultError}</p>}
-                <p className="text-xs text-slate-400">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente</p>
+                {consultError && <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg"><AlertCircle className="size-4 text-red-500 shrink-0" /><p className="text-xs text-red-700">{consultError}</p></div>}
+                {consultWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg"><AlertCircle className="size-4 text-amber-500 shrink-0" /><p className="text-xs text-amber-800 font-medium">{consultWarning}</p></div>}
+                {!consultError && !consultWarning && <p className="text-xs text-slate-400">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente</p>}
               </div>
               <fieldset className="border rounded-lg p-4 space-y-3">
                 <legend className="text-sm font-semibold text-slate-600 px-2">Dados da Empresa</legend>
@@ -816,18 +742,8 @@ export default function Home() {
                   <div><Label className="text-xs text-slate-500">CNAE Principal</Label><Input value={form.cnaePrincipal} onChange={(e) => updateForm('cnaePrincipal', e.target.value)} /></div>
                   <div><Label className="text-xs text-slate-500">Natureza Jurídica</Label><Input value={form.naturezaJuridica} onChange={(e) => updateForm('naturezaJuridica', e.target.value)} /></div>
                   <div><Label className="text-xs text-slate-500">Porte</Label><Input value={form.porte} onChange={(e) => updateForm('porte', e.target.value)} /></div>
-                  <div><Label className="text-xs text-slate-500">Reg. Simples</Label>
-                    <Select value={form.regSimples || '_empty'} onValueChange={(v) => updateForm('regSimples', v === '_empty' ? '' : v)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="_empty">—</SelectItem><SelectItem value="SIMPLES">SIMPLES</SelectItem><SelectItem value="NÃO">NÃO</SelectItem></SelectContent>
-                    </Select>
-                  </div>
-                  <div><Label className="text-xs text-slate-500">Vendedor</Label>
-                    <Select value={form.vendedor || '_empty'} onValueChange={(v) => updateForm('vendedor', v === '_empty' ? '' : v)}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
-                      <SelectContent><SelectItem value="_empty">—</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
+                  <div><Label className="text-xs text-slate-500">Reg. Simples</Label><Select value={form.regSimples || '_empty'} onValueChange={(v) => updateForm('regSimples', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem><SelectItem value="SIMPLES">SIMPLES</SelectItem><SelectItem value="NÃO">NÃO</SelectItem></SelectContent></Select></div>
+                  <div><Label className="text-xs text-slate-500">Vendedor</Label><Select value={form.vendedor || '_empty'} onValueChange={(v) => updateForm('vendedor', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select></div>
                 </div>
               </fieldset>
               <fieldset className="border rounded-lg p-4 space-y-3">
