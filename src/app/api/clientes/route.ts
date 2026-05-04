@@ -53,6 +53,7 @@ interface ClienteRecord {
     email2: string;
     email3: string;
     pessoaContato: string;
+    observacoes: string;
   };
 }
 
@@ -188,6 +189,7 @@ function dbToRecord(c: {
       email2: c.email2,
       email3: c.email3,
       pessoaContato: c.pessoaContato,
+      observacoes: (c as Record<string, unknown>).observacoes as string || "",
     },
   };
 }
@@ -258,6 +260,7 @@ async function getRecords(): Promise<ClienteRecord[]> {
           email2: edit?.email2 || "",
           email3: edit?.email3 || "",
           pessoaContato: edit?.pessoaContato || "",
+          observacoes: edit?.observacoes || "",
         },
       };
     })
@@ -504,7 +507,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const body = await request.json();
-    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato } = body;
+    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes } = body;
 
     if (!codigo) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
@@ -525,6 +528,7 @@ export async function PATCH(request: NextRequest) {
           email2: email2 ?? undefined,
           email3: email3 ?? undefined,
           pessoaContato: pessoaContato ?? undefined,
+          observacoes: observacoes ?? undefined,
         },
       });
       cachedRecords = null;
@@ -543,6 +547,7 @@ export async function PATCH(request: NextRequest) {
         email2: email2 ?? undefined,
         email3: email3 ?? undefined,
         pessoaContato: pessoaContato ?? undefined,
+        observacoes: observacoes ?? undefined,
       },
       create: {
         codigo,
@@ -554,6 +559,7 @@ export async function PATCH(request: NextRequest) {
         email2: email2 || "",
         email3: email3 || "",
         pessoaContato: pessoaContato || "",
+        observacoes: observacoes || "",
       },
     });
 
