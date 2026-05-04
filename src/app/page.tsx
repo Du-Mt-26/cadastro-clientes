@@ -33,11 +33,12 @@ import {
   FileX2,
   LayoutGrid,
   Download,
+  Save,
+  Pencil,
 } from 'lucide-react'
 
 interface ParsedFields {
   codigo: string
-  fantasia: string
   ie_rg: string
   celular: string
   fax: string
@@ -45,6 +46,17 @@ interface ParsedFields {
   ultima_venda: string
   reg_simples: string
   vendedor: string
+}
+
+interface EditableFields {
+  telefone1: string
+  telefone2: string
+  telefone3: string
+  telefone4: string
+  email1: string
+  email2: string
+  email3: string
+  pessoaContato: string
 }
 
 interface ClienteRecord {
@@ -61,7 +73,11 @@ interface ClienteRecord {
   uf: string
   telefone1: string
   telefone2: string
-  email: string
+  telefone3: string
+  telefone4: string
+  email1: string
+  email2: string
+  email3: string
   pessoa_contato: string
   data_situacao: string
   data_abertura: string
@@ -69,6 +85,7 @@ interface ClienteRecord {
   natureza_juridica: string
   porte: string
   parsed: ParsedFields
+  editable: EditableFields
 }
 
 interface ApiResponse {
@@ -88,6 +105,18 @@ interface ApiResponse {
     situacao_cadastral: Record<string, number>
   }
 }
+
+// Editable cell key mapping
+const EDITABLE_FIELDS: { key: keyof EditableFields; label: string }[] = [
+  { key: 'telefone1', label: 'Telefone 1' },
+  { key: 'telefone2', label: 'Telefone 2' },
+  { key: 'telefone3', label: 'Telefone 3' },
+  { key: 'telefone4', label: 'Telefone 4' },
+  { key: 'email1', label: 'Email 1' },
+  { key: 'email2', label: 'Email 2' },
+  { key: 'email3', label: 'Email 3' },
+  { key: 'pessoaContato', label: 'Pessoa Contato' },
+]
 
 function SituacaoCadastralBadge({ value }: { value: string }) {
   if (!value) return <span className="text-slate-400">—</span>
@@ -127,6 +156,74 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
   return <Badge variant="outline" className="text-xs">{value}</Badge>
 }
 
+// Editable cell component
+function EditableCell({
+  value,
+  codigo,
+  field,
+  onSave,
+}: {
+  value: string
+  codigo: string
+  field: keyof EditableFields
+  onSave: (codigo: string, field: keyof EditableFields, value: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setEditValue(value)
+  }, [value])
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
+  const handleSave = () => {
+    if (editValue !== value) {
+      onSave(codigo, field, editValue)
+    }
+    setEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave()
+    } else if (e.key === 'Escape') {
+      setEditValue(value)
+      setEditing(false)
+    }
+  }
+
+  if (editing) {
+    return (
+      <Input
+        ref={inputRef}
+        value={editValue}
+        onChange={(e) => setEditValue(e.target.value)}
+        onBlur={handleSave}
+        onKeyDown={handleKeyDown}
+        className="h-7 text-xs w-full min-w-[80px] border-teal-400 focus:border-teal-600"
+      />
+    )
+  }
+
+  return (
+    <span
+      className="cursor-pointer group flex items-center gap-1"
+      onClick={() => setEditing(true)}
+      title="Clique para editar"
+    >
+      <span className="text-xs">{value || '—'}</span>
+      <Pencil className="size-2.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+    </span>
+  )
+}
+
 export default function Home() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -136,6 +233,7 @@ export default function Home() {
   const [vendedor, setVendedor] = useState('all')
   const [page, setPage] = useState(1)
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [saving, setSaving] = useState<string | null>(null)
   const tableContainerRef = useRef<HTMLDivElement>(null)
 
   const limit = 50
@@ -184,6 +282,38 @@ export default function Home() {
       tableContainerRef.current.scrollTop = 0
     }
   }, [page])
+
+  const handleSave = async (codigo: string, field: keyof EditableFields, value: string) => {
+    setSaving(codigo + field)
+    try {
+      const res = await fetch('/api/clientes', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo, [field]: value }),
+      })
+      if (!res.ok) throw new Error('Erro ao salvar')
+
+      // Update local data
+      if (data) {
+        setData({
+          ...data,
+          data: data.data.map((r) =>
+            r.parsed.codigo === codigo
+              ? {
+                  ...r,
+                  [field === 'pessoaContato' ? 'pessoa_contato' : field]: value,
+                  editable: { ...r.editable, [field]: value },
+                }
+              : r
+          ),
+        })
+      }
+    } catch (error) {
+      console.error('Error saving:', error)
+    } finally {
+      setSaving(null)
+    }
+  }
 
   const handleExport = async () => {
     setExporting(true)
@@ -339,6 +469,12 @@ export default function Home() {
           </Card>
         </div>
 
+        {/* Edit hint */}
+        <div className="flex items-center gap-2 mb-3 text-xs text-slate-500">
+          <Pencil className="size-3" />
+          <span>Clique nos campos de <strong>telefone, email e pessoa de contato</strong> para editar</span>
+        </div>
+
         {/* Filters */}
         <Card className="border-0 shadow-sm mb-6">
           <CardContent className="p-4">
@@ -418,12 +554,14 @@ export default function Home() {
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cidade</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CEP</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">UF</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Telefone 1</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Telefone 2</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Celular</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Fax</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Email</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Pessoa Contato</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 1 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 2 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 3 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 4 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 1 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 2 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 3 ✏️</TableHead>
+                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Pessoa Contato ✏️</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Situação</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Abertura</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CNAE Principal</TableHead>
@@ -439,7 +577,7 @@ export default function Home() {
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 28 }).map((_, j) => (
+                        {Array.from({ length: 30 }).map((_, j) => (
                           <TableCell key={j}>
                             <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
                           </TableCell>
@@ -462,12 +600,32 @@ export default function Home() {
                         <TableCell className="text-xs whitespace-nowrap">{r.cidade || '—'}</TableCell>
                         <TableCell className="font-mono text-xs whitespace-nowrap">{r.cep || '—'}</TableCell>
                         <TableCell className="text-xs whitespace-nowrap">{r.uf || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.telefone1 || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.telefone2 || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.parsed.celular || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.parsed.fax || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[160px] truncate" title={r.email}>{r.email || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[120px] truncate" title={r.pessoa_contato}>{r.pessoa_contato || '—'}</TableCell>
+                        {/* Editable fields */}
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.telefone1} codigo={r.parsed.codigo} field="telefone1" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.telefone2} codigo={r.parsed.codigo} field="telefone2" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.telefone3} codigo={r.parsed.codigo} field="telefone3" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.telefone4} codigo={r.parsed.codigo} field="telefone4" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.email1} codigo={r.parsed.codigo} field="email1" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.email2} codigo={r.parsed.codigo} field="email2" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.email3} codigo={r.parsed.codigo} field="email3" onSave={handleSave} />
+                        </TableCell>
+                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
+                          <EditableCell value={r.pessoa_contato} codigo={r.parsed.codigo} field="pessoaContato" onSave={handleSave} />
+                        </TableCell>
+                        {/* Read-only fields */}
                         <TableCell className="text-xs whitespace-nowrap">{r.data_situacao || '—'}</TableCell>
                         <TableCell className="text-xs whitespace-nowrap">{r.data_abertura || '—'}</TableCell>
                         <TableCell className="text-xs max-w-[200px] truncate" title={r.cnae_principal}>{r.cnae_principal || '—'}</TableCell>
@@ -483,7 +641,7 @@ export default function Home() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={28} className="h-24 text-center text-slate-500">
+                      <TableCell colSpan={30} className="h-24 text-center text-slate-500">
                         Nenhum registro encontrado.
                       </TableCell>
                     </TableRow>

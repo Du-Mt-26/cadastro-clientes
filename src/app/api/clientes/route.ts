@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
+import { db } from "@/lib/db";
 
 // All parsed fields from Observações column
 interface ParsedFields {
   codigo: string;
-  fantasia: string;
   ie_rg: string;
   celular: string;
   fax: string;
   cadastro: string;
   ultima_venda: string;
   reg_simples: string;
-  situacao: string;
   vendedor: string;
   [key: string]: string;
 }
@@ -33,7 +32,11 @@ interface ClienteRecord {
   uf: string;
   telefone1: string;
   telefone2: string;
-  email: string;
+  telefone3: string;
+  telefone4: string;
+  email1: string;
+  email2: string;
+  email3: string;
   pessoa_contato: string;
   data_situacao: string;
   data_abertura: string;
@@ -41,6 +44,16 @@ interface ClienteRecord {
   natureza_juridica: string;
   porte: string;
   parsed: ParsedFields;
+  editable: {
+    telefone1: string;
+    telefone2: string;
+    telefone3: string;
+    telefone4: string;
+    email1: string;
+    email2: string;
+    email3: string;
+    pessoaContato: string;
+  };
 }
 
 // Convert Excel serial date number to dd/mm/aaaa string
@@ -57,7 +70,6 @@ function excelSerialToDate(serial: string): string {
   return `${day}/${month}/${year}`;
 }
 
-// Format date string from yyyy-mm-dd to dd/mm/aaaa
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
   const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -70,14 +82,12 @@ function formatDate(dateStr: string): string {
 function parseObservacoes(obs: string): ParsedFields {
   const defaults: ParsedFields = {
     codigo: "",
-    fantasia: "",
     ie_rg: "",
     celular: "",
     fax: "",
     cadastro: "",
     ultima_venda: "",
     reg_simples: "",
-    situacao: "",
     vendedor: "",
   };
 
@@ -94,7 +104,6 @@ function parseObservacoes(obs: string): ParsedFields {
     }
   }
 
-  // Convert date fields from Excel serial to dd/mm/aaaa
   defaults.cadastro = excelSerialToDate(defaults.cadastro);
   defaults.ultima_venda = excelSerialToDate(defaults.ultima_venda);
 
@@ -106,7 +115,7 @@ let cachedRecords: ClienteRecord[] | null = null;
 let cachedTimestamp = 0;
 const CACHE_TTL = 5 * 60 * 1000;
 
-function getRecords(): ClienteRecord[] {
+async function getRecords(): Promise<ClienteRecord[]> {
   const now = Date.now();
   if (cachedRecords && (now - cachedTimestamp) < CACHE_TTL) {
     return cachedRecords;
@@ -124,31 +133,52 @@ function getRecords(): ClienteRecord[] {
   const worksheet = workbook.Sheets[sheetName];
   const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
 
+  // Load all editable fields from DB
+  const edits = await db.clienteEdit.findMany();
+  const editMap = new Map(edits.map((e) => [e.codigo, e]));
+
   cachedRecords = rawData
-    .map((row) => ({
-      razao_social: row["Razão Social"] || "",
-      nome_fantasia: row["Nome Fantasia"] || "",
-      situacao_cadastral: row["Situação Cadastral"] || "",
-      cnpj: row["CNPJ"] || "",
-      endereco: row["Endereço Rua/Avenida"] || "",
-      numero: row["Numero"] || "",
-      complemento: row["Complemento"] || "",
-      bairro: row["Bairro"] || "",
-      cidade: row["Cidade"] || "",
-      cep: row["CEP"] || "",
-      uf: row["UF"] || "",
-      telefone1: row["Telefone 1"] || "",
-      telefone2: row["Telefone 2"] || "",
-      email: row["Email 1"] || "",
-      pessoa_contato: row["Pessoa de contato"] || "",
-      data_situacao: formatDate(row["Data Situação"] || ""),
-      data_abertura: formatDate(row["Data Abertura"] || ""),
-      cnae_principal: row["CNAE Principal"] || "",
-      natureza_juridica: row["Natureza Jurídica"] || "",
-      porte: row["Porte"] || "",
-      parsed: parseObservacoes(row["Observações"] || ""),
-    }))
-    // Eliminar registro com código 000000
+    .map((row) => {
+      const parsed = parseObservacoes(row["Observações"] || "");
+      const edit = editMap.get(parsed.codigo);
+      return {
+        razao_social: row["Razão Social"] || "",
+        nome_fantasia: row["Nome Fantasia"] || "",
+        situacao_cadastral: row["Situação Cadastral"] || "",
+        cnpj: row["CNPJ"] || "",
+        endereco: row["Endereço Rua/Avenida"] || "",
+        numero: row["Numero"] || "",
+        complemento: row["Complemento"] || "",
+        bairro: row["Bairro"] || "",
+        cidade: row["Cidade"] || "",
+        cep: row["CEP"] || "",
+        uf: row["UF"] || "",
+        telefone1: edit?.telefone1 || row["Telefone 1"] || "",
+        telefone2: edit?.telefone2 || row["Telefone 2"] || "",
+        telefone3: edit?.telefone3 || parsed.celular || "",
+        telefone4: edit?.telefone4 || parsed.fax || "",
+        email1: edit?.email1 || row["Email 1"] || "",
+        email2: edit?.email2 || "",
+        email3: edit?.email3 || "",
+        pessoa_contato: edit?.pessoaContato || row["Pessoa de contato"] || "",
+        data_situacao: formatDate(row["Data Situação"] || ""),
+        data_abertura: formatDate(row["Data Abertura"] || ""),
+        cnae_principal: row["CNAE Principal"] || "",
+        natureza_juridica: row["Natureza Jurídica"] || "",
+        porte: row["Porte"] || "",
+        parsed,
+        editable: {
+          telefone1: edit?.telefone1 || "",
+          telefone2: edit?.telefone2 || "",
+          telefone3: edit?.telefone3 || "",
+          telefone4: edit?.telefone4 || "",
+          email1: edit?.email1 || "",
+          email2: edit?.email2 || "",
+          email3: edit?.email3 || "",
+          pessoaContato: edit?.pessoaContato || "",
+        },
+      };
+    })
     .filter((r) => r.parsed.codigo !== "000000");
   cachedTimestamp = now;
 
@@ -174,7 +204,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 404 });
     }
 
-    const allRecords = getRecords();
+    const allRecords = await getRecords();
 
     // Apply filters
     let filtered = allRecords;
@@ -189,7 +219,7 @@ export async function GET(request: NextRequest) {
           r.parsed.codigo.includes(search) ||
           r.cidade.toLowerCase().includes(searchLower) ||
           r.parsed.vendedor.toLowerCase().includes(searchLower) ||
-          r.email.toLowerCase().includes(searchLower) ||
+          r.email1.toLowerCase().includes(searchLower) ||
           r.bairro.toLowerCase().includes(searchLower) ||
           r.uf.toLowerCase().includes(searchLower)
       );
@@ -211,14 +241,12 @@ export async function GET(request: NextRequest) {
     const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
     const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
 
-    // Summary stats - Situação Cadastral (from XLSX column)
+    // Summary stats
     const situacaoCadastralStats: Record<string, number> = {};
     for (const r of allRecords) {
       const key = r.situacao_cadastral || "Sem info";
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
-
-
 
     // Pagination
     const total = filtered.length;
@@ -247,6 +275,54 @@ export async function GET(request: NextRequest) {
     console.error("Error reading XLSX file:", error);
     return NextResponse.json(
       { error: "Erro ao processar o arquivo" },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH - Save editable fields for a client
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato } = body;
+
+    if (!codigo) {
+      return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
+    }
+
+    const edit = await db.clienteEdit.upsert({
+      where: { codigo },
+      update: {
+        telefone1: telefone1 ?? undefined,
+        telefone2: telefone2 ?? undefined,
+        telefone3: telefone3 ?? undefined,
+        telefone4: telefone4 ?? undefined,
+        email1: email1 ?? undefined,
+        email2: email2 ?? undefined,
+        email3: email3 ?? undefined,
+        pessoaContato: pessoaContato ?? undefined,
+      },
+      create: {
+        codigo,
+        telefone1: telefone1 || "",
+        telefone2: telefone2 || "",
+        telefone3: telefone3 || "",
+        telefone4: telefone4 || "",
+        email1: email1 || "",
+        email2: email2 || "",
+        email3: email3 || "",
+        pessoaContato: pessoaContato || "",
+      },
+    });
+
+    // Invalidate cache so next read picks up changes
+    cachedRecords = null;
+
+    return NextResponse.json({ success: true, edit });
+  } catch (error) {
+    console.error("Error saving edit:", error);
+    return NextResponse.json(
+      { error: "Erro ao salvar edição" },
       { status: 500 }
     );
   }

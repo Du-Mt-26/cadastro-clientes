@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import * as fs from "fs";
 import * as path from "path";
+import { db } from "@/lib/db";
 
-// Convert Excel serial date number to dd/mm/aaaa string
 function excelSerialToDate(serial: string): string {
   if (!serial) return "";
   const num = parseInt(serial, 10);
@@ -35,7 +35,6 @@ function parseObservacoes(obs: string): Record<string, string> {
     cadastro: "",
     ultima_venda: "",
     reg_simples: "",
-    situacao: "",
     vendedor: "",
   };
 
@@ -81,10 +80,14 @@ export async function GET(request: NextRequest) {
     const worksheet = workbook.Sheets[sheetName];
     const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
 
-    // Parse all records, flatten, and eliminate código 000000
+    // Load editable fields from DB
+    const edits = await db.clienteEdit.findMany();
+    const editMap = new Map(edits.map((e) => [e.codigo, e]));
+
     const allRecords = rawData
       .map((row) => {
         const parsed = parseObservacoes(row["Observações"] || "");
+        const edit = editMap.get(parsed.codigo);
         return {
           "Código": parsed.codigo,
           "IE/RG": parsed.ie_rg,
@@ -99,12 +102,14 @@ export async function GET(request: NextRequest) {
           "Cidade": row["Cidade"] || "",
           "CEP": row["CEP"] || "",
           "UF": row["UF"] || "",
-          "Telefone 1": row["Telefone 1"] || "",
-          "Telefone 2": row["Telefone 2"] || "",
-          "Celular": parsed.celular,
-          "Fax": parsed.fax,
-          "Email 1": row["Email 1"] || "",
-          "Pessoa de contato": row["Pessoa de contato"] || "",
+          "Telefone 1": edit?.telefone1 || row["Telefone 1"] || "",
+          "Telefone 2": edit?.telefone2 || row["Telefone 2"] || "",
+          "Telefone 3": edit?.telefone3 || parsed.celular || "",
+          "Telefone 4": edit?.telefone4 || parsed.fax || "",
+          "Email 1": edit?.email1 || row["Email 1"] || "",
+          "Email 2": edit?.email2 || "",
+          "Email 3": edit?.email3 || "",
+          "Pessoa de contato": edit?.pessoaContato || row["Pessoa de contato"] || "",
           "Data Situação": formatDate(row["Data Situação"] || ""),
           "Data Abertura": formatDate(row["Data Abertura"] || ""),
           "CNAE Principal": row["CNAE Principal"] || "",
@@ -147,7 +152,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Create new workbook with flat data
+    // Create new workbook
     const newWorkbook = XLSX.utils.book_new();
     const newWorksheet = XLSX.utils.json_to_sheet(filtered);
 
