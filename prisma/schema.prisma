@@ -21,6 +21,7 @@ model ClienteEdit {
   email2        String  @default("")
   email3        String  @default("")
   pessoaContato String  @default("")
+  observacoes   String  @default("")
   updatedAt     DateTime @updatedAt
   createdAt     DateTime @default(now())
 }
@@ -57,6 +58,7 @@ model ClienteNovo {
   ultimaVenda       String  @default("")
   regSimples        String  @default("")
   vendedor          String  @default("")
+  observacoes       String  @default("")
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 }
