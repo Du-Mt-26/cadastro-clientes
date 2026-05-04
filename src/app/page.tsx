@@ -399,8 +399,8 @@ export default function Home() {
           <CardContent className="p-0">
             <div
               ref={tableContainerRef}
-              className="overflow-auto"
-              style={{ maxHeight: 'calc(100vh - 420px)', minHeight: '300px' }}
+              className="overflow-auto custom-scrollbar"
+              style={{ maxHeight: '60vh', minHeight: '200px' }}
             >
               <Table>
                 <TableHeader>
