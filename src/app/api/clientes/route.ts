@@ -124,29 +124,32 @@ function getRecords(): ClienteRecord[] {
   const worksheet = workbook.Sheets[sheetName];
   const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
 
-  cachedRecords = rawData.map((row) => ({
-    razao_social: row["Razão Social"] || "",
-    nome_fantasia: row["Nome Fantasia"] || "",
-    situacao_cadastral: row["Situação Cadastral"] || "",
-    cnpj: row["CNPJ"] || "",
-    endereco: row["Endereço Rua/Avenida"] || "",
-    numero: row["Numero"] || "",
-    complemento: row["Complemento"] || "",
-    bairro: row["Bairro"] || "",
-    cidade: row["Cidade"] || "",
-    cep: row["CEP"] || "",
-    uf: row["UF"] || "",
-    telefone1: row["Telefone 1"] || "",
-    telefone2: row["Telefone 2"] || "",
-    email: row["Email 1"] || "",
-    pessoa_contato: row["Pessoa de contato"] || "",
-    data_situacao: formatDate(row["Data Situação"] || ""),
-    data_abertura: formatDate(row["Data Abertura"] || ""),
-    cnae_principal: row["CNAE Principal"] || "",
-    natureza_juridica: row["Natureza Jurídica"] || "",
-    porte: row["Porte"] || "",
-    parsed: parseObservacoes(row["Observações"] || ""),
-  }));
+  cachedRecords = rawData
+    .map((row) => ({
+      razao_social: row["Razão Social"] || "",
+      nome_fantasia: row["Nome Fantasia"] || "",
+      situacao_cadastral: row["Situação Cadastral"] || "",
+      cnpj: row["CNPJ"] || "",
+      endereco: row["Endereço Rua/Avenida"] || "",
+      numero: row["Numero"] || "",
+      complemento: row["Complemento"] || "",
+      bairro: row["Bairro"] || "",
+      cidade: row["Cidade"] || "",
+      cep: row["CEP"] || "",
+      uf: row["UF"] || "",
+      telefone1: row["Telefone 1"] || "",
+      telefone2: row["Telefone 2"] || "",
+      email: row["Email 1"] || "",
+      pessoa_contato: row["Pessoa de contato"] || "",
+      data_situacao: formatDate(row["Data Situação"] || ""),
+      data_abertura: formatDate(row["Data Abertura"] || ""),
+      cnae_principal: row["CNAE Principal"] || "",
+      natureza_juridica: row["Natureza Jurídica"] || "",
+      porte: row["Porte"] || "",
+      parsed: parseObservacoes(row["Observações"] || ""),
+    }))
+    // Eliminar registro com código 000000
+    .filter((r) => r.parsed.codigo !== "000000");
   cachedTimestamp = now;
 
   return cachedRecords;
@@ -159,7 +162,6 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
-    const situacao = searchParams.get("situacao") || "";
     const vendedor = searchParams.get("vendedor") || "";
 
     const filePath = path.join(
@@ -199,12 +201,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (situacao) {
-      filtered = filtered.filter(
-        (r) => r.parsed.situacao.toLowerCase() === situacao.toLowerCase()
-      );
-    }
-
     if (vendedor) {
       filtered = filtered.filter(
         (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
@@ -213,7 +209,6 @@ export async function GET(request: NextRequest) {
 
     // Get unique values for filters
     const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
-    const uniqueSituacoes = [...new Set(allRecords.map((r) => r.parsed.situacao).filter(Boolean))];
     const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
 
     // Summary stats - Situação Cadastral (from XLSX column)
@@ -223,9 +218,7 @@ export async function GET(request: NextRequest) {
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
 
-    // Summary stats - Situação (from Observações parsed field)
-    const totalAtivos = allRecords.filter((r) => r.parsed.situacao.toLowerCase() === "ativo").length;
-    const totalInativos = allRecords.filter((r) => r.parsed.situacao.toLowerCase() === "inativo").length;
+
 
     // Pagination
     const total = filtered.length;
@@ -243,13 +236,10 @@ export async function GET(request: NextRequest) {
       },
       filters: {
         situacao_cadastral: uniqueSituacaoCadastral.sort(),
-        situacoes: uniqueSituacoes.sort(),
         vendedores: uniqueVendedores.sort(),
       },
       stats: {
         total: allRecords.length,
-        ativos: totalAtivos,
-        inativos: totalInativos,
         situacao_cadastral: situacaoCadastralStats,
       },
     });

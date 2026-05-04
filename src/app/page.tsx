@@ -24,7 +24,6 @@ import {
   Search,
   Users,
   CheckCircle2,
-  XCircle,
   ChevronLeft,
   ChevronRight,
   Building2,
@@ -45,7 +44,6 @@ interface ParsedFields {
   cadastro: string
   ultima_venda: string
   reg_simples: string
-  situacao: string
   vendedor: string
 }
 
@@ -83,13 +81,10 @@ interface ApiResponse {
   }
   filters: {
     situacao_cadastral: string[]
-    situacoes: string[]
     vendedores: string[]
   }
   stats: {
     total: number
-    ativos: number
-    inativos: number
     situacao_cadastral: Record<string, number>
   }
 }
@@ -132,35 +127,12 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
   return <Badge variant="outline" className="text-xs">{value}</Badge>
 }
 
-function SituacaoBadge({ value }: { value: string }) {
-  if (!value) return <span className="text-slate-400">—</span>
-  const lower = value.toLowerCase()
-  if (lower === 'ativo') {
-    return (
-      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200 text-xs">
-        <CheckCircle2 className="size-3 mr-1" />
-        Ativo
-      </Badge>
-    )
-  }
-  if (lower === 'inativo') {
-    return (
-      <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200 text-xs">
-        <XCircle className="size-3 mr-1" />
-        Inativo
-      </Badge>
-    )
-  }
-  return <Badge variant="outline" className="text-xs">{value}</Badge>
-}
-
 export default function Home() {
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [situacaoCadastral, setSituacaoCadastral] = useState('all')
-  const [situacao, setSituacao] = useState('all')
   const [vendedor, setVendedor] = useState('all')
   const [page, setPage] = useState(1)
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -176,18 +148,22 @@ export default function Home() {
     return () => clearTimeout(timer)
   }, [search])
 
+  const buildFilterParams = useCallback(() => {
+    const params = new URLSearchParams()
+    if (situacaoCadastral && situacaoCadastral !== 'all')
+      params.set('situacao_cadastral', situacaoCadastral)
+    if (vendedor && vendedor !== 'all')
+      params.set('vendedor', vendedor)
+    if (debouncedSearch) params.set('search', debouncedSearch)
+    return params
+  }, [situacaoCadastral, vendedor, debouncedSearch])
+
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: page.toString(),
-        limit: limit.toString(),
-      })
-      if (debouncedSearch) params.set('search', debouncedSearch)
-      if (situacaoCadastral && situacaoCadastral !== 'all')
-        params.set('situacao_cadastral', situacaoCadastral)
-      if (situacao && situacao !== 'all') params.set('situacao', situacao)
-      if (vendedor && vendedor !== 'all') params.set('vendedor', vendedor)
+      const params = buildFilterParams()
+      params.set('page', page.toString())
+      params.set('limit', limit.toString())
 
       const res = await fetch(`/api/clientes?${params.toString()}`)
       const json = await res.json()
@@ -197,13 +173,12 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [page, debouncedSearch, situacaoCadastral, situacao, vendedor])
+  }, [page, buildFilterParams])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  // Scroll to top of table when page changes
   useEffect(() => {
     if (tableContainerRef.current) {
       tableContainerRef.current.scrollTop = 0
@@ -213,13 +188,7 @@ export default function Home() {
   const handleExport = async () => {
     setExporting(true)
     try {
-      const params = new URLSearchParams()
-      if (debouncedSearch) params.set('search', debouncedSearch)
-      if (situacaoCadastral && situacaoCadastral !== 'all')
-        params.set('situacao_cadastral', situacaoCadastral)
-      if (situacao && situacao !== 'all') params.set('situacao', situacao)
-      if (vendedor && vendedor !== 'all') params.set('vendedor', vendedor)
-
+      const params = buildFilterParams()
       const res = await fetch(`/api/clientes/export?${params.toString()}`)
       if (!res.ok) throw new Error('Erro na exportação')
 
@@ -288,7 +257,7 @@ export default function Home() {
 
       {/* Main */}
       <main className="flex-1 max-w-[1800px] mx-auto w-full px-4 sm:px-6 py-6">
-        {/* Stats Cards - Situação Cadastral */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 mb-6">
           <Card className="border-0 shadow-sm">
             <CardContent className="p-3 flex items-center gap-2">
@@ -391,30 +360,11 @@ export default function Home() {
                 }}
               >
                 <SelectTrigger className="w-full sm:w-[200px]">
-                  <SelectValue placeholder="Sit. Cadastral" />
+                  <SelectValue placeholder="Situação Cadastral" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Toda Sit. Cadastral</SelectItem>
+                  <SelectItem value="all">Situação Cadastral</SelectItem>
                   {data?.filters.situacao_cadastral.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select
-                value={situacao}
-                onValueChange={(val) => {
-                  setSituacao(val)
-                  setPage(1)
-                }}
-              >
-                <SelectTrigger className="w-full sm:w-[160px]">
-                  <SelectValue placeholder="Situação" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Toda Situação</SelectItem>
-                  {data?.filters.situacoes.map((s) => (
                     <SelectItem key={s} value={s}>
                       {s}
                     </SelectItem>
@@ -482,7 +432,6 @@ export default function Home() {
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cadastro</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Última Venda</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Reg. Simples</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Situação</TableHead>
                     <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Vendedor</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -490,7 +439,7 @@ export default function Home() {
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 29 }).map((_, j) => (
+                        {Array.from({ length: 28 }).map((_, j) => (
                           <TableCell key={j}>
                             <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
                           </TableCell>
@@ -529,13 +478,12 @@ export default function Home() {
                         <TableCell className="whitespace-nowrap">
                           {r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}
                         </TableCell>
-                        <TableCell className="whitespace-nowrap"><SituacaoBadge value={r.parsed.situacao} /></TableCell>
                         <TableCell className="text-xs font-medium whitespace-nowrap">{r.parsed.vendedor || '—'}</TableCell>
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={29} className="h-24 text-center text-slate-500">
+                      <TableCell colSpan={28} className="h-24 text-center text-slate-500">
                         Nenhum registro encontrado.
                       </TableCell>
                     </TableRow>
