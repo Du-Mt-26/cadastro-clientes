@@ -33,8 +33,10 @@ import {
   FileX2,
   LayoutGrid,
   Download,
-  Save,
   Pencil,
+  ArrowUpAZ,
+  ArrowDownZA,
+  ArrowsUpDown,
 } from 'lucide-react'
 
 interface ParsedFields {
@@ -95,6 +97,7 @@ interface ApiResponse {
     limit: number
     total: number
     totalPages: number
+    showAll: boolean
   }
   filters: {
     situacao_cadastral: string[]
@@ -106,17 +109,140 @@ interface ApiResponse {
   }
 }
 
-// Editable cell key mapping
-const EDITABLE_FIELDS: { key: keyof EditableFields; label: string }[] = [
-  { key: 'telefone1', label: 'Telefone 1' },
-  { key: 'telefone2', label: 'Telefone 2' },
-  { key: 'telefone3', label: 'Telefone 3' },
-  { key: 'telefone4', label: 'Telefone 4' },
-  { key: 'email1', label: 'Email 1' },
-  { key: 'email2', label: 'Email 2' },
-  { key: 'email3', label: 'Email 3' },
-  { key: 'pessoaContato', label: 'Pessoa Contato' },
+// Column definition for sortable headers
+interface ColumnDef {
+  key: string
+  label: string
+  editable?: boolean
+}
+
+const COLUMNS: ColumnDef[] = [
+  { key: 'codigo', label: 'Código' },
+  { key: 'ie_rg', label: 'IE/RG' },
+  { key: 'razao_social', label: 'Razão Social' },
+  { key: 'nome_fantasia', label: 'Nome Fantasia' },
+  { key: 'situacao_cadastral', label: 'Sit. Cadastral' },
+  { key: 'cnpj', label: 'CNPJ' },
+  { key: 'endereco', label: 'Endereço' },
+  { key: 'numero', label: 'Número' },
+  { key: 'complemento', label: 'Complemento' },
+  { key: 'bairro', label: 'Bairro' },
+  { key: 'cidade', label: 'Cidade' },
+  { key: 'cep', label: 'CEP' },
+  { key: 'uf', label: 'UF' },
+  { key: 'telefone1', label: 'Telefone 1', editable: true },
+  { key: 'telefone2', label: 'Telefone 2', editable: true },
+  { key: 'telefone3', label: 'Telefone 3', editable: true },
+  { key: 'telefone4', label: 'Telefone 4', editable: true },
+  { key: 'email1', label: 'Email 1', editable: true },
+  { key: 'email2', label: 'Email 2', editable: true },
+  { key: 'email3', label: 'Email 3', editable: true },
+  { key: 'pessoa_contato', label: 'Pessoa Contato', editable: true },
+  { key: 'data_situacao', label: 'Data Situação' },
+  { key: 'data_abertura', label: 'Data Abertura' },
+  { key: 'cnae_principal', label: 'CNAE Principal' },
+  { key: 'natureza_juridica', label: 'Natureza Jurídica' },
+  { key: 'porte', label: 'Porte' },
+  { key: 'cadastro', label: 'Cadastro' },
+  { key: 'ultima_venda', label: 'Última Venda' },
+  { key: 'reg_simples', label: 'Reg. Simples' },
+  { key: 'vendedor', label: 'Vendedor' },
 ]
+
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+
+// Phone formatting: (XX) XXXXX-XXXX or (XX) XXXX-XXXX or 0800-NNN-NNNN
+function formatPhone(raw: string): string {
+  if (!raw) return ''
+  // Strip all non-digit chars
+  const digits = raw.replace(/\D/g, '')
+  
+  // 0800 format: 0800-NNN-NNNN (11 digits starting with 0800)
+  if (digits.startsWith('0800') && digits.length >= 11) {
+    return `0800-${digits.slice(4, 7)}-${digits.slice(7, 11)}`
+  }
+  if (digits.startsWith('0800') && digits.length >= 7) {
+    return `0800-${digits.slice(4, 7)}`
+  }
+  
+  // Celular: (XX) XXXXX-XXXX — 11 digits (DDD 2 + 9 digit number starting with 9)
+  if (digits.length === 11 && digits[2] === '9') {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
+  }
+  
+  // Fixo: (XX) XXXX-XXXX — 10 digits (DDD 2 + 8 digit number starting with 3)
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6, 10)}`
+  }
+  
+  // 9 digits only (no DDD, celular)
+  if (digits.length === 9 && digits[0] === '9') {
+    return `${digits.slice(0, 5)}-${digits.slice(5, 9)}`
+  }
+  
+  // 8 digits only (no DDD, fixo)
+  if (digits.length === 8) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`
+  }
+  
+  // Fallback: return original
+  return raw
+}
+
+// Get raw value from a record for a given column key
+function getRecordValue(r: ClienteRecord, key: string): string {
+  const map: Record<string, string> = {
+    codigo: r.parsed.codigo,
+    ie_rg: r.parsed.ie_rg,
+    razao_social: r.razao_social,
+    nome_fantasia: r.nome_fantasia,
+    situacao_cadastral: r.situacao_cadastral,
+    cnpj: r.cnpj,
+    endereco: r.endereco,
+    numero: r.numero,
+    complemento: r.complemento,
+    bairro: r.bairro,
+    cidade: r.cidade,
+    cep: r.cep,
+    uf: r.uf,
+    telefone1: r.telefone1,
+    telefone2: r.telefone2,
+    telefone3: r.telefone3,
+    telefone4: r.telefone4,
+    email1: r.email1,
+    email2: r.email2,
+    email3: r.email3,
+    pessoa_contato: r.pessoa_contato,
+    data_situacao: r.data_situacao,
+    data_abertura: r.data_abertura,
+    cnae_principal: r.cnae_principal,
+    natureza_juridica: r.natureza_juridica,
+    porte: r.porte,
+    cadastro: r.parsed.cadastro,
+    ultima_venda: r.parsed.ultima_venda,
+    reg_simples: r.parsed.reg_simples,
+    vendedor: r.parsed.vendedor,
+  }
+  return map[key] || ''
+}
+
+// Map column key to EditableFields key
+function toEditableKey(key: string): keyof EditableFields | null {
+  const map: Record<string, keyof EditableFields> = {
+    telefone1: 'telefone1',
+    telefone2: 'telefone2',
+    telefone3: 'telefone3',
+    telefone4: 'telefone4',
+    email1: 'email1',
+    email2: 'email2',
+    email3: 'email3',
+    pessoa_contato: 'pessoaContato',
+  }
+  return map[key] || null
+}
+
+// Phone fields set
+const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4'])
 
 function SituacaoCadastralBadge({ value }: { value: string }) {
   if (!value) return <span className="text-slate-400">—</span>
@@ -162,11 +288,13 @@ function EditableCell({
   codigo,
   field,
   onSave,
+  isPhone,
 }: {
   value: string
   codigo: string
   field: keyof EditableFields
   onSave: (codigo: string, field: keyof EditableFields, value: string) => void
+  isPhone: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(value)
@@ -207,10 +335,13 @@ function EditableCell({
         onChange={(e) => setEditValue(e.target.value)}
         onBlur={handleSave}
         onKeyDown={handleKeyDown}
-        className="h-7 text-xs w-full min-w-[80px] border-teal-400 focus:border-teal-600"
+        className="h-7 text-xs w-full min-w-[100px] border-teal-400 focus:border-teal-600"
+        placeholder={isPhone ? '(XX) XXXXX-XXXX' : ''}
       />
     )
   }
+
+  const displayValue = isPhone ? formatPhone(value) : (value || '—')
 
   return (
     <span
@@ -218,7 +349,7 @@ function EditableCell({
       onClick={() => setEditing(true)}
       title="Clique para editar"
     >
-      <span className="text-xs">{value || '—'}</span>
+      <span className="text-xs">{displayValue}</span>
       <Pencil className="size-2.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
     </span>
   )
@@ -232,11 +363,12 @@ export default function Home() {
   const [situacaoCadastral, setSituacaoCadastral] = useState('all')
   const [vendedor, setVendedor] = useState('all')
   const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState<string>('50')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
+  const [sortBy, setSortBy] = useState('')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const tableContainerRef = useRef<HTMLDivElement>(null)
-
-  const limit = 50
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -253,15 +385,19 @@ export default function Home() {
     if (vendedor && vendedor !== 'all')
       params.set('vendedor', vendedor)
     if (debouncedSearch) params.set('search', debouncedSearch)
+    if (sortBy) {
+      params.set('sort_by', sortBy)
+      params.set('sort_order', sortOrder)
+    }
     return params
-  }, [situacaoCadastral, vendedor, debouncedSearch])
+  }, [situacaoCadastral, vendedor, debouncedSearch, sortBy, sortOrder])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const params = buildFilterParams()
       params.set('page', page.toString())
-      params.set('limit', limit.toString())
+      params.set('limit', limit)
 
       const res = await fetch(`/api/clientes?${params.toString()}`)
       const json = await res.json()
@@ -271,7 +407,7 @@ export default function Home() {
     } finally {
       setLoading(false)
     }
-  }, [page, buildFilterParams])
+  }, [page, limit, buildFilterParams])
 
   useEffect(() => {
     fetchData()
@@ -282,6 +418,27 @@ export default function Home() {
       tableContainerRef.current.scrollTop = 0
     }
   }, [page])
+
+  const handleSort = (key: string) => {
+    if (sortBy === key) {
+      if (sortOrder === 'asc') {
+        setSortOrder('desc')
+      } else {
+        // Third click: remove sort
+        setSortBy('')
+        setSortOrder('asc')
+      }
+    } else {
+      setSortBy(key)
+      setSortOrder('asc')
+    }
+    setPage(1)
+  }
+
+  const handleLimitChange = (val: string) => {
+    setLimit(val)
+    setPage(1)
+  }
 
   const handleSave = async (codigo: string, field: keyof EditableFields, value: string) => {
     setSaving(codigo + field)
@@ -340,6 +497,7 @@ export default function Home() {
 
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
+  const showingAll = limit === 'all'
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100">
@@ -462,7 +620,7 @@ export default function Home() {
               <div>
                 <p className="text-xs text-slate-500">Página</p>
                 <p className="text-lg font-bold text-teal-700">
-                  {page}/{totalPages || 1}
+                  {showingAll ? 'Todos' : `${page}/${totalPages || 1}`}
                 </p>
               </div>
             </CardContent>
@@ -526,6 +684,22 @@ export default function Home() {
                   ))}
                 </SelectContent>
               </Select>
+              <Select
+                value={limit}
+                onValueChange={handleLimitChange}
+              >
+                <SelectTrigger className="w-full sm:w-[160px]">
+                  <SelectValue placeholder="Por página" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZE_OPTIONS.map((n) => (
+                    <SelectItem key={String(n)} value={String(n)}>
+                      {n} por página
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="all">Todos</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </CardContent>
         </Card>
@@ -536,48 +710,47 @@ export default function Home() {
             <div
               ref={tableContainerRef}
               className="overflow-auto custom-scrollbar"
-              style={{ maxHeight: '60vh', minHeight: '200px' }}
+              style={{ maxHeight: showingAll ? '80vh' : '60vh', minHeight: '200px' }}
             >
               <Table>
                 <TableHeader>
                   <TableRow className="bg-slate-50 hover:bg-slate-50 sticky top-0 z-[5]">
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Código</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">IE/RG</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs min-w-[140px] bg-slate-50">Razão Social</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Nome Fantasia</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Sit. Cadastral</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CNPJ</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Endereço</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Número</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Complemento</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Bairro</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cidade</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CEP</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">UF</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 1 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 2 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 3 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Telefone 4 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 1 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 2 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Email 3 ✏️</TableHead>
-                    <TableHead className="font-semibold text-teal-700 text-xs bg-teal-50 border-b-2 border-teal-300">Pessoa Contato ✏️</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Situação</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Data Abertura</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">CNAE Principal</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Natureza Jurídica</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Porte</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Cadastro</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Última Venda</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Reg. Simples</TableHead>
-                    <TableHead className="font-semibold text-slate-700 text-xs bg-slate-50">Vendedor</TableHead>
+                    {COLUMNS.map((col) => {
+                      const isActive = sortBy === col.key
+                      const isEditable = col.editable
+                      const headerBg = isEditable ? 'bg-teal-50' : 'bg-slate-50'
+                      const headerText = isEditable ? 'text-teal-700' : 'text-slate-700'
+                      const borderClass = isEditable ? 'border-b-2 border-teal-300' : ''
+
+                      return (
+                        <TableHead
+                          key={col.key}
+                          className={`font-semibold ${headerText} text-xs ${headerBg} ${borderClass} cursor-pointer select-none hover:bg-slate-100 transition-colors`}
+                          onClick={() => handleSort(col.key)}
+                        >
+                          <span className="flex items-center gap-1 whitespace-nowrap">
+                            {col.label}
+                            {isEditable && ' ✏️'}
+                            {isActive ? (
+                              sortOrder === 'asc' ? (
+                                <ArrowUpAZ className="size-3.5 text-teal-600 shrink-0" />
+                              ) : (
+                                <ArrowDownZA className="size-3.5 text-teal-600 shrink-0" />
+                              )
+                            ) : (
+                              <ArrowsUpDown className="size-3 text-slate-300 shrink-0" />
+                            )}
+                          </span>
+                        </TableHead>
+                      )
+                    })}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (
                       <TableRow key={i}>
-                        {Array.from({ length: 30 }).map((_, j) => (
+                        {Array.from({ length: COLUMNS.length }).map((_, j) => (
                           <TableCell key={j}>
                             <div className="h-3 bg-slate-100 rounded animate-pulse w-16" />
                           </TableCell>
@@ -587,61 +760,78 @@ export default function Home() {
                   ) : data?.data && data.data.length > 0 ? (
                     data.data.map((r, idx) => (
                       <TableRow key={idx} className="hover:bg-slate-50/80">
-                        <TableCell className="font-mono text-xs font-medium text-teal-700 whitespace-nowrap">{r.parsed.codigo || '—'}</TableCell>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">{r.parsed.ie_rg || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate" title={r.razao_social}>{r.razao_social || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[140px] truncate" title={r.nome_fantasia}>{r.nome_fantasia || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap"><SituacaoCadastralBadge value={r.situacao_cadastral} /></TableCell>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">{r.cnpj || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[160px] truncate" title={r.endereco}>{r.endereco || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.numero || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[100px] truncate" title={r.complemento}>{r.complemento || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[120px] truncate" title={r.bairro}>{r.bairro || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.cidade || '—'}</TableCell>
-                        <TableCell className="font-mono text-xs whitespace-nowrap">{r.cep || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.uf || '—'}</TableCell>
-                        {/* Editable fields */}
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.telefone1} codigo={r.parsed.codigo} field="telefone1" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.telefone2} codigo={r.parsed.codigo} field="telefone2" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.telefone3} codigo={r.parsed.codigo} field="telefone3" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.telefone4} codigo={r.parsed.codigo} field="telefone4" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.email1} codigo={r.parsed.codigo} field="email1" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.email2} codigo={r.parsed.codigo} field="email2" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.email3} codigo={r.parsed.codigo} field="email3" onSave={handleSave} />
-                        </TableCell>
-                        <TableCell className="bg-teal-50/40 whitespace-nowrap">
-                          <EditableCell value={r.pessoa_contato} codigo={r.parsed.codigo} field="pessoaContato" onSave={handleSave} />
-                        </TableCell>
-                        {/* Read-only fields */}
-                        <TableCell className="text-xs whitespace-nowrap">{r.data_situacao || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.data_abertura || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[200px] truncate" title={r.cnae_principal}>{r.cnae_principal || '—'}</TableCell>
-                        <TableCell className="text-xs max-w-[140px] truncate" title={r.natureza_juridica}>{r.natureza_juridica || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.porte || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.parsed.cadastro || '—'}</TableCell>
-                        <TableCell className="text-xs whitespace-nowrap">{r.parsed.ultima_venda || '—'}</TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}
-                        </TableCell>
-                        <TableCell className="text-xs font-medium whitespace-nowrap">{r.parsed.vendedor || '—'}</TableCell>
+                        {COLUMNS.map((col) => {
+                          const val = getRecordValue(r, col.key)
+                          const editableKey = toEditableKey(col.key)
+
+                          // Special rendering for situacao_cadastral
+                          if (col.key === 'situacao_cadastral') {
+                            return (
+                              <TableCell key={col.key} className="whitespace-nowrap">
+                                <SituacaoCadastralBadge value={val} />
+                              </TableCell>
+                            )
+                          }
+
+                          // Special rendering for reg_simples
+                          if (col.key === 'reg_simples') {
+                            return (
+                              <TableCell key={col.key} className="whitespace-nowrap">
+                                {val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}
+                              </TableCell>
+                            )
+                          }
+
+                          // Editable cells
+                          if (col.editable && editableKey) {
+                            const isPhone = PHONE_FIELDS.has(col.key)
+                            return (
+                              <TableCell key={col.key} className="bg-teal-50/40 whitespace-nowrap">
+                                <EditableCell
+                                  value={val}
+                                  codigo={r.parsed.codigo}
+                                  field={editableKey}
+                                  onSave={handleSave}
+                                  isPhone={isPhone}
+                                />
+                              </TableCell>
+                            )
+                          }
+
+                          // Default cell rendering
+                          const isMono = ['codigo', 'ie_rg', 'cnpj', 'cep'].includes(col.key)
+                          const isTruncate = ['razao_social', 'nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
+                          const truncateMax: Record<string, string> = {
+                            razao_social: 'max-w-[200px]',
+                            nome_fantasia: 'max-w-[140px]',
+                            endereco: 'max-w-[160px]',
+                            complemento: 'max-w-[100px]',
+                            bairro: 'max-w-[120px]',
+                            cnae_principal: 'max-w-[200px]',
+                            natureza_juridica: 'max-w-[140px]',
+                          }
+
+                          return (
+                            <TableCell
+                              key={col.key}
+                              className={`text-xs whitespace-nowrap ${isMono ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''}`}
+                              title={isTruncate ? val : undefined}
+                            >
+                              {col.key === 'codigo' ? (
+                                <span className="font-medium text-teal-700">{val || '—'}</span>
+                              ) : col.key === 'vendedor' ? (
+                                <span className="font-medium">{val || '—'}</span>
+                              ) : (
+                                val || '—'
+                              )}
+                            </TableCell>
+                          )
+                        })}
                       </TableRow>
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={30} className="h-24 text-center text-slate-500">
+                      <TableCell colSpan={COLUMNS.length} className="h-24 text-center text-slate-500">
                         Nenhum registro encontrado.
                       </TableCell>
                     </TableRow>
@@ -655,24 +845,31 @@ export default function Home() {
               <p className="text-sm text-slate-500">
                 Mostrando <span className="font-medium text-slate-700">{data?.data?.length ?? 0}</span> de{' '}
                 <span className="font-medium text-slate-700">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
+                {sortBy && (
+                  <span className="ml-2 text-xs text-slate-400">
+                    Ordenado por {COLUMNS.find(c => c.key === sortBy)?.label} {sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A'}
+                  </span>
+                )}
               </p>
-              <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading} className="hidden sm:inline-flex">
-                  Primeira
-                </Button>
-                <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <span className="text-sm px-3 py-1">
-                  <span className="font-semibold">{page}</span> / <span className="font-semibold">{totalPages || 1}</span>
-                </span>
-                <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
-                  <ChevronRight className="size-4" />
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading} className="hidden sm:inline-flex">
-                  Última
-                </Button>
-              </div>
+              {!showingAll && (
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading} className="hidden sm:inline-flex">
+                    Primeira
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}>
+                    <ChevronLeft className="size-4" />
+                  </Button>
+                  <span className="text-sm px-3 py-1">
+                    <span className="font-semibold">{page}</span> / <span className="font-semibold">{totalPages || 1}</span>
+                  </span>
+                  <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}>
+                    <ChevronRight className="size-4" />
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading} className="hidden sm:inline-flex">
+                    Última
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

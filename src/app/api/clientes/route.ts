@@ -189,10 +189,14 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const limitParam = searchParams.get("limit") || "50";
+    const showAll = limitParam === "all";
+    const limit = showAll ? 999999 : parseInt(limitParam);
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const vendedor = searchParams.get("vendedor") || "";
+    const sortBy = searchParams.get("sort_by") || "";
+    const sortOrder = searchParams.get("sort_order") || "asc";
 
     const filePath = path.join(
       process.cwd(),
@@ -237,6 +241,52 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Sorting
+    if (sortBy) {
+      const getFieldValue = (r: ClienteRecord, field: string): string => {
+        const fieldMap: Record<string, string> = {
+          codigo: r.parsed.codigo,
+          ie_rg: r.parsed.ie_rg,
+          razao_social: r.razao_social,
+          nome_fantasia: r.nome_fantasia,
+          situacao_cadastral: r.situacao_cadastral,
+          cnpj: r.cnpj,
+          endereco: r.endereco,
+          numero: r.numero,
+          complemento: r.complemento,
+          bairro: r.bairro,
+          cidade: r.cidade,
+          cep: r.cep,
+          uf: r.uf,
+          telefone1: r.telefone1,
+          telefone2: r.telefone2,
+          telefone3: r.telefone3,
+          telefone4: r.telefone4,
+          email1: r.email1,
+          email2: r.email2,
+          email3: r.email3,
+          pessoa_contato: r.pessoa_contato,
+          data_situacao: r.data_situacao,
+          data_abertura: r.data_abertura,
+          cnae_principal: r.cnae_principal,
+          natureza_juridica: r.natureza_juridica,
+          porte: r.porte,
+          cadastro: r.parsed.cadastro,
+          ultima_venda: r.parsed.ultima_venda,
+          reg_simples: r.parsed.reg_simples,
+          vendedor: r.parsed.vendedor,
+        };
+        return (fieldMap[field] || "").toLowerCase();
+      };
+
+      filtered = [...filtered].sort((a, b) => {
+        const valA = getFieldValue(a, sortBy);
+        const valB = getFieldValue(b, sortBy);
+        const cmp = valA.localeCompare(valB, "pt-BR");
+        return sortOrder === "desc" ? -cmp : cmp;
+      });
+    }
+
     // Get unique values for filters
     const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
     const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
@@ -250,17 +300,19 @@ export async function GET(request: NextRequest) {
 
     // Pagination
     const total = filtered.length;
-    const totalPages = Math.ceil(total / limit);
-    const start = (page - 1) * limit;
-    const paginatedRecords = filtered.slice(start, start + limit);
+    const effectiveLimit = showAll ? total : limit;
+    const totalPages = showAll ? 1 : Math.ceil(total / limit);
+    const start = showAll ? 0 : (page - 1) * limit;
+    const paginatedRecords = filtered.slice(start, start + effectiveLimit);
 
     return NextResponse.json({
       data: paginatedRecords,
       pagination: {
-        page,
-        limit,
+        page: showAll ? 1 : page,
+        limit: showAll ? total : limit,
         total,
         totalPages,
+        showAll,
       },
       filters: {
         situacao_cadastral: uniqueSituacaoCadastral.sort(),
