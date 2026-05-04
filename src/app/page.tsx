@@ -1021,8 +1021,8 @@ export default function Home() {
                       <textarea
                         value={detailObs}
                         onChange={(e) => setDetailObs(e.target.value)}
-                        className="w-full min-h-[300px] text-sm border rounded-md p-3 bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                        placeholder="Escreva observações sobre o cliente aqui..."
+                        className="w-full min-h-[600px] text-sm border rounded-md p-4 bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 leading-relaxed"
+                        placeholder="Escreva observações sobre o cliente aqui...&#10;&#10;Este espaço é livre para anotações detalhadas, como em um caderno. Use quantas linhas precisar."
                       />
                     </fieldset>
                   </div>
