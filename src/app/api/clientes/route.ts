@@ -28,6 +28,25 @@ interface ClienteRecord {
   parsed: ParsedFields;
 }
 
+// Convert Excel serial date number to dd/mm/aaaa string
+function excelSerialToDate(serial: string): string {
+  if (!serial) return "";
+  const num = parseInt(serial, 10);
+  if (isNaN(num) || num <= 0) return serial; // return as-is if not a valid serial
+
+  // Excel serial date: Day 1 = Jan 1, 1900 (with leap year bug, effective epoch = Dec 30, 1899)
+  const epoch = new Date(1899, 11, 30); // Dec 30, 1899
+  const date = new Date(epoch.getTime() + num * 86400000); // add days in ms
+
+  if (isNaN(date.getTime())) return serial; // fallback
+
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+
+  return `${day}/${month}/${year}`;
+}
+
 function parseObservacoes(obs: string): ParsedFields {
   const defaults: ParsedFields = {
     codigo: "",
@@ -53,6 +72,10 @@ function parseObservacoes(obs: string): ParsedFields {
       defaults[key] = value;
     }
   }
+
+  // Convert date fields from Excel serial to dd/mm/aaaa
+  defaults.cadastro = excelSerialToDate(defaults.cadastro);
+  defaults.ultima_venda = excelSerialToDate(defaults.ultima_venda);
 
   return defaults;
 }
