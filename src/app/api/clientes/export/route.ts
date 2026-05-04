@@ -150,6 +150,43 @@ export async function GET(request: NextRequest) {
       })
       .filter((r) => r["Código"] !== "000000");
 
+    // Also add new clients from DB
+    const novos = await db.clienteNovo.findMany();
+    const novoRecords = novos.map((c) => ({
+      "Código": c.codigo,
+      "IE/RG": c.ieRg,
+      "Razão Social": c.razaoSocial,
+      "Nome Fantasia": c.nomeFantasia,
+      "Situação Cadastral": c.situacaoCadastral,
+      "CNPJ": c.cnpj,
+      "Endereço Rua/Avenida": c.endereco,
+      "Numero": c.numero,
+      "Complemento": c.complemento,
+      "Bairro": c.bairro,
+      "Cidade": c.cidade,
+      "CEP": c.cep,
+      "UF": c.uf,
+      "Telefone 1": formatPhone(c.telefone1),
+      "Telefone 2": formatPhone(c.telefone2),
+      "Telefone 3": formatPhone(c.telefone3),
+      "Telefone 4": formatPhone(c.telefone4),
+      "Email 1": c.email1,
+      "Email 2": c.email2,
+      "Email 3": c.email3,
+      "Pessoa de contato": c.pessoaContato,
+      "Data Situação": c.dataSituacao,
+      "Data Abertura": c.dataAbertura,
+      "CNAE Principal": c.cnaePrincipal,
+      "Natureza Jurídica": c.naturezaJuridica,
+      "Porte": c.porte,
+      "Cadastro": c.cadastro,
+      "Última Venda": c.ultimaVenda,
+      "Reg. Simples": c.regSimples,
+      "Vendedor": c.vendedor,
+    }));
+
+    allRecords.push(...novoRecords);
+
     // Apply filters
     let filtered = allRecords;
 
