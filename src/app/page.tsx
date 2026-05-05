@@ -372,7 +372,7 @@ export default function Home() {
   const [vendedor, setVendedor] = useState('all')
   const [diasSemVendaFilter, setDiasSemVendaFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const [limit, setLimit] = useState<string>('50')
+  const [limit, setLimit] = useState<string>('10')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [saving, setSaving] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState('')
@@ -493,7 +493,7 @@ export default function Home() {
         case '0-30': return dias <= 30
         case '31-60': return dias > 30 && dias <= 60
         case '61-90': return dias > 60 && dias <= 90
-        case '90+': return dias > 90
+        case '91+': return dias > 90
         default: return true
       }
     })
@@ -714,21 +714,18 @@ export default function Home() {
 
       <main className="flex-1 max-w-[1900px] mx-auto w-full px-4 sm:px-6 py-4">
         {/* Stats Row 1 */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-3">
+        <div className="grid grid-cols-3 gap-3 mb-3">
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Ativa</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><FileX2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Baixada</p><p className="text-lg font-bold text-red-700 dark:text-red-400">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0"><AlertTriangle className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Inapta</p><p className="text-lg font-bold text-amber-700 dark:text-amber-400">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 shrink-0"><PauseCircle className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Suspensa</p><p className="text-lg font-bold text-orange-700 dark:text-orange-400">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
+          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Irregular</p><p className="text-lg font-bold text-red-700 dark:text-red-400">{((scStats['BAIXADA'] ?? 0) + (scStats['INAPTA'] ?? 0) + (scStats['SUSPENSA'] ?? 0)).toLocaleString('pt-BR')}</p><p className="text-[10px] text-red-400 dark:text-red-500 leading-tight">{(scStats['BAIXADA'] ?? 0)} baixada · {(scStats['INAPTA'] ?? 0)} inapta · {(scStats['SUSPENSA'] ?? 0)} susp.</p></div></CardContent></Card>
         </div>
 
         {/* Stats Row 2: Dias Sem Venda */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-          <Card className={`border-0 shadow-sm dark:bg-slate-800 cursor-pointer transition-all ${diasSemVendaFilter === '0-30' ? 'ring-2 ring-emerald-400' : 'hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-30' ? 'all' : '0-30'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">0–30 dias</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{dsvStats.verde}</p></div></CardContent></Card>
-          <Card className={`border-0 shadow-sm dark:bg-slate-800 cursor-pointer transition-all ${diasSemVendaFilter === '31-60' ? 'ring-2 ring-amber-400' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '31-60' ? 'all' : '31-60'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">31–60 dias</p><p className="text-lg font-bold text-amber-700 dark:text-amber-400">{dsvStats.amarelo}</p></div></CardContent></Card>
-          <Card className={`border-0 shadow-sm dark:bg-slate-800 cursor-pointer transition-all ${diasSemVendaFilter === '61-90' ? 'ring-2 ring-orange-400' : 'hover:ring-2 hover:ring-orange-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '61-90' ? 'all' : '61-90'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-orange-100 dark:bg-orange-900/40 text-orange-600 dark:text-orange-400 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">61–90 dias</p><p className="text-lg font-bold text-orange-700 dark:text-orange-400">{dsvStats.laranja}</p></div></CardContent></Card>
-          <Card className={`border-0 shadow-sm dark:bg-slate-800 cursor-pointer transition-all ${diasSemVendaFilter === '90+' ? 'ring-2 ring-red-400' : 'hover:ring-2 hover:ring-red-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '90+' ? 'all' : '90+'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><TrendingDown className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">90+ dias</p><p className="text-lg font-bold text-red-700 dark:text-red-400">{dsvStats.vermelho}</p></div></CardContent></Card>
-          <Card className={`border-0 shadow-sm dark:bg-slate-800 cursor-pointer transition-all ${diasSemVendaFilter === 'all' ? 'ring-2 ring-slate-400' : 'hover:ring-2 hover:ring-slate-300'}`} onClick={() => { setDiasSemVendaFilter('all'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Sem info</p><p className="text-lg font-bold text-slate-700 dark:text-slate-300">{dsvStats.semInfo}</p></div></CardContent></Card>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '0-30' ? 'ring-2 ring-emerald-400 bg-emerald-50 dark:bg-emerald-950/40' : 'bg-white dark:bg-slate-800 hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-30' ? 'all' : '0-30'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">0–30 dias</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{dsvStats.verde}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '31-60' ? 'ring-2 ring-amber-400 bg-amber-50 dark:bg-amber-950/40' : 'bg-amber-50/40 dark:bg-slate-800 hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '31-60' ? 'all' : '31-60'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">31–60 dias</p><p className="text-lg font-bold text-yellow-600 dark:text-yellow-400">{dsvStats.amarelo}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '61-90' ? 'ring-2 ring-orange-400 bg-orange-50 dark:bg-orange-950/40' : 'bg-orange-50/40 dark:bg-slate-800 hover:ring-2 hover:ring-orange-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '61-90' ? 'all' : '61-90'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-orange-200 dark:bg-orange-900/60 text-orange-700 dark:text-orange-300 shrink-0"><Clock className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">61–90 dias</p><p className="text-lg font-bold text-orange-700 dark:text-orange-300">{dsvStats.laranja}</p></div></CardContent></Card>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '91+' ? 'ring-2 ring-red-400 bg-red-50 dark:bg-red-950/40' : 'bg-white dark:bg-slate-800 hover:ring-2 hover:ring-red-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91+' ? 'all' : '91+'); setPage(1) }}><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><TrendingDown className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">91+ dias</p><p className="text-lg font-bold text-red-700 dark:text-red-400">{dsvStats.vermelho}</p></div></CardContent></Card>
         </div>
 
         {/* Hint */}
@@ -747,7 +744,7 @@ export default function Home() {
               </div>
               <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger><SelectContent><SelectItem value="all">Situação Cadastral</SelectItem>{data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select>
               <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
-              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-30">0–30 dias 🟢</SelectItem><SelectItem value="31-60">31–60 dias 🟡</SelectItem><SelectItem value="61-90">61–90 dias 🟠</SelectItem><SelectItem value="90+">90+ dias 🔴</SelectItem></SelectContent></Select>
+              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-30">0–30 dias 🟢</SelectItem><SelectItem value="31-60">31–60 dias 🟡</SelectItem><SelectItem value="61-90">61–90 dias 🟠</SelectItem><SelectItem value="91+">91+ dias 🔴</SelectItem></SelectContent></Select>
               <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
                 <Button variant="outline" size="sm" onClick={clearFilters} className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400">
@@ -842,27 +839,33 @@ export default function Home() {
                 </TableBody>
               </Table>
             </div>
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+            <div className="flex items-center justify-between px-4 py-2 border-t dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
               <p className="text-sm text-slate-500 dark:text-slate-400">
                 Mostrando <span className="font-medium text-slate-700 dark:text-slate-200">{sortedData.length}</span> de <span className="font-medium text-slate-700 dark:text-slate-200">{(data?.pagination.total ?? 0).toLocaleString('pt-BR')}</span> registros
                 {sortBy && <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortBy === 'dias_sem_venda' ? (sortOrder === 'asc' ? '↑ Menor→Maior' : '↓ Maior→Menor') : (sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A')}</span>}
                 {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
               </p>
-              {!showingAll && (
-                <div className="flex items-center gap-1">
-                  <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading} className="hidden sm:inline-flex">Primeira</Button>
-                  <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading}><ChevronLeft className="size-4" /></Button>
-                  <span className="text-sm px-3 py-1 dark:text-slate-300"><span className="font-semibold">{page}</span> / <span className="font-semibold">{totalPages || 1}</span></span>
-                  <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading}><ChevronRight className="size-4" /></Button>
-                  <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading} className="hidden sm:inline-flex">Última</Button>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>
       </main>
 
-      <footer className="mt-auto bg-white dark:bg-slate-900 border-t dark:border-slate-700 py-3"><div className="max-w-[1900px] mx-auto px-4 sm:px-6"><p className="text-center text-sm text-slate-400 dark:text-slate-500">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p></div></footer>
+      <footer className="mt-auto bg-white dark:bg-slate-900 border-t dark:border-slate-700 sticky bottom-0 z-10">
+        <div className="max-w-[1900px] mx-auto px-4 sm:px-6 py-2.5">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p className="text-xs text-slate-400 dark:text-slate-500">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
+            {!showingAll && (
+              <div className="flex items-center gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading} className="hidden sm:inline-flex h-8 text-xs">Primeira</Button>
+                <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1 || loading} className="h-8 w-8"><ChevronLeft className="size-3.5" /></Button>
+                <span className="text-sm px-2 dark:text-slate-300"><span className="font-semibold">{page}</span> / <span className="font-semibold">{totalPages || 1}</span></span>
+                <Button variant="outline" size="icon" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages || loading} className="h-8 w-8"><ChevronRight className="size-3.5" /></Button>
+                <Button variant="outline" size="sm" onClick={() => setPage(totalPages)} disabled={page >= totalPages || loading} className="hidden sm:inline-flex h-8 text-xs">Última</Button>
+              </div>
+            )}
+          </div>
+        </div>
+      </footer>
 
       {/* New Client Modal */}
       <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
