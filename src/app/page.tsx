@@ -57,7 +57,9 @@ import {
   StickyNote,
   Briefcase,
   RotateCcw,
+  Sheet as SheetIcon,
 } from 'lucide-react'
+import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import type {
   ParsedFields,
   EditableFields,
@@ -268,6 +270,9 @@ function Home() {
   const [consultError, setConsultError] = useState('')
   const [consultWarning, setConsultWarning] = useState('')
   const [savingNew, setSavingNew] = useState(false)
+
+  // Google Sheets sync modal
+  const [showSheetsSync, setShowSheetsSync] = useState(false)
 
   // Client detail modal
   const [detailClient, setDetailClient] = useState<ClienteRecord | null>(null)
@@ -626,6 +631,7 @@ function Home() {
               <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"><UserPlus className="size-4 mr-1.5" />Novo Cliente</Button>
               <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}</Button>
               <Button variant="outline" size="sm" onClick={() => { setColumnOrder(DEFAULT_COLUMNS.map(c => c.key)); localStorage.removeItem('columnOrder') }} className="text-slate-600 dark:text-slate-400"><RotateCcw className="size-4 mr-1.5" />Restaurar Colunas</Button>
+              <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><SheetIcon className="size-4 mr-1.5" />Google Sheets</Button>
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
@@ -1054,6 +1060,13 @@ function Home() {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* Google Sheets Sync Modal */}
+      <SheetsSyncModal
+        open={showSheetsSync}
+        onOpenChange={setShowSheetsSync}
+        onSyncComplete={fetchData}
+      />
     </div>
   )
 }
