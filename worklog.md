@@ -1,30 +1,72 @@
 ---
 Task ID: 1
 Agent: main
-Task: Architecture evaluation, cleanup, and optimization
+Task: Install googleapis and update Prisma schema
 
 Work Log:
-- Read all source files: page.tsx, route.ts, export/route.ts, receita/route.ts, audit/route.ts, schema.prisma, table.tsx, db.ts, Caddyfile, package.json
-- Fixed table.tsx wrapper div that was breaking sticky header (removed `<div className="relative w-full overflow-x-auto">`)
-- Deleted useless `/src/app/api/route.ts` (Hello World endpoint)
-- Created shared modules:
-  - `/src/lib/types.ts` — All shared types, interfaces, and constants (225 lines)
-  - `/src/lib/clientes.ts` — All shared helper functions (127 lines, client-safe)
-  - `/src/lib/clientes-cache.ts` — Shared server cache module (219 lines, server-only)
-- Updated all route files to use shared modules instead of duplicating code
-- Updated page.tsx to import from shared modules (1236 → 1076 lines)
-- Updated route.ts (644 → 349 lines)
-- Updated export/route.ts (297 → 158 lines) — now uses cache instead of re-parsing XLSX
-- Updated receita/route.ts (160 → 123 lines) — now uses cache instead of re-parsing XLSX
-- Removed 18 unused packages: @dnd-kit/core, @dnd-kit/sortable, @dnd-kit/utilities, @tanstack/react-table, @tanstack/react-query, zustand, react-hook-form, recharts, sharp, sonner, date-fns, react-markdown, react-syntax-highlighter, @mdxeditor/editor, next-intl, next-auth, input-otp, uuid
-- Fixed Prisma logging: only logs queries in development mode
-- Added @@index([codigo]) on AuditLog model
-- Ran bun run db:push to sync schema
-- Verified lint passes, API responds correctly, frontend loads
+- Installed googleapis@171.4.0 package
+- Added new `Cliente` unified model to Prisma schema (consolidates all fields, adds source/sheetsRow tracking)
+- Added `SyncConfig` model for Google Sheets connection settings
+- Added `source` field to AuditLog for tracking sync-originated changes
+- Kept legacy `ClienteEdit` and `ClienteNovo` models for backward compatibility
+- Ran `bun run db:push` successfully
 
 Stage Summary:
-- Architecture rating improved from 6.5/10 to ~7.5/10
-- Code reduced significantly: removed ~500 lines of duplication, added ~571 in shared modules
-- Performance: export and receita routes now reuse cached records (no more XLSX re-parsing)
-- Bundle size: 18 unused packages removed
-- Database: Prisma logging disabled in production, AuditLog indexed
+- Prisma schema now supports Google Sheets sync with unified Cliente table
+- SyncConfig stores URL, spreadsheetId, connection status, sync mode, column mapping
+
+---
+Task ID: 2
+Agent: main
+Task: Create lib/google-sheets.ts integration module
+
+Work Log:
+- Created comprehensive Google Sheets integration module
+- URL parsing: supports full URLs, shortened URLs (bit.ly), Drive URLs, direct spreadsheet IDs
+- Authentication: Service Account (JWT) via environment variables
+- Connection testing: reads headers, detects row count, validates sharing permissions
+- Column auto-mapping: 60+ header name variations mapped to DB fields
+- Pull (Sheets → DB): upserts records with source="sheets" tracking
+- Push (DB → Sheets): batch updates records back to their original rows
+- Bidirectional sync: pull + push combined
+- Observações column parser for Mtech-specific embedded field format
+- Helper functions: saveSyncConfig, getSyncConfig, updateSyncStatus
+
+Stage Summary:
+- Full CRUD sync capability between Google Sheets and SQLite
+- Auto-detection of column mappings from header names
+- Error handling for auth, sharing, and data issues
+
+---
+Task ID: 3
+Agent: main
+Task: Create /api/sync API routes
+
+Work Log:
+- Created /api/sync/route.ts (GET=status, POST=connect, DELETE=disconnect)
+- Created /api/sync/pull/route.ts (POST=pull from Sheets)
+- Created /api/sync/push/route.ts (POST=push to Sheets)
+- All routes properly handle errors and update sync status
+
+Stage Summary:
+- Full REST API for Google Sheets sync operations
+- Tested: GET /api/sync returns proper status response
+
+---
+Task ID: 4
+Agent: main
+Task: Add Google Sheets connection UI
+
+Work Log:
+- Created /src/components/clientes/sheets-sync-modal.tsx
+- Modal with: URL input, connect/disconnect buttons, credential status, sync mode selector
+- Visual feedback for connection status, header detection, sync results
+- Instructions for Google Cloud setup (service account creation)
+- Service account email display with copy button
+- Added "Google Sheets" button to page.tsx header
+- Integrated SheetsSyncModal with onSyncComplete callback
+
+Stage Summary:
+- Full UI for Google Sheets sync is functional
+- Button appears in header alongside other action buttons
+- Modal provides step-by-step guidance for setup
