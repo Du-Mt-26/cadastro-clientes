@@ -44,6 +44,7 @@ export interface SyncResult {
  * - https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/
  * - https://drive.google.com/open?id=SPREADSHEET_ID
  * - Shortened URLs (bit.ly, etc.) — must be resolved first
+ * - URLs with ?usp=sharing or ?usp=drive_web
  */
 export function parseSheetsUrl(url: string): { spreadsheetId: string; gid?: string } | null {
   // Clean up the URL
@@ -202,7 +203,7 @@ export async function connectToSheet(spreadsheetId: string): Promise<SheetsConne
         title: '',
         rowCount: 0,
         headers: [],
-        error: 'Planilha não compartilhada. Compartilhe a planilha com o email da Service Account.',
+        error: 'Planilha não compartilhada. Compartilhe a planilha com o email da Service Account (permissão de Editor).',
       }
     }
 
@@ -341,6 +342,7 @@ export function detectColumnMapping(headers: string[]): Record<number, string> {
 
 /**
  * Pull all data from a Google Sheet and upsert into the Cliente table.
+ * Also updates ClienteEdit for editable fields of existing XLSX-sourced records.
  */
 export async function pullFromSheet(spreadsheetId: string, sheetName: string, headerRow: number = 1): Promise<SyncResult> {
   const result: SyncResult = { success: false, pulled: 0, pushed: 0, created: 0, updated: 0, errors: [] }
@@ -408,15 +410,16 @@ export async function pullFromSheet(spreadsheetId: string, sheetName: string, he
         // Skip rows without codigo
         if (!record.codigo) continue
 
-        // Upsert into database
+        // Upsert into the unified Cliente table
         const existing = await db.cliente.findUnique({ where: { codigo: record.codigo } })
 
         if (existing) {
-          // Update only if the source is "sheets" or if the field is empty
+          // Update the Cliente record with sheets data
           const updateData: Record<string, string> = {}
           for (const [field, value] of Object.entries(record)) {
             if (field === 'codigo') continue
-            if (existing.source === 'sheets' || !existing[field as keyof typeof existing]) {
+            // Only update if the new value is non-empty
+            if (value) {
               updateData[field] = value
             }
           }
@@ -486,8 +489,9 @@ export async function pullFromSheet(spreadsheetId: string, sheetName: string, he
 // ─── Push (DB → Sheets) ──────────────────────────────
 
 /**
- * Push modified records from DB back to Google Sheets.
- * Only pushes records where source = "sheets" (i.e., they came from sheets originally).
+ * Push records from DB to Google Sheets.
+ * Uses the unified Cliente table (source='sheets') which contains
+ * the most up-to-date data after pull+merge.
  */
 export async function pushToSheet(spreadsheetId: string, sheetName: string, headerRow: number = 1): Promise<SyncResult> {
   const result: SyncResult = { success: false, pulled: 0, pushed: 0, created: 0, updated: 0, errors: [] }
@@ -501,7 +505,7 @@ export async function pushToSheet(spreadsheetId: string, sheetName: string, head
   try {
     const sheets = google.sheets({ version: 'v4', auth })
 
-    // Get all sheets-sourced records that have been modified
+    // Get all sheets-sourced records that have a row number
     const modifiedRecords = await db.cliente.findMany({
       where: { source: 'sheets', sheetsRow: { gt: 0 } },
     })
@@ -552,9 +556,11 @@ export async function pushToSheet(spreadsheetId: string, sheetName: string, head
 
       // Build range for this specific row
       const rowNumber = record.sheetsRow
-      const startCol = 'A'
-      const endCol = String.fromCharCode(65 + headers.length - 1) // Assumes < 26 columns
-      const range = `${sheetName}!${startCol}${rowNumber}:${endCol}${rowNumber}`
+      const endCol = headers.length <= 26
+        ? String.fromCharCode(65 + headers.length - 1)
+        : // For >26 columns, use a simple approach
+          `AZ`
+      const range = `${sheetName}!A${rowNumber}:${endCol}${rowNumber}`
 
       updates.push({ range, values: [rowValues] })
       result.pushed++

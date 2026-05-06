@@ -5,6 +5,12 @@
  * `getRecords()` so that the in-memory cache (and JSON cache file)
  * is reused across requests instead of re-parsing the XLSX every time.
  *
+ * Data sources (in priority order):
+ * 1. XLSX file / JSON cache — base data
+ * 2. ClienteEdit — user edits to XLSX records
+ * 3. ClienteNovo — new clients created in the UI
+ * 4. Cliente (source='sheets') — records synced from Google Sheets
+ *
  * This module is server-only (uses fs, path, XLSX, db).
  */
 
@@ -16,7 +22,7 @@ import { parseObservacoes, formatDate } from "@/lib/clientes";
 import type { ParsedFields, ClienteRecord, EditableFields } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
-// Convert a DB ClienteNovo record to ClienteRecord format
+// Convert a DB record (ClienteNovo or Cliente) to ClienteRecord format
 // ---------------------------------------------------------------------------
 
 export function dbToRecord(c: {
@@ -51,6 +57,7 @@ export function dbToRecord(c: {
   ultimaVenda: string;
   regSimples: string;
   vendedor: string;
+  observacoes?: string;
 }): ClienteRecord {
   return {
     razao_social: c.razaoSocial,
@@ -96,7 +103,7 @@ export function dbToRecord(c: {
       email2: c.email2,
       email3: c.email3,
       pessoaContato: c.pessoaContato,
-      observacoes: (c as Record<string, unknown>).observacoes as string || "",
+      observacoes: c.observacoes || "",
     },
   };
 }
@@ -122,6 +129,7 @@ let cachedRecords: ClienteRecord[] | null = null;
  * 2. Otherwise try the JSON cache file (much faster than XLSX parse).
  * 3. Fall back to parsing the XLSX file.
  * 4. Merge DB edits (ClienteEdit) and new clients (ClienteNovo).
+ * 5. Merge Google Sheets-synced records (Cliente where source='sheets').
  */
 export async function getRecords(): Promise<ClienteRecord[]> {
   if (cachedRecords) return cachedRecords;
@@ -144,7 +152,8 @@ export async function getRecords(): Promise<ClienteRecord[]> {
   const edits = await db.clienteEdit.findMany();
   const editMap = new Map(edits.map((e) => [e.codigo, e]));
 
-  cachedRecords = rawData
+  // Build XLSX-based records
+  const xlsxRecords = rawData
     .map((row) => {
       const parsed = parseObservacoes(row["Observações"] || "");
       const edit = editMap.get(parsed.codigo);
@@ -192,7 +201,75 @@ export async function getRecords(): Promise<ClienteRecord[]> {
   // Also load new clients from DB
   const novos = await db.clienteNovo.findMany();
   const novoRecords = novos.map(dbToRecord);
-  cachedRecords = [...cachedRecords, ...novoRecords];
+
+  // Combine XLSX + ClienteNovo records
+  const baseRecords = [...xlsxRecords, ...novoRecords];
+
+  // ── Merge Google Sheets-synced records (Cliente where source='sheets') ──
+  const sheetsRecords = await db.cliente.findMany({
+    where: { source: "sheets" },
+  });
+
+  if (sheetsRecords.length > 0) {
+    // Build a map of base records by codigo for fast lookup
+    const recordMap = new Map<string, ClienteRecord>();
+    for (const r of baseRecords) {
+      recordMap.set(r.parsed.codigo, r);
+    }
+
+    for (const sheetRec of sheetsRecords) {
+      const existing = recordMap.get(sheetRec.codigo);
+      const sheetClienteRecord = dbToRecord(sheetRec);
+
+      if (existing) {
+        // Merge: sheets data overlays on top of base data
+        // For each field, prefer the sheets value if it's non-empty
+        const merged = { ...existing };
+
+        // Non-editable fields — overlay if sheets has data
+        const overlayFields = [
+          'razao_social', 'nome_fantasia', 'situacao_cadastral', 'cnpj',
+          'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
+          'data_situacao', 'data_abertura', 'cnae_principal', 'natureza_juridica', 'porte',
+          'pessoa_contato',
+        ] as const;
+
+        for (const field of overlayFields) {
+          const sheetVal = sheetClienteRecord[field as keyof ClienteRecord];
+          if (typeof sheetVal === 'string' && sheetVal.trim() !== '') {
+            (merged as Record<string, unknown>)[field] = sheetVal;
+          }
+        }
+
+        // Parsed fields — overlay if sheets has data
+        const parsedOverlay = ['ie_rg', 'cadastro', 'ultima_venda', 'reg_simples', 'vendedor'] as const;
+        for (const field of parsedOverlay) {
+          const sheetVal = sheetClienteRecord.parsed[field];
+          if (sheetVal && sheetVal.trim() !== '') {
+            merged.parsed[field] = sheetVal;
+          }
+        }
+
+        // Editable fields — always prefer sheets data if available
+        const editableFields = Object.keys(sheetClienteRecord.editable) as (keyof EditableFields)[];
+        for (const field of editableFields) {
+          const sheetVal = sheetClienteRecord.editable[field];
+          if (sheetVal && sheetVal.trim() !== '') {
+            merged.editable[field] = sheetVal;
+          }
+        }
+
+        recordMap.set(sheetRec.codigo, merged);
+      } else {
+        // New record from Sheets (not in XLSX) — add it
+        recordMap.set(sheetRec.codigo, sheetClienteRecord);
+      }
+    }
+
+    cachedRecords = Array.from(recordMap.values());
+  } else {
+    cachedRecords = baseRecords;
+  }
 
   return cachedRecords;
 }
@@ -200,7 +277,7 @@ export async function getRecords(): Promise<ClienteRecord[]> {
 /**
  * Invalidate the in-memory cache.
  *
- * Call this after any write operation (POST, PATCH) so that the next
+ * Call this after any write operation (POST, PATCH, Sheets sync) so that the next
  * `getRecords()` call re-reads from the JSON cache / XLSX + DB.
  */
 export function invalidateCache(): void {
@@ -216,4 +293,15 @@ export async function findRecordByCnpj(cnpj: string): Promise<ClienteRecord | un
   const records = await getRecords();
   const digits = cnpj.replace(/\D/g, "");
   return records.find((r) => r.cnpj.replace(/\D/g, "") === digits);
+}
+
+/**
+ * Get all records from the Cliente (sheets) table as ClienteRecord[].
+ * Used by the push operation to send data to Google Sheets.
+ */
+export async function getSheetsRecords(): Promise<ClienteRecord[]> {
+  const sheetsRecords = await db.cliente.findMany({
+    where: { source: "sheets" },
+  });
+  return sheetsRecords.map(dbToRecord);
 }

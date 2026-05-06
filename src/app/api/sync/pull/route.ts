@@ -4,6 +4,7 @@ import {
   getSyncConfig,
   updateSyncStatus,
 } from '@/lib/google-sheets'
+import { invalidateCache } from '@/lib/clientes-cache'
 
 /**
  * POST /api/sync/pull — Pull data from Google Sheets to DB
@@ -20,6 +21,9 @@ export async function POST() {
 
     // Update sync status
     await updateSyncStatus(config.id, result)
+
+    // Invalidate main data cache so sheets records appear in the table
+    invalidateCache()
 
     return NextResponse.json({
       success: result.success,
