@@ -58,113 +58,33 @@ import {
   Briefcase,
   RotateCcw,
 } from 'lucide-react'
+import type {
+  ParsedFields,
+  EditableFields,
+  ClienteRecord,
+  ApiResponse,
+  AuditLogEntry,
+  ColumnDef,
+  NewClientForm,
+  DetailTab,
+} from '@/lib/types'
+import {
+  DEFAULT_COLUMNS,
+  PAGE_SIZE_OPTIONS,
+  EMPTY_FORM,
+  DETAIL_TABS,
+  PHONE_FIELDS,
+  FIELD_LABELS,
+} from '@/lib/types'
+import {
+  calcDiasSemVenda,
+  formatPhone,
+  getNowBrasilia,
+  getRecordValue,
+  toEditableKey,
+} from '@/lib/clientes'
 
-// ─── Types ─────────────────────────────────────────
-
-interface ParsedFields {
-  codigo: string; ie_rg: string; celular: string; fax: string;
-  cadastro: string; ultima_venda: string; reg_simples: string; vendedor: string
-}
-
-interface EditableFields {
-  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
-  email1: string; email2: string; email3: string; pessoaContato: string;
-  observacoes: string
-}
-
-interface ClienteRecord {
-  razao_social: string; nome_fantasia: string; situacao_cadastral: string; cnpj: string;
-  endereco: string; numero: string; complemento: string; bairro: string;
-  cidade: string; cep: string; uf: string; telefone1: string; telefone2: string;
-  telefone3: string; telefone4: string; email1: string; email2: string; email3: string;
-  pessoa_contato: string; data_situacao: string; data_abertura: string;
-  cnae_principal: string; natureza_juridica: string; porte: string;
-  parsed: ParsedFields; editable: EditableFields
-}
-
-interface ApiResponse {
-  data: ClienteRecord[]
-  pagination: { page: number; limit: number; total: number; totalPages: number; showAll: boolean }
-  filters: { situacao_cadastral: string[]; vendedores: string[]; cidades: string[]; ufs: string[] }
-  stats: {
-    total: number; situacao_cadastral: Record<string, number>;
-    dias_sem_venda: { verde: number; amarelo: number; laranja: number; vermelho: number; preto: number }
-  }
-}
-
-interface AuditLogEntry {
-  id: string; codigo: string; field: string; oldValue: string; newValue: string; changedBy: string; createdAt: string
-}
-
-// ─── Column definitions ────────────────────────────
-
-interface ColumnDef {
-  key: string; label: string; editable?: boolean;
-  sticky?: 'left'; stickyOffset?: number; minWidth?: string;
-  numericSort?: boolean; centered?: boolean
-}
-
-const DEFAULT_COLUMNS: ColumnDef[] = [
-  { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
-  { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
-  { key: 'cnpj', label: 'CNPJ', minWidth: '150px' },
-  { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '110px', numericSort: true, centered: true },
-  { key: 'pessoa_contato', label: 'Contato', editable: true, minWidth: '140px' },
-  { key: 'telefone1', label: 'Tel. 1', editable: true, minWidth: '140px' },
-  { key: 'telefone2', label: 'Tel. 2', editable: true, minWidth: '140px' },
-  { key: 'telefone3', label: 'Tel. 3', editable: true, minWidth: '140px' },
-  { key: 'email1', label: 'Email 1', editable: true, minWidth: '160px' },
-  { key: 'email2', label: 'Email 2', editable: true, minWidth: '140px' },
-  { key: 'email3', label: 'Email 3', editable: true, minWidth: '140px' },
-  { key: 'vendedor', label: 'Vendedora', minWidth: '140px' },
-  { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
-  { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
-  { key: 'ie_rg', label: 'IE/RG', minWidth: '100px' },
-  { key: 'reg_simples', label: 'Reg. Simples', minWidth: '90px' },
-  { key: 'observacoes', label: 'Obs.', editable: true, minWidth: '120px' },
-  { key: 'telefone4', label: 'Tel. 4', editable: true, minWidth: '140px' },
-  { key: 'endereco', label: 'Endereço', minWidth: '180px' },
-  { key: 'numero', label: 'Número', minWidth: '70px' },
-  { key: 'complemento', label: 'Complemento', minWidth: '110px' },
-  { key: 'bairro', label: 'Bairro', minWidth: '130px' },
-  { key: 'cidade', label: 'Cidade', minWidth: '120px' },
-  { key: 'cep', label: 'CEP', minWidth: '90px' },
-  { key: 'uf', label: 'UF', minWidth: '50px' },
-  { key: 'data_situacao', label: 'Data Situação', minWidth: '100px' },
-  { key: 'data_abertura', label: 'Data Abertura', minWidth: '100px' },
-  { key: 'cnae_principal', label: 'CNAE Principal', minWidth: '200px' },
-  { key: 'natureza_juridica', label: 'Natureza Jurídica', minWidth: '160px' },
-  { key: 'porte', label: 'Porte', minWidth: '100px' },
-  { key: 'cadastro', label: 'Cadastro', minWidth: '100px' },
-  { key: 'ultima_venda', label: 'Última Venda', minWidth: '100px' },
-]
-
-const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-
-// ─── Helpers ───────────────────────────────────────
-
-function getNowBrasilia(): Date {
-  const now = new Date()
-  return new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000)
-}
-
-function parseDdMmYyyy(dateStr: string): Date | null {
-  if (!dateStr) return null
-  const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
-  if (!match) return null
-  const d = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]))
-  return isNaN(d.getTime()) ? null : d
-}
-
-function calcDiasSemVenda(ultimaVenda: string): number | null {
-  if (!ultimaVenda) return null
-  const saleDate = parseDdMmYyyy(ultimaVenda)
-  if (!saleDate) return null
-  const now = getNowBrasilia()
-  const sale = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate())
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return Math.floor((today.getTime() - sale.getTime()) / 86400000)
-}
+// ─── Client-only helpers ──────────────────────────
 
 function getDiasSemVendaBg(dias: number | null): string {
   if (dias === null) return 'bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800'
@@ -185,51 +105,6 @@ function formatCep(raw: string): string {
   const d = raw.replace(/\D/g, '')
   if (d.length !== 8) return raw
   return `${d.slice(0, 5)}-${d.slice(5)}`
-}
-
-function formatPhone(raw: string): string {
-  if (!raw) return ''
-  const digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('0800') && digits.length >= 11) return `0800-${digits.slice(4, 7)}-${digits.slice(7, 11)}`
-  if (digits.startsWith('0800') && digits.length >= 7) return `0800-${digits.slice(4, 7)}`
-  if (digits.length === 11 && digits[2] === '9') return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`
-  if (digits.length === 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6, 10)}`
-  if (digits.length === 9 && digits[0] === '9') return `${digits.slice(0, 5)}-${digits.slice(5, 9)}`
-  if (digits.length === 8) return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`
-  return raw
-}
-
-function getRecordValue(r: ClienteRecord, key: string): string {
-  const map: Record<string, string> = {
-    codigo: r.parsed.codigo, ie_rg: r.parsed.ie_rg, razao_social: r.razao_social,
-    nome_fantasia: r.nome_fantasia, situacao_cadastral: r.situacao_cadastral, cnpj: r.cnpj,
-    endereco: r.endereco, numero: r.numero, complemento: r.complemento, bairro: r.bairro,
-    cidade: r.cidade, cep: r.cep, uf: r.uf, telefone1: r.telefone1, telefone2: r.telefone2,
-    telefone3: r.telefone3, telefone4: r.telefone4, email1: r.email1, email2: r.email2,
-    email3: r.email3, pessoa_contato: r.pessoa_contato, data_situacao: r.data_situacao,
-    data_abertura: r.data_abertura, cnae_principal: r.cnae_principal, natureza_juridica: r.natureza_juridica,
-    porte: r.porte, cadastro: r.parsed.cadastro, ultima_venda: r.parsed.ultima_venda,
-    reg_simples: r.parsed.reg_simples, vendedor: r.parsed.vendedor,
-    observacoes: r.editable.observacoes,
-  }
-  return map[key] || ''
-}
-
-function toEditableKey(key: string): keyof EditableFields | null {
-  const map: Record<string, keyof EditableFields> = {
-    telefone1: 'telefone1', telefone2: 'telefone2', telefone3: 'telefone3', telefone4: 'telefone4',
-    email1: 'email1', email2: 'email2', email3: 'email3', pessoa_contato: 'pessoaContato',
-    observacoes: 'observacoes',
-  }
-  return map[key] || null
-}
-
-const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4'])
-
-const FIELD_LABELS: Record<string, string> = {
-  telefone1: 'Tel. 1', telefone2: 'Tel. 2', telefone3: 'Tel. 3', telefone4: 'Tel. 4',
-  email1: 'Email 1', email2: 'Email 2', email3: 'Email 3', pessoaContato: 'Contato',
-  observacoes: 'Observações',
 }
 
 // ─── Sub-components ────────────────────────────────
@@ -345,40 +220,6 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
     </th>
   )
 }
-
-// ─── New Client Form ───────────────────────────────
-
-interface NewClientForm {
-  cnpj: string; ieRg: string; razaoSocial: string; nomeFantasia: string;
-  situacaoCadastral: string; endereco: string; numero: string; complemento: string;
-  bairro: string; cidade: string; cep: string; uf: string;
-  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
-  email1: string; email2: string; email3: string; pessoaContato: string;
-  dataAbertura: string; cnaePrincipal: string; naturezaJuridica: string;
-  porte: string; regSimples: string; vendedor: string
-}
-
-const EMPTY_FORM: NewClientForm = {
-  cnpj: '', ieRg: '', razaoSocial: '', nomeFantasia: '', situacaoCadastral: '',
-  endereco: '', numero: '', complemento: '', bairro: '', cidade: '', cep: '', uf: '',
-  telefone1: '', telefone2: '', telefone3: '', telefone4: '',
-  email1: '', email2: '', email3: '', pessoaContato: '',
-  dataAbertura: '', cnaePrincipal: '', naturezaJuridica: '', porte: '',
-  regSimples: '', vendedor: '',
-}
-
-// ─── Detail Modal Tabs ────────────────────────────
-
-type DetailTab = 'contato' | 'comercial' | 'endereco' | 'fiscal' | 'obs' | 'historico'
-
-const DETAIL_TABS: { key: DetailTab; label: string; icon: React.ElementType }[] = [
-  { key: 'contato', label: 'Contato', icon: Phone },
-  { key: 'comercial', label: 'Comercial', icon: Briefcase },
-  { key: 'endereco', label: 'Endereço', icon: MapPin },
-  { key: 'fiscal', label: 'Fiscal', icon: Building2 },
-  { key: 'obs', label: 'Obs.', icon: StickyNote },
-  { key: 'historico', label: 'Histórico', icon: Clock },
-]
 
 // ─── Main Component ────────────────────────────────
 
