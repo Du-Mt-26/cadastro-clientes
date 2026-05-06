@@ -1,86 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import * as fs from "fs";
-import * as path from "path";
-import { db } from "@/lib/db";
-
-function excelSerialToDate(serial: string): string {
-  if (!serial) return "";
-  const num = parseInt(serial, 10);
-  if (isNaN(num) || num <= 0) return serial;
-  const epoch = new Date(1899, 11, 30);
-  const date = new Date(epoch.getTime() + num * 86400000);
-  if (isNaN(date.getTime())) return serial;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-// Phone formatting for export
-function formatPhone(raw: string): string {
-  if (!raw) return "";
-  const digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("0800") && digits.length >= 11) {
-    return `0800-${digits.slice(4, 7)}-${digits.slice(7, 11)}`;
-  }
-  if (digits.startsWith("0800") && digits.length >= 7) {
-    return `0800-${digits.slice(4, 7)}`;
-  }
-  if (digits.length === 11 && digits[2] === "9") {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
-  }
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6, 10)}`;
-  }
-  if (digits.length === 9 && digits[0] === "9") {
-    return `${digits.slice(0, 5)}-${digits.slice(5, 9)}`;
-  }
-  if (digits.length === 8) {
-    return `${digits.slice(0, 4)}-${digits.slice(4, 8)}`;
-  }
-  return raw;
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (match) {
-    return `${match[3]}/${match[2]}/${match[1]}`;
-  }
-  return dateStr;
-}
-
-function parseObservacoes(obs: string): Record<string, string> {
-  const defaults: Record<string, string> = {
-    codigo: "",
-    ie_rg: "",
-    celular: "",
-    fax: "",
-    cadastro: "",
-    ultima_venda: "",
-    reg_simples: "",
-    vendedor: "",
-  };
-
-  if (!obs) return defaults;
-
-  const pairs = obs.split(";").map((s) => s.trim()).filter(Boolean);
-  for (const pair of pairs) {
-    const colonIdx = pair.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = pair.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, "_");
-    const value = pair.substring(colonIdx + 1).trim();
-    if (key in defaults) {
-      defaults[key] = value;
-    }
-  }
-
-  defaults.cadastro = excelSerialToDate(defaults.cadastro);
-  defaults.ultima_venda = excelSerialToDate(defaults.ultima_venda);
-
-  return defaults;
-}
+import { formatPhone } from "@/lib/clientes";
+import type { ClienteRecord } from "@/lib/types";
+import { getRecords } from "@/lib/clientes-cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -91,101 +13,41 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
-    const filePath = path.join(
-      process.cwd(),
-      "upload",
-      "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
-    );
+    const allCachedRecords = await getRecords();
 
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 404 });
-    }
-
-    const fileBuffer = fs.readFileSync(filePath);
-    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
-
-    // Load editable fields from DB
-    const edits = await db.clienteEdit.findMany();
-    const editMap = new Map(edits.map((e) => [e.codigo, e]));
-
-    const allRecords = rawData
-      .map((row) => {
-        const parsed = parseObservacoes(row["Observações"] || "");
-        const edit = editMap.get(parsed.codigo);
-        return {
-          "Código": parsed.codigo,
-          "IE/RG": parsed.ie_rg,
-          "Razão Social": row["Razão Social"] || "",
-          "Nome Fantasia": row["Nome Fantasia"] || "",
-          "Situação Cadastral": row["Situação Cadastral"] || "",
-          "CNPJ": row["CNPJ"] || "",
-          "Endereço Rua/Avenida": row["Endereço Rua/Avenida"] || "",
-          "Numero": row["Numero"] || "",
-          "Complemento": row["Complemento"] || "",
-          "Bairro": row["Bairro"] || "",
-          "Cidade": row["Cidade"] || "",
-          "CEP": row["CEP"] || "",
-          "UF": row["UF"] || "",
-          "Telefone 1": formatPhone(edit?.telefone1 || row["Telefone 1"] || ""),
-          "Telefone 2": formatPhone(edit?.telefone2 || row["Telefone 2"] || ""),
-          "Telefone 3": formatPhone(edit?.telefone3 || parsed.celular || ""),
-          "Telefone 4": formatPhone(edit?.telefone4 || parsed.fax || ""),
-          "Email 1": edit?.email1 || row["Email 1"] || "",
-          "Email 2": edit?.email2 || "",
-          "Email 3": edit?.email3 || "",
-          "Pessoa de contato": edit?.pessoaContato || row["Pessoa de contato"] || "",
-          "Data Situação": formatDate(row["Data Situação"] || ""),
-          "Data Abertura": formatDate(row["Data Abertura"] || ""),
-          "CNAE Principal": row["CNAE Principal"] || "",
-          "Natureza Jurídica": row["Natureza Jurídica"] || "",
-          "Porte": row["Porte"] || "",
-          "Cadastro": parsed.cadastro,
-          "Última Venda": parsed.ultima_venda,
-          "Reg. Simples": parsed.reg_simples,
-          "Vendedor": parsed.vendedor,
-        };
-      })
-      .filter((r) => r["Código"] !== "000000");
-
-    // Also add new clients from DB
-    const novos = await db.clienteNovo.findMany();
-    const novoRecords = novos.map((c) => ({
-      "Código": c.codigo,
-      "IE/RG": c.ieRg,
-      "Razão Social": c.razaoSocial,
-      "Nome Fantasia": c.nomeFantasia,
-      "Situação Cadastral": c.situacaoCadastral,
-      "CNPJ": c.cnpj,
-      "Endereço Rua/Avenida": c.endereco,
-      "Numero": c.numero,
-      "Complemento": c.complemento,
-      "Bairro": c.bairro,
-      "Cidade": c.cidade,
-      "CEP": c.cep,
-      "UF": c.uf,
-      "Telefone 1": formatPhone(c.telefone1),
-      "Telefone 2": formatPhone(c.telefone2),
-      "Telefone 3": formatPhone(c.telefone3),
-      "Telefone 4": formatPhone(c.telefone4),
-      "Email 1": c.email1,
-      "Email 2": c.email2,
-      "Email 3": c.email3,
-      "Pessoa de contato": c.pessoaContato,
-      "Data Situação": c.dataSituacao,
-      "Data Abertura": c.dataAbertura,
-      "CNAE Principal": c.cnaePrincipal,
-      "Natureza Jurídica": c.naturezaJuridica,
-      "Porte": c.porte,
-      "Cadastro": c.cadastro,
-      "Última Venda": c.ultimaVenda,
-      "Reg. Simples": c.regSimples,
-      "Vendedor": c.vendedor,
+    // Convert to export-friendly column names
+    const allRecords = allCachedRecords.map((r) => ({
+      "Código": r.parsed.codigo,
+      "IE/RG": r.parsed.ie_rg,
+      "Razão Social": r.razao_social,
+      "Nome Fantasia": r.nome_fantasia,
+      "Situação Cadastral": r.situacao_cadastral,
+      "CNPJ": r.cnpj,
+      "Endereço Rua/Avenida": r.endereco,
+      "Numero": r.numero,
+      "Complemento": r.complemento,
+      "Bairro": r.bairro,
+      "Cidade": r.cidade,
+      "CEP": r.cep,
+      "UF": r.uf,
+      "Telefone 1": formatPhone(r.telefone1),
+      "Telefone 2": formatPhone(r.telefone2),
+      "Telefone 3": formatPhone(r.telefone3),
+      "Telefone 4": formatPhone(r.telefone4),
+      "Email 1": r.email1,
+      "Email 2": r.email2,
+      "Email 3": r.email3,
+      "Pessoa de contato": r.pessoa_contato,
+      "Data Situação": r.data_situacao,
+      "Data Abertura": r.data_abertura,
+      "CNAE Principal": r.cnae_principal,
+      "Natureza Jurídica": r.natureza_juridica,
+      "Porte": r.porte,
+      "Cadastro": r.parsed.cadastro,
+      "Última Venda": r.parsed.ultima_venda,
+      "Reg. Simples": r.parsed.reg_simples,
+      "Vendedor": r.parsed.vendedor,
     }));
-
-    allRecords.push(...novoRecords);
 
     // Apply filters
     let filtered = allRecords;

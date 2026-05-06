@@ -1,281 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
-import * as fs from "fs";
-import * as path from "path";
 import { db } from "@/lib/db";
-
-// All parsed fields from Observações column
-interface ParsedFields {
-  codigo: string;
-  ie_rg: string;
-  celular: string;
-  fax: string;
-  cadastro: string;
-  ultima_venda: string;
-  reg_simples: string;
-  vendedor: string;
-  [key: string]: string;
-}
-
-// Full record with ALL columns from the spreadsheet
-interface ClienteRecord {
-  razao_social: string;
-  nome_fantasia: string;
-  situacao_cadastral: string;
-  cnpj: string;
-  endereco: string;
-  numero: string;
-  complemento: string;
-  bairro: string;
-  cidade: string;
-  cep: string;
-  uf: string;
-  telefone1: string;
-  telefone2: string;
-  telefone3: string;
-  telefone4: string;
-  email1: string;
-  email2: string;
-  email3: string;
-  pessoa_contato: string;
-  data_situacao: string;
-  data_abertura: string;
-  cnae_principal: string;
-  natureza_juridica: string;
-  porte: string;
-  parsed: ParsedFields;
-  editable: {
-    telefone1: string;
-    telefone2: string;
-    telefone3: string;
-    telefone4: string;
-    email1: string;
-    email2: string;
-    email3: string;
-    pessoaContato: string;
-    observacoes: string;
-  };
-}
-
-// Convert Excel serial date number to dd/mm/aaaa string
-function excelSerialToDate(serial: string): string {
-  if (!serial) return "";
-  const num = parseInt(serial, 10);
-  if (isNaN(num) || num <= 0) return serial;
-  const epoch = new Date(1899, 11, 30);
-  const date = new Date(epoch.getTime() + num * 86400000);
-  if (isNaN(date.getTime())) return serial;
-  const day = String(date.getDate()).padStart(2, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-}
-
-function formatDate(dateStr: string): string {
-  if (!dateStr) return "";
-  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (match) {
-    return `${match[3]}/${match[2]}/${match[1]}`;
-  }
-  return dateStr;
-}
-
-function parseObservacoes(obs: string): ParsedFields {
-  const defaults: ParsedFields = {
-    codigo: "",
-    ie_rg: "",
-    celular: "",
-    fax: "",
-    cadastro: "",
-    ultima_venda: "",
-    reg_simples: "",
-    vendedor: "",
-  };
-
-  if (!obs) return defaults;
-
-  const pairs = obs.split(";").map((s) => s.trim()).filter(Boolean);
-  for (const pair of pairs) {
-    const colonIdx = pair.indexOf(":");
-    if (colonIdx === -1) continue;
-    const key = pair.substring(0, colonIdx).trim().toLowerCase().replace(/\s+/g, "_");
-    const value = pair.substring(colonIdx + 1).trim();
-    if (key in defaults) {
-      defaults[key] = value;
-    }
-  }
-
-  defaults.cadastro = excelSerialToDate(defaults.cadastro);
-  defaults.ultima_venda = excelSerialToDate(defaults.ultima_venda);
-
-  return defaults;
-}
-
-// Convert a DB ClienteNovo record to ClienteRecord format
-function dbToRecord(c: {
-  id: string;
-  codigo: string;
-  ieRg: string;
-  razaoSocial: string;
-  nomeFantasia: string;
-  situacaoCadastral: string;
-  cnpj: string;
-  endereco: string;
-  numero: string;
-  complemento: string;
-  bairro: string;
-  cidade: string;
-  cep: string;
-  uf: string;
-  telefone1: string;
-  telefone2: string;
-  telefone3: string;
-  telefone4: string;
-  email1: string;
-  email2: string;
-  email3: string;
-  pessoaContato: string;
-  dataSituacao: string;
-  dataAbertura: string;
-  cnaePrincipal: string;
-  naturezaJuridica: string;
-  porte: string;
-  cadastro: string;
-  ultimaVenda: string;
-  regSimples: string;
-  vendedor: string;
-}): ClienteRecord {
-  return {
-    razao_social: c.razaoSocial,
-    nome_fantasia: c.nomeFantasia,
-    situacao_cadastral: c.situacaoCadastral,
-    cnpj: c.cnpj,
-    endereco: c.endereco,
-    numero: c.numero,
-    complemento: c.complemento,
-    bairro: c.bairro,
-    cidade: c.cidade,
-    cep: c.cep,
-    uf: c.uf,
-    telefone1: c.telefone1,
-    telefone2: c.telefone2,
-    telefone3: c.telefone3,
-    telefone4: c.telefone4,
-    email1: c.email1,
-    email2: c.email2,
-    email3: c.email3,
-    pessoa_contato: c.pessoaContato,
-    data_situacao: c.dataSituacao,
-    data_abertura: c.dataAbertura,
-    cnae_principal: c.cnaePrincipal,
-    natureza_juridica: c.naturezaJuridica,
-    porte: c.porte,
-    parsed: {
-      codigo: c.codigo,
-      ie_rg: c.ieRg,
-      celular: "",
-      fax: "",
-      cadastro: c.cadastro,
-      ultima_venda: c.ultimaVenda,
-      reg_simples: c.regSimples,
-      vendedor: c.vendedor,
-    },
-    editable: {
-      telefone1: c.telefone1,
-      telefone2: c.telefone2,
-      telefone3: c.telefone3,
-      telefone4: c.telefone4,
-      email1: c.email1,
-      email2: c.email2,
-      email3: c.email3,
-      pessoaContato: c.pessoaContato,
-      observacoes: (c as Record<string, unknown>).observacoes as string || "",
-    },
-  };
-}
-
-// Cache the parsed data in memory — never expire, invalidate on write
-let cachedRecords: ClienteRecord[] | null = null;
-
-async function getRecords(): Promise<ClienteRecord[]> {
-  if (cachedRecords) return cachedRecords;
-
-  // Try JSON cache first (much faster, less memory than XLSX parse)
-  const jsonCachePath = path.join(process.cwd(), "upload", "clientes_cache.json");
-  let rawData: Record<string, string>[];
-  
-  if (fs.existsSync(jsonCachePath)) {
-    rawData = JSON.parse(fs.readFileSync(jsonCachePath, "utf-8"));
-  } else {
-    // Fallback to XLSX parse
-    const filePath = path.join(
-      process.cwd(),
-      "upload",
-      "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
-    );
-    const fileBuffer = fs.readFileSync(filePath);
-    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    rawData = XLSX.utils.sheet_to_json(worksheet);
-  }
-
-  // Load all editable fields from DB
-  const edits = await db.clienteEdit.findMany();
-  const editMap = new Map(edits.map((e) => [e.codigo, e]));
-
-  cachedRecords = rawData
-    .map((row) => {
-      const parsed = parseObservacoes(row["Observações"] || "");
-      const edit = editMap.get(parsed.codigo);
-      return {
-        razao_social: row["Razão Social"] || "",
-        nome_fantasia: row["Nome Fantasia"] || "",
-        situacao_cadastral: row["Situação Cadastral"] || "",
-        cnpj: row["CNPJ"] || "",
-        endereco: row["Endereço Rua/Avenida"] || "",
-        numero: row["Numero"] || "",
-        complemento: row["Complemento"] || "",
-        bairro: row["Bairro"] || "",
-        cidade: row["Cidade"] || "",
-        cep: row["CEP"] || "",
-        uf: row["UF"] || "",
-        telefone1: edit?.telefone1 || row["Telefone 1"] || "",
-        telefone2: edit?.telefone2 || row["Telefone 2"] || "",
-        telefone3: edit?.telefone3 || parsed.celular || "",
-        telefone4: edit?.telefone4 || parsed.fax || "",
-        email1: edit?.email1 || row["Email 1"] || "",
-        email2: edit?.email2 || "",
-        email3: edit?.email3 || "",
-        pessoa_contato: edit?.pessoaContato || row["Pessoa de contato"] || "",
-        data_situacao: formatDate(row["Data Situação"] || ""),
-        data_abertura: formatDate(row["Data Abertura"] || ""),
-        cnae_principal: row["CNAE Principal"] || "",
-        natureza_juridica: row["Natureza Jurídica"] || "",
-        porte: row["Porte"] || "",
-        parsed,
-        editable: {
-          telefone1: edit?.telefone1 || "",
-          telefone2: edit?.telefone2 || "",
-          telefone3: edit?.telefone3 || "",
-          telefone4: edit?.telefone4 || "",
-          email1: edit?.email1 || "",
-          email2: edit?.email2 || "",
-          email3: edit?.email3 || "",
-          pessoaContato: edit?.pessoaContato || "",
-          observacoes: edit?.observacoes || "",
-        },
-      };
-    })
-    .filter((r) => r.parsed.codigo !== "000000");
-
-  // Also load new clients from DB
-  const novos = await db.clienteNovo.findMany();
-  const novoRecords = novos.map(dbToRecord);
-  cachedRecords = [...cachedRecords, ...novoRecords];
-
-  return cachedRecords;
-}
+import { calcDiasSemVenda } from "@/lib/clientes";
+import type { ClienteRecord, EditableFields } from "@/lib/types";
+import { getRecords, invalidateCache, dbToRecord } from "@/lib/clientes-cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -396,28 +123,7 @@ export async function GET(request: NextRequest) {
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
 
-    // Dias sem venda stats (server-side)
-    function getNowBrasilia(): Date {
-      const now = new Date();
-      return new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000);
-    }
-    function parseDdMmYyyy(dateStr: string): Date | null {
-      if (!dateStr) return null;
-      const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-      if (!match) return null;
-      const d = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
-      return isNaN(d.getTime()) ? null : d;
-    }
-    function calcDiasSemVenda(ultimaVenda: string): number | null {
-      if (!ultimaVenda) return null;
-      const saleDate = parseDdMmYyyy(ultimaVenda);
-      if (!saleDate) return null;
-      const now = getNowBrasilia();
-      const sale = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      return Math.floor((today.getTime() - sale.getTime()) / 86400000);
-    }
-
+    // Dias sem venda stats
     let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, preto = 0;
     for (const r of allRecords) {
       const dias = calcDiasSemVenda(r.parsed.ultima_venda);
@@ -535,7 +241,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Invalidate cache
-    cachedRecords = null;
+    invalidateCache();
 
     return NextResponse.json({ success: true, cliente: dbToRecord(novo) }, { status: 201 });
   } catch (error) {
@@ -597,7 +303,7 @@ export async function PATCH(request: NextRequest) {
           observacoes: observacoes ?? undefined,
         },
       });
-      cachedRecords = null;
+      invalidateCache();
       return NextResponse.json({ success: true, edit: dbToRecord(updated) });
     }
 
@@ -630,7 +336,7 @@ export async function PATCH(request: NextRequest) {
     });
 
     // Invalidate cache so next read picks up changes
-    cachedRecords = null;
+    invalidateCache();
 
     return NextResponse.json({ success: true, edit });
   } catch (error) {

@@ -71,4 +71,6 @@ model AuditLog {
   newValue   String   @default("")
   changedBy  String   @default("user")
   createdAt  DateTime @default(now())
+
+  @@index([codigo])
 }

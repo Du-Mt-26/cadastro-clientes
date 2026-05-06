@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
-import * as fs from "fs";
-import * as path from "path";
 import { db } from "@/lib/db";
+import { findRecordByCnpj } from "@/lib/clientes-cache";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,62 +16,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if CNPJ already exists in XLSX data
-    let existsInXlsx = false;
-    let existingCodigo = "";
-    let existingRazao = "";
-    try {
-      const filePath = path.join(
-        process.cwd(),
-        "upload",
-        "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
-      );
-      if (fs.existsSync(filePath)) {
-        const fileBuffer = fs.readFileSync(filePath);
-        const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
+    // Check if CNPJ already exists in cached data (XLSX + DB-created clients)
+    const existingRecord = await findRecordByCnpj(digits);
 
-        for (const row of rawData) {
-          const rowCnpj = (row["CNPJ"] || "").replace(/\D/g, "");
-          if (rowCnpj === digits) {
-            existsInXlsx = true;
-            // Parse observações for codigo
-            const obs = row["Observações"] || "";
-            const codigoMatch = obs.match(/codigo:\s*([^;]+)/i);
-            existingCodigo = codigoMatch ? codigoMatch[1].trim() : "";
-            existingRazao = row["Razão Social"] || "";
-            break;
-          }
-        }
-      }
-    } catch (e) {
-      console.error("Error checking XLSX:", e);
-    }
-
-    // Check if CNPJ already exists in DB (ClienteNovo)
-    let existsInDb = false;
-    let dbCodigo = "";
-    let dbRazao = "";
-    try {
-      const existing = await db.clienteNovo.findUnique({ where: { cnpj: digits } });
-      if (existing) {
-        existsInDb = true;
-        dbCodigo = existing.codigo;
-        dbRazao = existing.razaoSocial;
-      }
-    } catch (e) {
-      console.error("Error checking DB:", e);
-    }
-
-    if (existsInXlsx || existsInDb) {
+    if (existingRecord) {
       return NextResponse.json({
         exists: true,
-        codigo: existsInXlsx ? existingCodigo : dbCodigo,
-        razao_social: existsInXlsx ? existingRazao : dbRazao,
-        source: existsInXlsx ? "planilha" : "cadastro_novo",
-        message: `Cliente já cadastrado${existsInXlsx ? " na planilha" : ""} com código ${existsInXlsx ? existingCodigo : dbCodigo} — ${existsInXlsx ? existingRazao : dbRazao}`,
+        codigo: existingRecord.parsed.codigo,
+        razao_social: existingRecord.razao_social,
+        source: "planilha",
+        message: `Cliente já cadastrado na planilha com código ${existingRecord.parsed.codigo} — ${existingRecord.razao_social}`,
+      });
+    }
+
+    // Also check DB directly for ClienteNovo (in case cache isn't updated yet)
+    const dbExisting = await db.clienteNovo.findUnique({ where: { cnpj: digits } });
+    if (dbExisting) {
+      return NextResponse.json({
+        exists: true,
+        codigo: dbExisting.codigo,
+        razao_social: dbExisting.razaoSocial,
+        source: "cadastro_novo",
+        message: `Cliente já cadastrado com código ${dbExisting.codigo} — ${dbExisting.razaoSocial}`,
       });
     }
 
