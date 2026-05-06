@@ -68,8 +68,7 @@ interface Props {
 export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
   const [url, setUrl] = useState('')
   const [connecting, setConnecting] = useState(false)
-  const [pulling, setPulling] = useState(false)
-  const [pushing, setPushing] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [connectResult, setConnectResult] = useState<{
     success: boolean
@@ -79,7 +78,7 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
     headers?: string[]
     error?: string
   } | null>(null)
-  const [syncMode, setSyncMode] = useState('pull')
+  const [syncMode, setSyncMode] = useState('bidirectional')
 
   // Load sync status on open
   useEffect(() => {
@@ -107,7 +106,7 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
 
   const handleConnect = async () => {
     if (!url.trim()) {
-      toast({ title: '✗ URL obrigatória', description: 'Cole a URL da planilha do Google Sheets', variant: 'destructive' })
+      toast({ title: 'URL obrigatória', description: 'Cole a URL da planilha do Google Sheets', variant: 'destructive' })
       return
     }
 
@@ -126,12 +125,12 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
 
       if (data.success) {
         toast({
-          title: '✓ Conectado!',
+          title: 'Conectado!',
           description: `"${data.title}" — ${data.rowCount} linhas, ${data.headers?.length || 0} colunas detectadas`,
         })
       } else {
         toast({
-          title: '✗ Erro ao conectar',
+          title: 'Erro ao conectar',
           description: data.error || 'Verifique a URL e as permissões de compartilhamento',
           variant: 'destructive',
         })
@@ -139,7 +138,7 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
 
       await loadStatus()
     } catch {
-      toast({ title: '✗ Erro de conexão', description: 'Não foi possível conectar ao servidor', variant: 'destructive' })
+      toast({ title: 'Erro de conexão', description: 'Não foi possível conectar ao servidor', variant: 'destructive' })
     } finally {
       setConnecting(false)
     }
@@ -152,67 +151,62 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
       await loadStatus()
       toast({ title: 'Desconectado', description: 'Planilha desconectada' })
     } catch {
-      toast({ title: '✗ Erro', description: 'Não foi possível desconectar', variant: 'destructive' })
+      toast({ title: 'Erro', description: 'Não foi possível desconectar', variant: 'destructive' })
     }
   }
 
-  const handlePull = async () => {
-    setPulling(true)
+  const handleSync = async (direction: 'pull' | 'push' | 'bidirectional') => {
+    setSyncing(true)
     try {
-      const res = await fetch('/api/sync/pull', { method: 'POST' })
-      const data = await res.json()
+      if (direction === 'pull' || direction === 'bidirectional') {
+        const pullRes = await fetch('/api/sync/pull', { method: 'POST' })
+        const pullData = await pullRes.json()
 
-      if (data.success) {
-        toast({
-          title: `✓ Importação concluída`,
-          description: `${data.pulled} registros importados (${data.created} novos, ${data.updated} atualizados)`,
-        })
-        onSyncComplete?.()
-      } else {
-        toast({
-          title: '✗ Erro na importação',
-          description: data.error || data.errors?.join('; ') || 'Erro desconhecido',
-          variant: 'destructive',
-        })
+        if (pullData.success) {
+          toast({
+            title: `Importação concluída`,
+            description: `${pullData.pulled} registros importados (${pullData.created} novos, ${pullData.updated} atualizados)`,
+          })
+          onSyncComplete?.()
+        } else {
+          toast({
+            title: 'Erro na importação',
+            description: pullData.error || pullData.errors?.join('; ') || 'Erro desconhecido',
+            variant: 'destructive',
+          })
+        }
       }
+
+      if (direction === 'push' || direction === 'bidirectional') {
+        const pushRes = await fetch('/api/sync/push', { method: 'POST' })
+        const pushData = await pushRes.json()
+
+        if (pushData.success) {
+          toast({
+            title: `Envio concluído`,
+            description: `${pushData.pushed} registros enviados para a planilha`,
+          })
+        } else {
+          toast({
+            title: 'Erro no envio',
+            description: pushData.error || pushData.errors?.join('; ') || 'Erro desconhecido',
+            variant: 'destructive',
+          })
+        }
+      }
+
       await loadStatus()
     } catch {
-      toast({ title: '✗ Erro', description: 'Falha na importação', variant: 'destructive' })
+      toast({ title: 'Erro', description: 'Falha na sincronização', variant: 'destructive' })
     } finally {
-      setPulling(false)
-    }
-  }
-
-  const handlePush = async () => {
-    setPushing(true)
-    try {
-      const res = await fetch('/api/sync/push', { method: 'POST' })
-      const data = await res.json()
-
-      if (data.success) {
-        toast({
-          title: `✓ Envio concluído`,
-          description: `${data.pushed} registros enviados para a planilha`,
-        })
-      } else {
-        toast({
-          title: '✗ Erro no envio',
-          description: data.error || data.errors?.join('; ') || 'Erro desconhecido',
-          variant: 'destructive',
-        })
-      }
-      await loadStatus()
-    } catch {
-      toast({ title: '✗ Erro', description: 'Falha no envio', variant: 'destructive' })
-    } finally {
-      setPushing(false)
+      setSyncing(false)
     }
   }
 
   const copyServiceEmail = () => {
     if (syncStatus?.serviceEmail) {
       navigator.clipboard.writeText(syncStatus.serviceEmail)
-      toast({ title: '✓ Copiado!', description: 'Email copiado para a área de transferência' })
+      toast({ title: 'Copiado!', description: 'Email copiado para a área de transferência' })
     }
   }
 
@@ -228,6 +222,12 @@ export function SheetsSyncModal({ open, onOpenChange, onSyncComplete }: Props) {
           <DialogTitle className="flex items-center gap-2">
             <Sheet className="size-5 text-teal-600" />
             Google Sheets — Sincronização
+            {isConnected && (
+              <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700 text-[10px] ml-1">
+                <span className="size-1.5 rounded-full bg-emerald-500 inline-block mr-1 animate-pulse" />
+                Conectado
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -280,11 +280,12 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY----
               <div className="relative flex-1">
                 <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
                 <Input
-                  placeholder="Cole a URL do Google Sheets aqui..."
+                  placeholder="https://docs.google.com/spreadsheets/d/..."
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   className="pl-9"
                   disabled={connecting}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && url.trim()) handleConnect() }}
                 />
               </div>
               {isConnected ? (
@@ -305,7 +306,7 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY----
               )}
             </div>
             <p className="text-xs text-slate-500">
-              Formatos aceitos: URL completa, encurtada (bit.ly), ou ID da planilha
+              Formatos aceitos: URL completa, URL encurtada, ou ID da planilha
             </p>
           </div>
 
@@ -381,7 +382,7 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY----
             </div>
           )}
 
-          {/* Sync Mode */}
+          {/* Sync Mode & Actions */}
           {isConnected && (
             <div className="space-y-3">
               <div className="space-y-2">
@@ -415,28 +416,41 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY----
                 </Select>
               </div>
 
-              {/* Sync Actions */}
+              {/* Sync Action Buttons */}
               <div className="flex gap-2">
-                {(syncMode === 'pull' || syncMode === 'bidirectional') && (
+                {syncMode === 'bidirectional' ? (
                   <Button
-                    onClick={handlePull}
-                    disabled={pulling}
+                    onClick={() => handleSync('bidirectional')}
+                    disabled={syncing}
                     className="flex-1 bg-teal-600 hover:bg-teal-700 text-white"
                   >
-                    {pulling ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Download className="size-4 mr-1.5" />}
-                    Importar do Sheets
+                    {syncing ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <ArrowRightLeft className="size-4 mr-1.5" />}
+                    Sync Bidirecional
                   </Button>
-                )}
-                {(syncMode === 'push' || syncMode === 'bidirectional') && (
-                  <Button
-                    onClick={handlePush}
-                    disabled={pushing}
-                    variant="outline"
-                    className="flex-1 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-950/30"
-                  >
-                    {pushing ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Upload className="size-4 mr-1.5" />}
-                    Enviar para Sheets
-                  </Button>
+                ) : (
+                  <>
+                    {(syncMode === 'pull') && (
+                      <Button
+                        onClick={() => handleSync('pull')}
+                        disabled={syncing}
+                        className="flex-1 bg-teal-600 hover:bg-teal-700 text-white"
+                      >
+                        {syncing ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Download className="size-4 mr-1.5" />}
+                        Importar do Sheets
+                      </Button>
+                    )}
+                    {(syncMode === 'push') && (
+                      <Button
+                        onClick={() => handleSync('push')}
+                        disabled={syncing}
+                        variant="outline"
+                        className="flex-1 border-teal-300 text-teal-700 hover:bg-teal-50 dark:border-teal-700 dark:text-teal-400 dark:hover:bg-teal-950/30"
+                      >
+                        {syncing ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <Upload className="size-4 mr-1.5" />}
+                        Enviar para Sheets
+                      </Button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -455,11 +469,15 @@ GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY----
             </div>
             <div className="flex items-center gap-2">
               <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400 rounded-full size-5 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
-              <span>Clique <strong>Importar</strong> para trazer os dados ou <strong>Enviar</strong> para atualizar a planilha</span>
+              <span>Escolha o modo de sync e clique o botão correspondente</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400 rounded-full size-5 flex items-center justify-center text-[10px] font-bold shrink-0">4</span>
-              <span>No modo <strong>Bidirecional</strong>, alterações em ambos os lados são sincronizadas</span>
+              <span>No modo <strong>Bidirecional</strong>, alterações em ambos os lados são sincronizadas automaticamente</span>
+            </div>
+            <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/30 rounded border border-amber-200 dark:border-amber-800">
+              <p className="text-amber-700 dark:text-amber-400 font-medium">Nota:</p>
+              <p className="text-amber-600 dark:text-amber-500">A planilha XLSX original permanece como fonte de dados base. O Google Sheets funciona como uma camada adicional de sincronização por cima.</p>
             </div>
           </div>
         </div>

@@ -70,3 +70,31 @@ Stage Summary:
 - Full UI for Google Sheets sync is functional
 - Button appears in header alongside other action buttons
 - Modal provides step-by-step guidance for setup
+
+---
+Task ID: 5
+Agent: main
+Task: Integrate Google Sheets sync with main data flow while keeping XLSX
+
+Work Log:
+- Analyzed existing project state: Google Sheets integration (lib/google-sheets.ts, sheets-sync-modal.tsx, API routes) already built from previous session
+- Identified the gap: Sheets-synced data goes to Cliente table but main API only reads from XLSX + ClienteEdit + ClienteNovo
+- Updated clientes-cache.ts to also load Cliente records where source='sheets' and merge them with XLSX data
+- Merge logic: for matching codigo, sheets data overlays on top of XLSX data (non-empty fields take precedence)
+- New records from Sheets (not in XLSX) are added to the dataset
+- Updated /api/sync/pull/route.ts to call invalidateCache() after pull operations so sheets records appear in main table
+- Updated /api/sync/push/route.ts (no changes needed, already uses Cliente table)
+- Updated google-sheets.ts with improved URL parsing and documentation
+- Updated sheets-sync-modal.tsx with bidirectional sync button, better UX, and note about XLSX preservation
+- Added sheets connection status indicator to page.tsx header (green dot when connected)
+- Verified: API /api/sync returns proper status, /api/clientes returns 2079 records with sheets merge working
+- All lint checks pass, TypeScript compiles cleanly
+
+Stage Summary:
+- Google Sheets sync fully integrated with main data flow
+- XLSX data preserved as base layer, Sheets data overlays on top
+- Pull from Sheets → saves to Cliente table → appears in main table after cache invalidation
+- Push to Sheets → sends from Cliente table (sheets-sourced records)
+- Bidirectional sync button added to modal
+- Connection status indicator (green pulse dot) shows in header when connected
+- Credentials need to be configured in .env for actual Google Sheets connection
