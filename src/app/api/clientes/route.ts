@@ -194,28 +194,31 @@ function dbToRecord(c: {
   };
 }
 
-// Cache the parsed data in memory
+// Cache the parsed data in memory — never expire, invalidate on write
 let cachedRecords: ClienteRecord[] | null = null;
-let cachedTimestamp = 0;
-const CACHE_TTL = 5 * 60 * 1000;
 
 async function getRecords(): Promise<ClienteRecord[]> {
-  const now = Date.now();
-  if (cachedRecords && (now - cachedTimestamp) < CACHE_TTL) {
-    return cachedRecords;
+  if (cachedRecords) return cachedRecords;
+
+  // Try JSON cache first (much faster, less memory than XLSX parse)
+  const jsonCachePath = path.join(process.cwd(), "upload", "clientes_cache.json");
+  let rawData: Record<string, string>[];
+  
+  if (fs.existsSync(jsonCachePath)) {
+    rawData = JSON.parse(fs.readFileSync(jsonCachePath, "utf-8"));
+  } else {
+    // Fallback to XLSX parse
+    const filePath = path.join(
+      process.cwd(),
+      "upload",
+      "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
+    );
+    const fileBuffer = fs.readFileSync(filePath);
+    const workbook = XLSX.read(fileBuffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    rawData = XLSX.utils.sheet_to_json(worksheet);
   }
-
-  const filePath = path.join(
-    process.cwd(),
-    "upload",
-    "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
-  );
-
-  const fileBuffer = fs.readFileSync(filePath);
-  const workbook = XLSX.read(fileBuffer, { type: "buffer" });
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  const rawData: Record<string, string>[] = XLSX.utils.sheet_to_json(worksheet);
 
   // Load all editable fields from DB
   const edits = await db.clienteEdit.findMany();
@@ -271,8 +274,6 @@ async function getRecords(): Promise<ClienteRecord[]> {
   const novoRecords = novos.map(dbToRecord);
   cachedRecords = [...cachedRecords, ...novoRecords];
 
-  cachedTimestamp = now;
-
   return cachedRecords;
 }
 
@@ -286,18 +287,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const vendedor = searchParams.get("vendedor") || "";
+    const cidade = searchParams.get("cidade") || "";
+    const uf = searchParams.get("uf") || "";
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
-
-    const filePath = path.join(
-      process.cwd(),
-      "upload",
-      "Cadastro de Clientes -Mtech Geral _ Ativos e Inativos_corrigido_2026_04_23_parte_0_de_3.xlsx"
-    );
-
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ error: "Arquivo não encontrado" }, { status: 404 });
-    }
 
     const allRecords = await getRecords();
 
@@ -329,6 +322,18 @@ export async function GET(request: NextRequest) {
     if (vendedor) {
       filtered = filtered.filter(
         (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
+      );
+    }
+
+    if (cidade) {
+      filtered = filtered.filter(
+        (r) => r.cidade.toLowerCase() === cidade.toLowerCase()
+      );
+    }
+
+    if (uf) {
+      filtered = filtered.filter(
+        (r) => r.uf.toLowerCase() === uf.toLowerCase()
       );
     }
 
@@ -381,6 +386,8 @@ export async function GET(request: NextRequest) {
     // Get unique values for filters
     const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
     const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
+    const uniqueCidades = [...new Set(allRecords.map((r) => r.cidade).filter(Boolean))];
+    const uniqueUfs = [...new Set(allRecords.map((r) => r.uf).filter(Boolean))];
 
     // Summary stats
     const situacaoCadastralStats: Record<string, number> = {};
@@ -388,6 +395,40 @@ export async function GET(request: NextRequest) {
       const key = r.situacao_cadastral || "Sem info";
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
+
+    // Dias sem venda stats (server-side)
+    function getNowBrasilia(): Date {
+      const now = new Date();
+      return new Date(now.getTime() + (now.getTimezoneOffset() + 180) * 60000);
+    }
+    function parseDdMmYyyy(dateStr: string): Date | null {
+      if (!dateStr) return null;
+      const match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (!match) return null;
+      const d = new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    function calcDiasSemVenda(ultimaVenda: string): number | null {
+      if (!ultimaVenda) return null;
+      const saleDate = parseDdMmYyyy(ultimaVenda);
+      if (!saleDate) return null;
+      const now = getNowBrasilia();
+      const sale = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      return Math.floor((today.getTime() - sale.getTime()) / 86400000);
+    }
+
+    let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, preto = 0;
+    for (const r of allRecords) {
+      const dias = calcDiasSemVenda(r.parsed.ultima_venda);
+      if (dias === null) { preto++; continue; }
+      if (dias <= 30) verde++;
+      else if (dias <= 60) amarelo++;
+      else if (dias <= 90) laranja++;
+      else if (dias <= 120) vermelho++;
+      else preto++;
+    }
+    const diasSemVendaStats = { verde, amarelo, laranja, vermelho, preto };
 
     // Pagination
     const total = filtered.length;
@@ -408,10 +449,13 @@ export async function GET(request: NextRequest) {
       filters: {
         situacao_cadastral: uniqueSituacaoCadastral.sort(),
         vendedores: uniqueVendedores.sort(),
+        cidades: uniqueCidades.sort(),
+        ufs: uniqueUfs.sort(),
       },
       stats: {
         total: allRecords.length,
         situacao_cadastral: situacaoCadastralStats,
+        dias_sem_venda: diasSemVendaStats,
       },
     });
   } catch (error) {
@@ -513,9 +557,31 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
     }
 
+    // Get old values for audit logging
+    const existingNovo = await db.clienteNovo.findUnique({ where: { codigo } });
+    const existingEdit = await db.clienteEdit.findUnique({ where: { codigo } });
+
+    const oldValues: Record<string, string> = existingNovo
+      ? { telefone1: existingNovo.telefone1, telefone2: existingNovo.telefone2, telefone3: existingNovo.telefone3, telefone4: existingNovo.telefone4, email1: existingNovo.email1, email2: existingNovo.email2, email3: existingNovo.email3, pessoaContato: existingNovo.pessoaContato, observacoes: existingNovo.observacoes }
+      : existingEdit
+        ? { telefone1: existingEdit.telefone1, telefone2: existingEdit.telefone2, telefone3: existingEdit.telefone3, telefone4: existingEdit.telefone4, email1: existingEdit.email1, email2: existingEdit.email2, email3: existingEdit.email3, pessoaContato: existingEdit.pessoaContato, observacoes: existingEdit.observacoes }
+        : {};
+
+    // Create audit logs for changed fields
+    const fields: Record<string, string | undefined> = { telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes };
+    for (const [field, newValue] of Object.entries(fields)) {
+      if (newValue !== undefined) {
+        const oldVal = oldValues[field] ?? "";
+        if (oldVal !== newValue) {
+          await db.auditLog.create({
+            data: { codigo, field, oldValue: oldVal, newValue, changedBy: "user" },
+          });
+        }
+      }
+    }
+
     // Check if this is a DB-created client (ClienteNovo)
-    const novo = await db.clienteNovo.findUnique({ where: { codigo } });
-    if (novo) {
+    if (existingNovo) {
       // Update directly in ClienteNovo
       const updated = await db.clienteNovo.update({
         where: { codigo },
