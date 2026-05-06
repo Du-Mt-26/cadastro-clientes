@@ -62,3 +62,13 @@ model ClienteNovo {
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 }
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  codigo     String
+  field      String
+  oldValue   String   @default("")
+  newValue   String   @default("")
+  changedBy  String   @default("user")
+  createdAt  DateTime @default(now())
+}
