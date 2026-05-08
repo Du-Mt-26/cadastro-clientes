@@ -50,6 +50,17 @@ model Cliente {
   observacoes       String  @default("")
   source            String  @default("manual")   // "xlsx" | "sheets" | "manual"
   sheetsRow         Int     @default(0)           // Row number in Google Sheets (for sync)
+
+  // ─── Carteira / Bolsão / Carteira Fria ────────
+  // carteira: "CARTEIRA_ATUAL" | "BOLSAO" | "CARTEIRA_FRIA"
+  // After 151 days without purchase → BOLSAO (available to all vendors)
+  // After all vendors tried and no sale → CARTEIRA_FRIA (out of focus)
+  carteira                   String   @default("CARTEIRA_ATUAL")
+  vendedorId                 String?  // FK → User.id (system-assigned vendor)
+  dataEntradaBolsao          DateTime?
+  dataEntradaCarteiraFria    DateTime?
+  vendedoresQueAbordaram     String   @default("")  // comma-separated User IDs who approached
+
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 
@@ -59,6 +70,27 @@ model Cliente {
   @@index([vendedor])
   @@index([situacaoCadastral])
   @@index([source])
+  @@index([carteira])
+  @@index([vendedorId])
+}
+
+// ─── User / Authentication ────────────────────────
+
+model User {
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  password         String                          // bcrypt hash
+  role             String   @default("VENDEDOR")   // ADMIN | DIRETOR_COMERCIAL | GERENTE_COMERCIAL | VENDEDOR
+  active           Boolean  @default(true)
+  twoFactorSecret  String?                          // TOTP secret (base32), null = 2FA not set up
+  twoFactorEnabled Boolean  @default(false)
+  imagem           String?  @default("")            // avatar URL or base64
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([email])
+  @@index([role])
 }
 
 // ─── Google Sheets Sync Config ─────────────────────

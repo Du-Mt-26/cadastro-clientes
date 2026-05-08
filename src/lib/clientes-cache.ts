@@ -52,6 +52,8 @@ export function dbToRecord(c: {
   regSimples: string
   vendedor: string
   observacoes?: string
+  carteira?: string
+  vendedorId?: string | null
 }): ClienteRecord {
   return {
     razao_social: c.razaoSocial,
@@ -78,6 +80,8 @@ export function dbToRecord(c: {
     cnae_principal: c.cnaePrincipal,
     natureza_juridica: c.naturezaJuridica,
     porte: c.porte,
+    carteira: c.carteira || 'CARTEIRA_ATUAL',
+    vendedor_id: c.vendedorId || '',
     parsed: {
       codigo: c.codigo,
       ie_rg: c.ieRg,

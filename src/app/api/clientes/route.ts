@@ -3,9 +3,20 @@ import { db } from "@/lib/db";
 import { calcDiasSemVenda } from "@/lib/clientes";
 import type { ClienteRecord } from "@/lib/types";
 import { getRecords, invalidateCache, dbToRecord } from "@/lib/clientes-cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    const role = (session.user as any).role;
+    const userId = (session.user as any).id;
+    const userName = session.user.name || "";
+
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limitParam = searchParams.get("limit") || "50";
@@ -16,13 +27,24 @@ export async function GET(request: NextRequest) {
     const vendedor = searchParams.get("vendedor") || "";
     const cidade = searchParams.get("cidade") || "";
     const uf = searchParams.get("uf") || "";
+    const carteira = searchParams.get("carteira") || "";
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
     const allRecords = await getRecords();
 
+    // ── Role-based filtering for VENDEDOR ──
+    let visibleRecords = allRecords;
+    if (role === "VENDEDOR") {
+      visibleRecords = allRecords.filter(
+        (r) =>
+          r.parsed.vendedor.toLowerCase() === userName.toLowerCase() ||
+          r.carteira === "BOLSAO"
+      );
+    }
+
     // Apply filters
-    let filtered = allRecords;
+    let filtered = visibleRecords;
 
     if (search) {
       const searchLower = search.toLowerCase();
@@ -64,6 +86,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (carteira) {
+      filtered = filtered.filter(
+        (r) => r.carteira === carteira
+      );
+    }
+
     // Sorting
     if (sortBy) {
       const getFieldValue = (r: ClienteRecord, field: string): string => {
@@ -98,6 +126,7 @@ export async function GET(request: NextRequest) {
           ultima_venda: r.parsed.ultima_venda,
           reg_simples: r.parsed.reg_simples,
           vendedor: r.parsed.vendedor,
+          carteira: r.carteira,
         };
         return (fieldMap[field] || "").toLowerCase();
       };
@@ -110,22 +139,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get unique values for filters
-    const uniqueSituacaoCadastral = [...new Set(allRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
-    const uniqueVendedores = [...new Set(allRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
-    const uniqueCidades = [...new Set(allRecords.map((r) => r.cidade).filter(Boolean))];
-    const uniqueUfs = [...new Set(allRecords.map((r) => r.uf).filter(Boolean))];
+    // Get unique values for filters (from visibleRecords, not allRecords)
+    const uniqueSituacaoCadastral = [...new Set(visibleRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
+    const uniqueVendedores = [...new Set(visibleRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
+    const uniqueCidades = [...new Set(visibleRecords.map((r) => r.cidade).filter(Boolean))];
+    const uniqueUfs = [...new Set(visibleRecords.map((r) => r.uf).filter(Boolean))];
+    const uniqueCarteiras = [...new Set(visibleRecords.map((r) => r.carteira).filter(Boolean))];
 
-    // Summary stats
+    // Summary stats (from visibleRecords)
     const situacaoCadastralStats: Record<string, number> = {};
-    for (const r of allRecords) {
+    for (const r of visibleRecords) {
       const key = r.situacao_cadastral || "Sem info";
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
 
     // Dias sem venda stats
     let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, preto = 0;
-    for (const r of allRecords) {
+    for (const r of visibleRecords) {
       const dias = calcDiasSemVenda(r.parsed.ultima_venda);
       if (dias === null) { preto++; continue; }
       if (dias <= 30) verde++;
@@ -135,6 +165,15 @@ export async function GET(request: NextRequest) {
       else preto++;
     }
     const diasSemVendaStats = { verde, amarelo, laranja, vermelho, preto };
+
+    // Carteira stats
+    let carteiraAtual = 0, bolsao = 0, carteiraFria = 0;
+    for (const r of visibleRecords) {
+      if (r.carteira === "CARTEIRA_ATUAL") carteiraAtual++;
+      else if (r.carteira === "BOLSAO") bolsao++;
+      else if (r.carteira === "CARTEIRA_FRIA") carteiraFria++;
+    }
+    const carteiraStats = { carteira_atual: carteiraAtual, bolsao, carteira_fria: carteiraFria };
 
     // Pagination
     const total = filtered.length;
@@ -157,11 +196,13 @@ export async function GET(request: NextRequest) {
         vendedores: uniqueVendedores.sort(),
         cidades: uniqueCidades.sort(),
         ufs: uniqueUfs.sort(),
+        carteiras: uniqueCarteiras.sort(),
       },
       stats: {
-        total: allRecords.length,
+        total: visibleRecords.length,
         situacao_cadastral: situacaoCadastralStats,
         dias_sem_venda: diasSemVendaStats,
+        carteira: carteiraStats,
       },
     });
   } catch (error) {
@@ -176,6 +217,12 @@ export async function GET(request: NextRequest) {
 // POST - Create a new client
 export async function POST(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { cnpj } = body;
 
@@ -257,6 +304,13 @@ export async function POST(request: NextRequest) {
 // PATCH - Save editable fields for a client
 export async function PATCH(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    const changedBy = session.user.name || session.user.email || "user";
+
     const body = await request.json();
     const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes } = body;
 
@@ -290,7 +344,7 @@ export async function PATCH(request: NextRequest) {
         const oldVal = oldValues[field] ?? "";
         if (oldVal !== newValue) {
           await db.auditLog.create({
-            data: { codigo, field, oldValue: oldVal, newValue, changedBy: "user" },
+            data: { codigo, field, oldValue: oldVal, newValue, changedBy },
           });
         }
       }

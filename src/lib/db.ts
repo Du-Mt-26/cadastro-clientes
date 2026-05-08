@@ -6,11 +6,11 @@
  *
  * The driverAdapters preview feature allows Prisma to use the libSQL adapter
  * for Turso connections in serverless environments.
+ *
+ * Turso imports are lazy to avoid Turbopack ESM issues in development.
  */
 
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
-import { createClient } from '@libsql/client'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -22,7 +22,12 @@ function createPrismaClient(): PrismaClient {
   const tursoToken = process.env.TURSO_AUTH_TOKEN
 
   if (tursoUrl && tursoToken) {
-    // Turso / libSQL connection
+    // Turso / libSQL connection — lazy import to avoid Turbopack issues
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { createClient } = require('@libsql/client')
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { PrismaLibSql } = require('@prisma/adapter-libsql')
+
     const libsql = createClient({
       url: tursoUrl,
       authToken: tursoToken,
