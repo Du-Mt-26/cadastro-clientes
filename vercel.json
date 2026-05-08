@@ -8,6 +8,6 @@ installCommand: bun install
 framework: nextjs
 
 # Environment variables needed (set in Vercel dashboard):
-# DATABASE_URL=file:./db/custom.db  (for local dev only)
-# TURSO_DATABASE_URL=libsql://your-db-name-your-org.turso.co
-# TURSO_AUTH_TOKEN=your-auth-token
+# DATABASE_URL=postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/mtech_db?sslmode=require
+# NEXTAUTH_SECRET=your-secret-key-here
+# NEXTAUTH_URL=https://your-app.vercel.app

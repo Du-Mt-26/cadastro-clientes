@@ -56,7 +56,7 @@ async function main() {
 
   for (const user of allUsers) {
     const firstName = user.name.split(' ')[0].toLowerCase()
-    // SQLite doesn't support case-insensitive contains, so we filter in JS
+    // Filter in JS for compatibility
     const matching = unassigned.filter(c =>
       c.vendedor.toLowerCase().includes(firstName)
     )
