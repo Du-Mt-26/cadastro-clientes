@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { calcDiasSemVenda } from "@/lib/clientes";
-import type { ClienteRecord, EditableFields } from "@/lib/types";
+import type { ClienteRecord } from "@/lib/types";
 import { getRecords, invalidateCache, dbToRecord } from "@/lib/clientes-cache";
 
 export async function GET(request: NextRequest) {
@@ -165,9 +165,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Error reading XLSX file:", error);
+    console.error("Error loading clients:", error);
     return NextResponse.json(
-      { error: "Erro ao processar o arquivo" },
+      { error: "Erro ao carregar clientes" },
       { status: 500 }
     );
   }
@@ -189,23 +189,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if CNPJ already exists
-    const existing = await db.clienteNovo.findUnique({ where: { cnpj: cnpjDigits } });
+    const existing = await db.cliente.findFirst({ where: { cnpj: cnpjDigits } });
     if (existing) {
       return NextResponse.json({ error: "CNPJ já cadastrado" }, { status: 409 });
     }
 
     // Generate next codigo
-    const lastNovo = await db.clienteNovo.findFirst({
+    const lastClient = await db.cliente.findFirst({
       orderBy: { codigo: "desc" },
     });
     let nextNum = 1;
-    if (lastNovo?.codigo) {
-      const parsed = parseInt(lastNovo.codigo, 10);
+    if (lastClient?.codigo) {
+      const parsed = parseInt(lastClient.codigo, 10);
       if (!isNaN(parsed)) nextNum = parsed + 1;
     }
     const codigo = String(nextNum).padStart(6, "0");
 
-    const novo = await db.clienteNovo.create({
+    const novo = await db.cliente.create({
       data: {
         codigo,
         ieRg: body.ieRg || "",
@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
         ultimaVenda: "",
         regSimples: body.regSimples || "",
         vendedor: body.vendedor || "",
+        source: "manual",
       },
     });
 
@@ -264,14 +265,23 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Get old values for audit logging
-    const existingNovo = await db.clienteNovo.findUnique({ where: { codigo } });
-    const existingEdit = await db.clienteEdit.findUnique({ where: { codigo } });
+    const existing = await db.cliente.findUnique({ where: { codigo } });
 
-    const oldValues: Record<string, string> = existingNovo
-      ? { telefone1: existingNovo.telefone1, telefone2: existingNovo.telefone2, telefone3: existingNovo.telefone3, telefone4: existingNovo.telefone4, email1: existingNovo.email1, email2: existingNovo.email2, email3: existingNovo.email3, pessoaContato: existingNovo.pessoaContato, observacoes: existingNovo.observacoes }
-      : existingEdit
-        ? { telefone1: existingEdit.telefone1, telefone2: existingEdit.telefone2, telefone3: existingEdit.telefone3, telefone4: existingEdit.telefone4, email1: existingEdit.email1, email2: existingEdit.email2, email3: existingEdit.email3, pessoaContato: existingEdit.pessoaContato, observacoes: existingEdit.observacoes }
-        : {};
+    if (!existing) {
+      return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
+    }
+
+    const oldValues: Record<string, string> = {
+      telefone1: existing.telefone1,
+      telefone2: existing.telefone2,
+      telefone3: existing.telefone3,
+      telefone4: existing.telefone4,
+      email1: existing.email1,
+      email2: existing.email2,
+      email3: existing.email3,
+      pessoaContato: existing.pessoaContato,
+      observacoes: existing.observacoes,
+    };
 
     // Create audit logs for changed fields
     const fields: Record<string, string | undefined> = { telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes };
@@ -286,31 +296,10 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    // Check if this is a DB-created client (ClienteNovo)
-    if (existingNovo) {
-      // Update directly in ClienteNovo
-      const updated = await db.clienteNovo.update({
-        where: { codigo },
-        data: {
-          telefone1: telefone1 ?? undefined,
-          telefone2: telefone2 ?? undefined,
-          telefone3: telefone3 ?? undefined,
-          telefone4: telefone4 ?? undefined,
-          email1: email1 ?? undefined,
-          email2: email2 ?? undefined,
-          email3: email3 ?? undefined,
-          pessoaContato: pessoaContato ?? undefined,
-          observacoes: observacoes ?? undefined,
-        },
-      });
-      invalidateCache();
-      return NextResponse.json({ success: true, edit: dbToRecord(updated) });
-    }
-
-    // Otherwise, use ClienteEdit for XLSX-sourced records
-    const edit = await db.clienteEdit.upsert({
+    // Update the Cliente record directly
+    const updated = await db.cliente.update({
       where: { codigo },
-      update: {
+      data: {
         telefone1: telefone1 ?? undefined,
         telefone2: telefone2 ?? undefined,
         telefone3: telefone3 ?? undefined,
@@ -321,24 +310,12 @@ export async function PATCH(request: NextRequest) {
         pessoaContato: pessoaContato ?? undefined,
         observacoes: observacoes ?? undefined,
       },
-      create: {
-        codigo,
-        telefone1: telefone1 || "",
-        telefone2: telefone2 || "",
-        telefone3: telefone3 || "",
-        telefone4: telefone4 || "",
-        email1: email1 || "",
-        email2: email2 || "",
-        email3: email3 || "",
-        pessoaContato: pessoaContato || "",
-        observacoes: observacoes || "",
-      },
     });
 
     // Invalidate cache so next read picks up changes
     invalidateCache();
 
-    return NextResponse.json({ success: true, edit });
+    return NextResponse.json({ success: true, edit: dbToRecord(updated) });
   } catch (error) {
     console.error("Error saving edit:", error);
     return NextResponse.json(

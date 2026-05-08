@@ -29,14 +29,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Also check DB directly for ClienteNovo (in case cache isn't updated yet)
-    const dbExisting = await db.clienteNovo.findUnique({ where: { cnpj: digits } });
+    // Also check DB directly for manually created clients
+    const dbExisting = await db.cliente.findFirst({ where: { cnpj: digits } });
     if (dbExisting) {
       return NextResponse.json({
         exists: true,
         codigo: dbExisting.codigo,
         razao_social: dbExisting.razaoSocial,
-        source: "cadastro_novo",
+        source: dbExisting.source === "manual" ? "cadastro_novo" : "planilha",
         message: `Cliente já cadastrado com código ${dbExisting.codigo} — ${dbExisting.razaoSocial}`,
       });
     }
