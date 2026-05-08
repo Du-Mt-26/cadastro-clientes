@@ -2,41 +2,21 @@
  * Seed script: Import XLSX data into the Cliente table.
  *
  * Usage:
- *   bun run prisma/seed.ts          # local SQLite
- *   TURSO_DATABASE_URL=... TURSO_AUTH_TOKEN=... bun run prisma/seed.ts  # Turso
+ *   bun run prisma/seed.ts
+ *
+ * Set DATABASE_URL in .env — can be local PostgreSQL or Neon.
  *
  * This script reads the XLSX file (or JSON cache), parses all records,
  * and upserts them into the Cliente table with source='xlsx'.
- *
- * It also applies any existing ClienteEdit overrides.
  */
 
 import * as XLSX from 'xlsx'
 import * as fs from 'fs'
 import * as path from 'path'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
-import { createClient } from '@libsql/client'
 import { parseObservacoes, formatDate } from '../src/lib/clientes'
 
-// ─── Create DB client ─────────────────────────────
-
-function createPrismaClient(): PrismaClient {
-  const tursoUrl = process.env.TURSO_DATABASE_URL
-  const tursoToken = process.env.TURSO_AUTH_TOKEN
-
-  if (tursoUrl && tursoToken) {
-    console.log('🌐 Using Turso (libSQL)')
-    const libsql = createClient({ url: tursoUrl, authToken: tursoToken })
-    const adapter = new PrismaLibSql(libsql)
-    return new PrismaClient({ adapter, log: [] })
-  }
-
-  console.log('💾 Using local SQLite')
-  return new PrismaClient({ log: [] })
-}
-
-const db = createPrismaClient()
+const db = new PrismaClient({ log: [] })
 
 // ─── Paths ──────────────────────────────────────────
 
