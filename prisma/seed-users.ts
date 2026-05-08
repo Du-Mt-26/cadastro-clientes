@@ -14,7 +14,7 @@ async function main() {
   console.log('🌱 Seeding users...')
 
   const users = [
-    { name: 'Renato', email: 'renato@mtech.com.br', password: 'Mtech@2024', role: 'ADMIN' },
+    { name: 'Renato', email: 'renato@renatoalvesfilho.com.br', password: '123mudar@2026!', role: 'ADMIN' },
     { name: 'Artur', email: 'artur@mtech.com.br', password: 'Mtech@2024', role: 'ADMIN' },
     { name: 'Priscila', email: 'priscila@mtech.com.br', password: 'Mtech@2024', role: 'DIRETOR_COMERCIAL' },
     { name: 'Michelly', email: 'michelly@mtech.com.br', password: 'Mtech@2024', role: 'GERENTE_COMERCIAL' },
