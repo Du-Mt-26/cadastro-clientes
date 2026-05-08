@@ -58,8 +58,16 @@ import {
   Briefcase,
   RotateCcw,
   Sheet as SheetIcon,
+  Shield,
+  LogOut,
+  UserCog,
 } from 'lucide-react'
 import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
+import { useSession } from 'next-auth/react'
+import { AuthUserMenu } from '@/components/auth-user-menu'
+import { UserManagementModal } from '@/components/user-management-modal'
+import { TwoFactorSetupModal } from '@/components/two-factor-setup-modal'
+import { CARTEIRA_LABELS, CARTEIRA_COLORS } from '@/lib/auth'
 import type {
   ParsedFields,
   EditableFields,
@@ -227,6 +235,7 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
 
 function Home() {
   const { theme, setTheme } = useTheme()
+  const { data: session, status: sessionStatus } = useSession()
   const searchParams = useSearchParams()
   const router = useRouter()
   const [mounted, setMounted] = useState(false)
@@ -239,6 +248,7 @@ function Home() {
   const [cidade, setCidade] = useState(searchParams.get('cidade') || 'all')
   const [uf, setUf] = useState(searchParams.get('uf') || 'all')
   const [diasSemVendaFilter, setDiasSemVendaFilter] = useState(searchParams.get('dias') || 'all')
+  const [carteiraFilter, setCarteiraFilter] = useState(searchParams.get('carteira') || 'all')
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
   const [limit, setLimit] = useState<string>(searchParams.get('limit') || '10')
   const [debouncedSearch, setDebouncedSearch] = useState(search)
@@ -275,6 +285,10 @@ function Home() {
   const [showSheetsSync, setShowSheetsSync] = useState(false)
   const [sheetsConnected, setSheetsConnected] = useState(false)
 
+  // Auth modals
+  const [showUserManagement, setShowUserManagement] = useState(false)
+  const [show2FASetup, setShow2FASetup] = useState(false)
+
   // Load sheets connection status
   useEffect(() => {
     fetch('/api/sync')
@@ -291,6 +305,13 @@ function Home() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [loadingAudit, setLoadingAudit] = useState(false)
 
+  // Auth guard - redirect to login if not authenticated
+  useEffect(() => {
+    if (sessionStatus === 'unauthenticated') {
+      router.push('/login')
+    }
+  }, [sessionStatus, router])
+
   // Dark mode mounted
   useEffect(() => { setMounted(true) }, [])
 
@@ -303,11 +324,12 @@ function Home() {
     if (cidade !== 'all') params.set('cidade', cidade)
     if (uf !== 'all') params.set('uf', uf)
     if (diasSemVendaFilter !== 'all') params.set('dias', diasSemVendaFilter)
+    if (carteiraFilter !== 'all') params.set('carteira', carteiraFilter)
     if (page > 1) params.set('page', page.toString())
     if (limit !== '10') params.set('limit', limit)
     if (sortBy) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
     router.replace(`?${params.toString()}`, { scroll: false })
-  }, [search, situacaoCadastral, vendedor, cidade, uf, diasSemVendaFilter, page, limit, sortBy, sortOrder, router])
+  }, [search, situacaoCadastral, vendedor, cidade, uf, diasSemVendaFilter, carteiraFilter, page, limit, sortBy, sortOrder, router])
 
   // Reorder columns
   const columns = useMemo(() => {
@@ -359,8 +381,9 @@ function Home() {
     if (uf !== 'all') params.set('uf', uf)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (sortBy && !CLIENT_SORT_KEYS.has(sortBy)) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
+    if (carteiraFilter && carteiraFilter !== 'all') params.set('carteira', carteiraFilter)
     return params
-  }, [situacaoCadastral, vendedor, cidade, uf, debouncedSearch, sortBy, sortOrder])
+  }, [situacaoCadastral, vendedor, cidade, uf, debouncedSearch, sortBy, sortOrder, carteiraFilter])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -495,7 +518,7 @@ function Home() {
   }
 
   // Clear filters
-  const hasActiveFilters = search !== '' || situacaoCadastral !== 'all' || vendedor !== 'all' || cidade !== 'all' || uf !== 'all' || diasSemVendaFilter !== 'all'
+  const hasActiveFilters = search !== '' || situacaoCadastral !== 'all' || vendedor !== 'all' || cidade !== 'all' || uf !== 'all' || diasSemVendaFilter !== 'all' || carteiraFilter !== 'all'
 
   const clearFilters = () => {
     setSearch('')
@@ -504,6 +527,7 @@ function Home() {
     setCidade('all')
     setUf('all')
     setDiasSemVendaFilter('all')
+    setCarteiraFilter('all')
     setSortBy('')
     setSortOrder('asc')
     setPage(1)
@@ -624,6 +648,32 @@ function Home() {
   // Reset focusedRow when data changes
   useEffect(() => { setFocusedRow(-1) }, [data?.data])
 
+  // Show loading while checking session
+  if (sessionStatus === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <Loader2 className="size-8 animate-spin text-teal-600" />
+      </div>
+    )
+  }
+
+  if (!session) return null
+
+  const handleBolsaoCheck = async () => {
+    try {
+      const res = await fetch('/api/clientes/bolsao', { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      toast({
+        title: '✓ Bolsão atualizado',
+        description: `${data.movedToBolsao} clientes movidos para o Bolsão, ${data.movedToCarteiraFria} para Carteira Fria`,
+      })
+      fetchData()
+    } catch (e: any) {
+      toast({ title: '✗ Erro', description: e.message, variant: 'destructive' })
+    }
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900">
       <header className="bg-white dark:bg-slate-900 border-b dark:border-slate-700 shadow-sm sticky top-0 z-10">
@@ -645,6 +695,12 @@ function Home() {
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
               </Button>
+              {session && ['ADMIN', 'DIRETOR_COMERCIAL', 'GERENTE_COMERCIAL'].includes((session.user as any).role) && (
+                <Button variant="outline" size="sm" onClick={handleBolsaoCheck} className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30">
+                  <Briefcase className="size-4 mr-1.5" />Bolsão 151+
+                </Button>
+              )}
+              <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} />
             </div>
           </div>
         </div>
@@ -652,10 +708,32 @@ function Home() {
 
       <main className="flex-1 max-w-[1900px] mx-auto w-full px-4 sm:px-6 py-4">
         {/* Stats Row 1 */}
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="grid grid-cols-3 lg:grid-cols-5 gap-3 mb-3">
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Ativa</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-3"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div className="min-w-0"><p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Irregular</p><div className="flex flex-col gap-0.5 text-xs"><span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-red-400 dark:text-red-500">baixadas</span></span><span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-amber-400 dark:text-amber-500">inaptas</span></span><span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-orange-400 dark:text-orange-500">suspensas</span></span></div></div></CardContent></Card>
+          <Card className="border-0 shadow-sm dark:bg-slate-800">
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0">
+                <Briefcase className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Bolsão</p>
+                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm dark:bg-slate-800">
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+                <Users className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Carteira Fria</p>
+                <p className="text-lg font-bold text-slate-500 dark:text-slate-400">{(data?.stats.carteira?.carteira_fria ?? 0).toLocaleString('pt-BR')}</p>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Stats Row 2: 5 Dias Sem Venda */}
@@ -685,6 +763,7 @@ function Home() {
               <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
               <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{data?.filters.cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
               <Select value={uf} onValueChange={(val) => { setUf(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[100px]"><SelectValue placeholder="UF" /></SelectTrigger><SelectContent><SelectItem value="all">Todos UF</SelectItem>{data?.filters.ufs.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent></Select>
+              <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_ATUAL">Carteira Atual</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
               <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-30">0–30 dias 🟢</SelectItem><SelectItem value="31-60">31–60 dias 🟡</SelectItem><SelectItem value="61-90">61–90 dias 🟠</SelectItem><SelectItem value="91-120">91–120 dias 🔴</SelectItem><SelectItem value="121+">121+ dias 🔴</SelectItem></SelectContent></Select>
               <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
@@ -742,6 +821,18 @@ function Home() {
                             const val = getRecordValue(r, col.key)
 
                             if (col.key === 'situacao_cadastral') return <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></td>
+                            if (col.key === 'carteira') {
+                              const carteiraValue = (r as any).carteira || 'CARTEIRA_ATUAL'
+                              const label = CARTEIRA_LABELS[carteiraValue] || carteiraValue
+                              const colorClass = CARTEIRA_COLORS[carteiraValue] || ''
+                              return (
+                                <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                                  <Badge variant="outline" className={`text-[11px] ${colorClass}`}>
+                                    {label}
+                                  </Badge>
+                                </td>
+                              )
+                            }
                             if (col.key === 'reg_simples') return <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</td>
 
                             if (col.editable && editableKey) {
@@ -1076,6 +1167,9 @@ function Home() {
         onOpenChange={setShowSheetsSync}
         onSyncComplete={fetchData}
       />
+
+      <UserManagementModal open={showUserManagement} onOpenChange={setShowUserManagement} />
+      <TwoFactorSetupModal open={show2FASetup} onOpenChange={setShow2FASetup} />
     </div>
   )
 }

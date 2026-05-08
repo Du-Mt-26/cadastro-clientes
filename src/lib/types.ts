@@ -63,6 +63,8 @@ export interface ClienteRecord {
   cnae_principal: string
   natureza_juridica: string
   porte: string
+  carteira: string          // "CARTEIRA_ATUAL" | "BOLSAO" | "CARTEIRA_FRIA"
+  vendedor_id: string      // system-assigned vendor user ID
   parsed: ParsedFields
   editable: EditableFields
 }
@@ -81,6 +83,7 @@ export interface ApiResponse {
     vendedores: string[]
     cidades: string[]
     ufs: string[]
+    carteiras: string[]
   }
   stats: {
     total: number
@@ -91,6 +94,11 @@ export interface ApiResponse {
       laranja: number
       vermelho: number
       preto: number
+    }
+    carteira: {
+      carteira_atual: number
+      bolsao: number
+      carteira_fria: number
     }
   }
 }
@@ -160,6 +168,7 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'email2', label: 'Email 2', editable: true, minWidth: '140px' },
   { key: 'email3', label: 'Email 3', editable: true, minWidth: '140px' },
   { key: 'vendedor', label: 'Vendedora', minWidth: '140px' },
+  { key: 'carteira', label: 'Carteira', minWidth: '130px' },
   { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
   { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
   { key: 'ie_rg', label: 'IE/RG', minWidth: '100px' },
