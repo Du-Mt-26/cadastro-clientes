@@ -88,3 +88,26 @@ Stage Summary:
 - No more libsql/Turso dependencies in codebase
 - db.ts is dramatically simpler (3 lines of logic vs 20+ before)
 - To deploy: 1) Create Neon account, 2) Get connection string, 3) Set DATABASE_URL in Vercel, 4) Run `bun run db:neon && prisma db push`
+
+---
+Task ID: neon-seed-deploy
+Agent: Main
+Task: Connect to Neon PostgreSQL, push schema, seed data
+
+Work Log:
+- Updated .env with Neon DATABASE_URL (removed channel_binding=require — not compatible with Prisma)
+- Switched Prisma schema to PostgreSQL (from schema.neon.prisma)
+- Ran prisma db push — all 4 tables created in Neon (sa-east-1 São Paulo)
+- Seeded 5 users via prisma/seed-users.ts
+- Created prisma/seed-remaining.ts for efficient resume seeding
+- Seeded 2,079 clients to Neon in batches of 50 — zero errors
+- Verified: connection OK, all data intact, dev server works with Neon
+- Lint passes
+
+Stage Summary:
+- Neon database fully populated: 2,079 clients + 5 users
+- Connection string: postgresql://neondb_owner:npg_MCW4YHh1UZIz@ep-winter-river-ac6s8rcm-pooler.sa-east-1.aws.neon.tech/neondb?sslmode=require
+- Region: sa-east-1 (São Paulo)
+- Using pooler endpoint (correct for serverless/Vercel)
+- Removed channel_binding=require (incompatible with Prisma)
+- For Vercel: set DATABASE_URL, NEXTAUTH_SECRET, NEXTAUTH_URL as env vars
