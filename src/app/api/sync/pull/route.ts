@@ -8,6 +8,7 @@ import { invalidateCache } from '@/lib/clientes-cache'
 
 /**
  * POST /api/sync/pull — Pull data from Google Sheets to DB
+ * Uses public CSV export — no credentials needed.
  */
 export async function POST() {
   try {
@@ -17,12 +18,11 @@ export async function POST() {
       return NextResponse.json({ error: 'Planilha não conectada. Conecte primeiro.' }, { status: 400 })
     }
 
-    const result = await pullFromSheet(config.spreadsheetId, config.sheetName, config.headerRow)
+    const gidMatch = config.sheetsUrl?.match(/[#&]gid=(\d+)/)
+    const gid = gidMatch?.[1]
 
-    // Update sync status
+    const result = await pullFromSheet(config.spreadsheetId, config.sheetName, config.headerRow, gid)
     await updateSyncStatus(config.id, result)
-
-    // Invalidate main data cache so sheets records appear in the table
     invalidateCache()
 
     return NextResponse.json({

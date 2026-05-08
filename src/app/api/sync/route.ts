@@ -4,8 +4,6 @@ import {
   connectToSheet,
   saveSyncConfig,
   getSyncConfig,
-  hasCredentials,
-  getServiceAccountEmail,
 } from '@/lib/google-sheets'
 
 /**
@@ -14,14 +12,10 @@ import {
 export async function GET() {
   try {
     const config = await getSyncConfig()
-    const credentialsConfigured = hasCredentials()
-    const serviceEmail = getServiceAccountEmail()
 
     return NextResponse.json({
       configured: !!config,
       connected: config?.connected || false,
-      credentialsConfigured,
-      serviceEmail,
       config: config ? {
         id: config.id,
         sheetsUrl: config.sheetsUrl,
@@ -46,8 +40,7 @@ export async function GET() {
 
 /**
  * POST /api/sync — Connect to a Google Sheet by URL
- *
- * Body: { url: string, sheetName?: string, headerRow?: number }
+ * No credentials needed — uses public CSV export.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -58,50 +51,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'URL é obrigatória' }, { status: 400 })
     }
 
-    // Parse URL (handles shortened URLs too)
     const parsed = await parseFlexibleUrl(url)
-
     if (!parsed) {
       return NextResponse.json({
         error: 'URL inválida. Use uma URL do Google Sheets como: https://docs.google.com/spreadsheets/d/.../edit',
       }, { status: 400 })
     }
 
-    // Try to connect
-    const result = await connectToSheet(parsed.spreadsheetId)
+    const result = await connectToSheet(parsed.spreadsheetId, parsed.gid)
 
     if (!result.success) {
-      // Save as disconnected config
-      await saveSyncConfig({
-        sheetsUrl: url,
-        spreadsheetId: parsed.spreadsheetId,
-        sheetName: '',
-        connected: false,
-      })
-
-      return NextResponse.json({
-        success: false,
-        error: result.error,
-        spreadsheetId: parsed.spreadsheetId,
-      }, { status: 400 })
+      await saveSyncConfig({ sheetsUrl: url, spreadsheetId: parsed.spreadsheetId, sheetName: '', connected: false })
+      return NextResponse.json({ success: false, error: result.error, spreadsheetId: parsed.spreadsheetId }, { status: 400 })
     }
 
-    // Save connected config
-    await saveSyncConfig({
-      sheetsUrl: url,
-      spreadsheetId: parsed.spreadsheetId,
-      sheetName: result.sheetName,
-      connected: true,
-      headerRow: body.headerRow || 1,
-    })
+    await saveSyncConfig({ sheetsUrl: url, spreadsheetId: parsed.spreadsheetId, sheetName: result.sheetName, connected: true, headerRow: body.headerRow || 1 })
 
     return NextResponse.json({
-      success: true,
-      spreadsheetId: parsed.spreadsheetId,
-      title: result.title,
-      sheetName: result.sheetName,
-      rowCount: result.rowCount,
-      headers: result.headers,
+      success: true, spreadsheetId: parsed.spreadsheetId,
+      title: result.title, sheetName: result.sheetName,
+      rowCount: result.rowCount, headers: result.headers,
     })
   } catch (error) {
     console.error('Error connecting to sheet:', error)
@@ -116,12 +85,7 @@ export async function DELETE() {
   try {
     const config = await getSyncConfig()
     if (config) {
-      await saveSyncConfig({
-        sheetsUrl: '',
-        spreadsheetId: '',
-        sheetName: '',
-        connected: false,
-      })
+      await saveSyncConfig({ sheetsUrl: '', spreadsheetId: '', sheetName: '', connected: false })
     }
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -1,0 +1,13 @@
+# Vercel deployment configuration
+# This file tells Vercel how to build and deploy the Next.js app
+
+$schema: https://openapi.vercel.sh/vercel.json
+
+buildCommand: bun run build
+installCommand: bun install
+framework: nextjs
+
+# Environment variables needed (set in Vercel dashboard):
+# DATABASE_URL=file:./db/custom.db  (for local dev only)
+# TURSO_DATABASE_URL=libsql://your-db-name-your-org.turso.co
+# TURSO_AUTH_TOKEN=your-auth-token

@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
-import {
-  pushToSheet,
-  getSyncConfig,
-  updateSyncStatus,
-} from '@/lib/google-sheets'
+import { getSyncConfig } from '@/lib/google-sheets'
 
 /**
  * POST /api/sync/push — Push data from DB to Google Sheets
+ *
+ * Push requires write access (Service Account credentials).
+ * Currently only reading (pull/import) from public sheets is supported.
  */
 export async function POST() {
   try {
@@ -16,15 +15,10 @@ export async function POST() {
       return NextResponse.json({ error: 'Planilha não conectada. Conecte primeiro.' }, { status: 400 })
     }
 
-    const result = await pushToSheet(config.spreadsheetId, config.sheetName, config.headerRow)
-
-    // Update sync status
-    await updateSyncStatus(config.id, result)
-
     return NextResponse.json({
-      success: result.success,
-      pushed: result.pushed,
-      errors: result.errors,
+      success: false,
+      pushed: 0,
+      errors: ['Envio para a planilha requer credenciais de escrita. Atualmente só é possível importar (ler) dados da planilha pública.'],
     })
   } catch (error) {
     console.error('Error pushing to sheet:', error)
