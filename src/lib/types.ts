@@ -89,11 +89,10 @@ export interface ApiResponse {
     total: number
     situacao_cadastral: Record<string, number>
     dias_sem_venda: {
-      verde: number
-      amarelo: number
-      laranja: number
-      vermelho: number
-      preto: number
+      verde: number    // 0–48 dias
+      amarelo: number  // 49–90 dias
+      laranja: number  // 91–150 dias
+      vermelho: number // 151+ dias
     }
     carteira: {
       carteira_atual: number
