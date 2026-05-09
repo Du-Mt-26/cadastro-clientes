@@ -18,14 +18,16 @@ import {
   Users,
   LogOut,
   ChevronDown,
+  Briefcase,
 } from 'lucide-react'
 
 interface AuthUserMenuProps {
   onOpen2FA: () => void
   onOpenUserManagement: () => void
+  onOpenVendedorManagement: () => void
 }
 
-export function AuthUserMenu({ onOpen2FA, onOpenUserManagement }: AuthUserMenuProps) {
+export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenVendedorManagement }: AuthUserMenuProps) {
   const { data: session } = useSession()
 
   if (!session?.user) return null
@@ -38,6 +40,7 @@ export function AuthUserMenu({ onOpen2FA, onOpenUserManagement }: AuthUserMenuPr
 
   const role = user.role as Role
   const isAdmin = role === 'ADMIN'
+  const canManageVendedores = role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
   const initials = user.name
     ?.split(' ')
     .map((n) => n[0])
@@ -94,6 +97,13 @@ export function AuthUserMenu({ onOpen2FA, onOpenUserManagement }: AuthUserMenuPr
             <DropdownMenuItem onClick={onOpenUserManagement} className="cursor-pointer">
               <Users className="size-4" />
               <span>Gerenciar Usuários</span>
+            </DropdownMenuItem>
+          )}
+
+          {canManageVendedores && (
+            <DropdownMenuItem onClick={onOpenVendedorManagement} className="cursor-pointer">
+              <Briefcase className="size-4" />
+              <span>Cadastro de Vendedores</span>
             </DropdownMenuItem>
           )}
         </DropdownMenuGroup>

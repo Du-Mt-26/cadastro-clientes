@@ -66,6 +66,7 @@ import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import { useSession } from 'next-auth/react'
 import { AuthUserMenu } from '@/components/auth-user-menu'
 import { UserManagementModal } from '@/components/user-management-modal'
+import { VendedorManagementModal } from '@/components/vendedor-management-modal'
 import { TwoFactorSetupModal } from '@/components/two-factor-setup-modal'
 import { CARTEIRA_LABELS, CARTEIRA_COLORS } from '@/lib/auth'
 import type {
@@ -286,6 +287,7 @@ function Home() {
 
   // Auth modals
   const [showUserManagement, setShowUserManagement] = useState(false)
+  const [showVendedorManagement, setShowVendedorManagement] = useState(false)
   const [show2FASetup, setShow2FASetup] = useState(false)
 
   // Load sheets connection status
@@ -690,10 +692,13 @@ function Home() {
               <Button variant="outline" size="sm" onClick={() => { setColumnOrder(DEFAULT_COLUMNS.map(c => c.key)); localStorage.removeItem('columnOrder') }} className="text-slate-600 dark:text-slate-400"><RotateCcw className="size-4 mr-1.5" />Restaurar Colunas</Button>
               <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
+              {session && (session.user as any).role !== 'VENDEDOR' && (
+                <Button variant="outline" size="sm" onClick={() => setShowVendedorManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Briefcase className="size-4 mr-1.5" />Vendedores</Button>
+              )}
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
               </Button>
-              <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} />
+              <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} onOpenVendedorManagement={() => setShowVendedorManagement(true)} />
             </div>
           </div>
         </div>
@@ -1138,11 +1143,76 @@ function Home() {
                       <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                         <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Briefcase className="size-3.5" />Comercial</legend>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Vendedor</span><span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || '—'}</span></div>
+                          <div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Vendedor</span>
+                            {(session?.user as any)?.role !== 'VENDEDOR' && data?.filters.vendedorUsers ? (
+                              <Select
+                                value={r.vendedor_id || '_none'}
+                                onValueChange={async (val) => {
+                                  try {
+                                    const res = await fetch('/api/vendedores/assign', {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({
+                                        clienteCodigo: r.parsed.codigo,
+                                        vendedorId: val === '_none' ? null : val,
+                                      }),
+                                    })
+                                    if (!res.ok) throw new Error('Erro ao atribuir')
+                                    toast({ title: '✓ Vendedor atualizado', description: val === '_none' ? 'Vendedor removido' : 'Cliente atribuído com sucesso' })
+                                    fetchData()
+                                  } catch (e) {
+                                    toast({ title: '✗ Erro', description: 'Não foi possível atribuir vendedor', variant: 'destructive' })
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sem vendedor" /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="_none">— Sem vendedor —</SelectItem>
+                                  {data.filters.vendedorUsers.map((v) => (
+                                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || '—'}</span>
+                            )}
+                          </div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Reg. Simples</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Dias Sem Venda</span><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Última Venda</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.ultima_venda || '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Cadastro</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.cadastro || '—'}</span></div>
+                          <div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Carteira</span>
+                            {(session?.user as any)?.role !== 'VENDEDOR' ? (
+                              <Select
+                                value={r.carteira || 'CARTEIRA_REVENDAS'}
+                                onValueChange={async (val) => {
+                                  try {
+                                    await fetch('/api/clientes', {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ codigo: r.parsed.codigo, carteira: val }),
+                                    })
+                                    toast({ title: '✓ Carteira atualizada', description: 'Cliente movido com sucesso' })
+                                    fetchData()
+                                  } catch (e) {
+                                    toast({ title: '✗ Erro', description: 'Não foi possível mover carteira', variant: 'destructive' })
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem>
+                                  <SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem>
+                                  <SelectItem value="BOLSAO">Bolsão</SelectItem>
+                                  <SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge variant="outline" className={`text-[11px] ${CARTEIRA_COLORS[r.carteira || 'CARTEIRA_REVENDAS'] || ''}`}>{CARTEIRA_LABELS[r.carteira || 'CARTEIRA_REVENDAS']}</Badge>
+                            )}
+                          </div>
                         </div>
                       </fieldset>
                     )}
@@ -1243,6 +1313,7 @@ function Home() {
       />
 
       <UserManagementModal open={showUserManagement} onOpenChange={setShowUserManagement} />
+      <VendedorManagementModal open={showVendedorManagement} onOpenChange={setShowVendedorManagement} />
       <TwoFactorSetupModal open={show2FASetup} onOpenChange={setShow2FASetup} />
     </div>
   )
