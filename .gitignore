@@ -51,4 +51,17 @@ prompt
 
 server.log
 # Skills directory
-/skills/
+/skills/db/
+upload/
+dev.log
+switch-db.sh
+DEPLOY.md
+worklog.md
+prisma/.backups/
+.zscripts/
+examples/
+mini-services/
+Caddyfile
+keep-alive.sh
+download/
+switch-db.sh
