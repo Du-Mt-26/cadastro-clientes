@@ -182,7 +182,7 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'bairro', label: 'Bairro', minWidth: '130px' },
   { key: 'cidade', label: 'Cidade', minWidth: '120px' },
   { key: 'cep', label: 'CEP', minWidth: '90px' },
-  { key: 'uf', label: 'UF', minWidth: '50px' },
+  { key: 'uf', label: 'Estado', minWidth: '80px' },
   { key: 'data_situacao', label: 'Data Situação', minWidth: '100px' },
   { key: 'data_abertura', label: 'Data Abertura', minWidth: '100px' },
   { key: 'cnae_principal', label: 'CNAE Principal', minWidth: '200px' },

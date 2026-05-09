@@ -729,10 +729,6 @@ function Home() {
               <span className="text-sm text-purple-700 dark:text-purple-400 flex items-center gap-2"><Building2 className="size-4" />Corporativo</span>
               <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</span>
             </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2"><Briefcase className="size-4" />Bolsão</span>
-              <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
             <div className="flex items-center justify-between py-1.5">
               <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2"><Users className="size-4" />Carteira Fria</span>
               <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{(data?.stats.carteira?.carteira_fria ?? 0).toLocaleString('pt-BR')}</span>
@@ -741,7 +737,7 @@ function Home() {
         </div>
 
         {/* Stats Row 1 — Desktop: card grid */}
-        <div className="hidden md:grid grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
+        <div className="hidden md:grid grid-cols-3 lg:grid-cols-5 gap-3 mb-3">
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Ativa</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-3"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div className="min-w-0"><p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Irregular</p><div className="flex flex-col gap-0.5 text-xs"><span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-red-400 dark:text-red-500">baixadas</span></span><span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-amber-400 dark:text-amber-500">inaptas</span></span><span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-orange-400 dark:text-orange-500">suspensas</span></span></div></div></CardContent></Card>
@@ -764,17 +760,6 @@ function Home() {
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Corporativo</p>
                 <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800">
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0">
-                <Briefcase className="size-4" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Bolsão</p>
-                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
           </Card>
@@ -959,13 +944,7 @@ function Home() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between px-4 py-2 border-t dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Exibindo {((page - 1) * parseInt(limit) + 1)}–{Math.min(page * parseInt(limit), data?.pagination.total ?? 0)} de {(data?.pagination.total ?? 0).toLocaleString('pt-BR')} clientes
-                {sortBy && <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortBy === 'dias_sem_venda' ? (sortOrder === 'asc' ? '↑ Menor→Maior' : '↓ Maior→Menor') : (sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A')}</span>}
-                {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
-              </p>
-            </div>
+
           </CardContent>
         </Card>
       </main>
@@ -973,9 +952,14 @@ function Home() {
       <footer className="mt-auto bg-white dark:bg-slate-900 border-t dark:border-slate-700 sticky bottom-0 z-10">
         <div className="max-w-[1900px] mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <p className="text-xs text-slate-400 dark:text-slate-500">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Exibindo {showingAll ? 'todos' : `${(page - 1) * parseInt(limit) + 1}–${Math.min(page * parseInt(limit), data?.pagination.total ?? 0)}`} de {(data?.pagination.total ?? 0).toLocaleString('pt-BR')} clientes
+                {sortBy && <span className="ml-2 text-xs text-slate-400 dark:text-slate-500">Ordenado por {columns.find(c => c.key === sortBy)?.label} {sortBy === 'dias_sem_venda' ? (sortOrder === 'asc' ? '↑ Menor→Maior' : '↓ Maior→Menor') : (sortOrder === 'asc' ? '↑ A-Z' : '↓ Z-A')}</span>}
+                {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
+              </p>
               <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-[110px] h-7 text-xs"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
+              <p className="text-xs text-slate-400 dark:text-slate-500">Mtech Geral © {new Date().getFullYear()}</p>
             </div>
             {!showingAll && (
               <div className="flex items-center gap-1">
@@ -1042,7 +1026,7 @@ function Home() {
                   <div><label className="text-xs text-slate-500 dark:text-slate-400">Bairro</label><Input value={form.bairro} onChange={(e) => updateForm('bairro', e.target.value)} /></div>
                   <div><label className="text-xs text-slate-500 dark:text-slate-400">Cidade</label><Input value={form.cidade} onChange={(e) => updateForm('cidade', e.target.value)} /></div>
                   <div><label className="text-xs text-slate-500 dark:text-slate-400">CEP</label><Input value={form.cep} onChange={(e) => updateForm('cep', e.target.value)} placeholder="00000-000" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">UF</label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} maxLength={2} className="uppercase" /></div>
+                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Estado</label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} maxLength={2} className="uppercase" /></div>
                 </div>
               </fieldset>
               <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
@@ -1172,7 +1156,7 @@ function Home() {
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Bairro</span><span className="text-slate-800 dark:text-slate-200">{r.bairro || '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Cidade</span><span className="text-slate-800 dark:text-slate-200">{r.cidade || '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CEP</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cep ? formatCep(r.cep) : '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">UF</span><span className="text-slate-800 dark:text-slate-200">{r.uf || '—'}</span></div>
+                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Estado</span><span className="text-slate-800 dark:text-slate-200">{r.uf || '—'}</span></div>
                         </div>
                       </fieldset>
                     )}
