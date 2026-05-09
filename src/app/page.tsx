@@ -99,7 +99,7 @@ import {
 
 function getDiasSemVendaBg(dias: number | null): string {
   if (dias === null) return 'bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800'
-  if (dias <= 48) return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700'
+  if (dias <= 45) return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700'
   if (dias <= 90) return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700'
   if (dias <= 150) return 'bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700'
   return 'bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800'
@@ -409,8 +409,8 @@ function Home() {
     return data.data.filter((r) => {
       const dias = calcDiasSemVenda(r.parsed.ultima_venda)
       switch (diasSemVendaFilter) {
-        case '0-48': return dias !== null && dias <= 48
-        case '49-90': return dias !== null && dias > 48 && dias <= 90
+        case '0-45': return dias !== null && dias <= 45
+        case '46-90': return dias !== null && dias > 45 && dias <= 90
         case '91-150': return dias !== null && dias > 90 && dias <= 150
         case '151+': return dias === null || dias > 150
         default: return true
@@ -772,12 +772,12 @@ function Home() {
         <div className="md:hidden bg-white dark:bg-slate-800 rounded-lg shadow-sm p-3 mb-4">
           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Dias Sem Venda</p>
           <div className="space-y-1.5">
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '0-48' ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-2 ring-emerald-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-48' ? 'all' : '0-48'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-emerald-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">0–48 dias</span></span>
+            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '0-45' ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-2 ring-emerald-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }}>
+              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-emerald-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">0–45 dias</span></span>
               <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{dsvStats.verde.toLocaleString('pt-BR')}</span>
             </button>
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '49-90' ? 'bg-amber-100 dark:bg-amber-900/40 ring-2 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '49-90' ? 'all' : '49-90'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-amber-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">49–90 dias</span></span>
+            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '46-90' ? 'bg-amber-100 dark:bg-amber-900/40 ring-2 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }}>
+              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-amber-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">46–90 dias</span></span>
               <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{dsvStats.amarelo.toLocaleString('pt-BR')}</span>
             </button>
             <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '91-150' ? 'bg-orange-100 dark:bg-orange-900/40 ring-2 ring-orange-400' : 'hover:bg-orange-50 dark:hover:bg-orange-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }}>
@@ -793,16 +793,16 @@ function Home() {
 
         {/* Stats Row 2: Dias Sem Venda — Desktop: colored cards */}
         <div className="hidden md:grid grid-cols-4 gap-3 mb-4">
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '0-48' ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-48' ? 'all' : '0-48'); setPage(1) }}>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '0-45' ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }}>
             <CardContent className="p-4 flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg">
               <div className="flex items-center justify-center size-10 rounded-lg bg-emerald-500 text-white shrink-0"><Clock className="size-5" /></div>
-              <div><p className="text-xs text-emerald-600 dark:text-emerald-400">0–48 dias</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{dsvStats.verde.toLocaleString('pt-BR')}</p></div>
+              <div><p className="text-xs text-emerald-600 dark:text-emerald-400">0–45 dias</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{dsvStats.verde.toLocaleString('pt-BR')}</p></div>
             </CardContent>
           </Card>
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '49-90' ? 'ring-2 ring-amber-500' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '49-90' ? 'all' : '49-90'); setPage(1) }}>
+          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '46-90' ? 'ring-2 ring-amber-500' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }}>
             <CardContent className="p-4 flex items-center gap-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
               <div className="flex items-center justify-center size-10 rounded-lg bg-amber-500 text-white shrink-0"><Clock className="size-5" /></div>
-              <div><p className="text-xs text-amber-600 dark:text-amber-400">49–90 dias</p><p className="text-xl font-bold text-amber-700 dark:text-amber-300">{dsvStats.amarelo.toLocaleString('pt-BR')}</p></div>
+              <div><p className="text-xs text-amber-600 dark:text-amber-400">46–90 dias</p><p className="text-xl font-bold text-amber-700 dark:text-amber-300">{dsvStats.amarelo.toLocaleString('pt-BR')}</p></div>
             </CardContent>
           </Card>
           <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '91-150' ? 'ring-2 ring-orange-500' : 'hover:ring-2 hover:ring-orange-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }}>
@@ -840,7 +840,7 @@ function Home() {
                 <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{(uf === 'all' ? (data?.filters.cidades || []) : (data?.filters.cidadesPorUf?.[uf] || [])).map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
               </div>
               <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem><SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
-              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-48">0–48 dias 🟢</SelectItem><SelectItem value="49-90">49–90 dias 🟡</SelectItem><SelectItem value="91-150">91–150 dias 🟠</SelectItem><SelectItem value="151+">151+ dias 🔴</SelectItem></SelectContent></Select>
+              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-45">0–45 dias 🟢</SelectItem><SelectItem value="46-90">46–90 dias 🟡</SelectItem><SelectItem value="91-150">91–150 dias 🟠</SelectItem><SelectItem value="151+">151+ dias 🔴</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
                 <Button variant="outline" size="sm" onClick={clearFilters} className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400">
                   <XCircle className="size-4 mr-1.5" />Limpar Filtros
