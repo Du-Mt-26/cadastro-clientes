@@ -185,13 +185,15 @@ export function getClientFilterForRole(role: Role, userId: string): {
 // ─── Carteira Labels ───────────────────────────────
 
 export const CARTEIRA_LABELS: Record<string, string> = {
-  CARTEIRA_ATUAL: 'Carteira Atual',
+  CARTEIRA_REVENDAS: 'Carteira Revendas',
+  CARTEIRA_CORPORATIVO: 'Carteira Corporativo',
   BOLSAO: 'Bolsão (151+ dias)',
   CARTEIRA_FRIA: 'Carteira Fria',
 }
 
 export const CARTEIRA_COLORS: Record<string, string> = {
-  CARTEIRA_ATUAL: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
+  CARTEIRA_REVENDAS: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
+  CARTEIRA_CORPORATIVO: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
   BOLSAO: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
   CARTEIRA_FRIA: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
 }
