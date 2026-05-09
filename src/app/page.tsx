@@ -693,11 +693,6 @@ function Home() {
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
               </Button>
-              {session && ['ADMIN', 'DIRETOR_COMERCIAL', 'GERENTE_COMERCIAL'].includes((session.user as any).role) && (
-                <Button variant="outline" size="sm" onClick={handleBolsaoCheck} className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30">
-                  <Briefcase className="size-4 mr-1.5" />Bolsão 151+
-                </Button>
-              )}
               <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} />
             </div>
           </div>
@@ -852,11 +847,12 @@ function Home() {
               </div>
               <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger><SelectContent><SelectItem value="all">Situação Cadastral</SelectItem>{data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select>
               <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
-              <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{data?.filters.cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
-              <Select value={uf} onValueChange={(val) => { setUf(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[100px]"><SelectValue placeholder="UF" /></SelectTrigger><SelectContent><SelectItem value="all">Todos UF</SelectItem>{data?.filters.ufs.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent></Select>
+              <div className="flex gap-1.5 w-full sm:w-auto">
+                <Select value={uf} onValueChange={(val) => { setUf(val); setCidade('all'); setPage(1) }}><SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="Estado" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Estados</SelectItem>{data?.filters.ufs.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent></Select>
+                <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{(uf === 'all' ? (data?.filters.cidades || []) : (data?.filters.cidadesPorUf?.[uf] || [])).map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
+              </div>
               <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem><SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
               <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-48">0–48 dias 🟢</SelectItem><SelectItem value="49-90">49–90 dias 🟡</SelectItem><SelectItem value="91-150">91–150 dias 🟠</SelectItem><SelectItem value="151+">151+ dias 🔴</SelectItem></SelectContent></Select>
-              <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
                 <Button variant="outline" size="sm" onClick={clearFilters} className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400">
                   <XCircle className="size-4 mr-1.5" />Limpar Filtros
@@ -977,7 +973,10 @@ function Home() {
       <footer className="mt-auto bg-white dark:bg-slate-900 border-t dark:border-slate-700 sticky bottom-0 z-10">
         <div className="max-w-[1900px] mx-auto px-4 sm:px-6 py-2.5">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p className="text-xs text-slate-400 dark:text-slate-500">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-slate-400 dark:text-slate-500">Cadastro de Clientes — Mtech Geral © {new Date().getFullYear()}</p>
+              <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-[110px] h-7 text-xs"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
+            </div>
             {!showingAll && (
               <div className="flex items-center gap-1">
                 <Button variant="outline" size="sm" onClick={() => setPage(1)} disabled={page <= 1 || loading} className="hidden sm:inline-flex h-8 text-xs">Primeira</Button>

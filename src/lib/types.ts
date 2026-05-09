@@ -83,6 +83,7 @@ export interface ApiResponse {
     vendedores: string[]
     cidades: string[]
     ufs: string[]
+    cidadesPorUf: Record<string, string[]>
     carteiras: string[]
   }
   stats: {
