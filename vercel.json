@@ -1,13 +1,4 @@
-# Vercel deployment configuration
-# This file tells Vercel how to build and deploy the Next.js app
-
-$schema: https://openapi.vercel.sh/vercel.json
-
-buildCommand: bun run build
-installCommand: bun install
-framework: nextjs
-
-# Environment variables needed (set in Vercel dashboard):
-# DATABASE_URL=postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/mtech_db?sslmode=require
-# NEXTAUTH_SECRET=your-secret-key-here
-# NEXTAUTH_URL=https://your-app.vercel.app
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs"
+}
