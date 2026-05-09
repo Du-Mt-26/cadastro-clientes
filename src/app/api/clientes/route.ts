@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
     }
     const role = (session.user as any).role;
     const userId = (session.user as any).id;
-    const userName = session.user.name || "";
 
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
@@ -33,12 +32,14 @@ export async function GET(request: NextRequest) {
 
     const allRecords = await getRecords();
 
-    // ── Role-based filtering for VENDEDOR ──
+    // ── Role-based filtering ──
+    // ADMIN, DIRETOR_COMERCIAL, GERENTE_COMERCIAL → see all clients
+    // VENDEDOR → see only own clients (by vendedorId) + Bolsão + unassigned Revendas
     let visibleRecords = allRecords;
     if (role === "VENDEDOR") {
       visibleRecords = allRecords.filter(
         (r) =>
-          r.parsed.vendedor.toLowerCase() === userName.toLowerCase() ||
+          r.vendedor_id === userId ||
           r.carteira === "BOLSAO" ||
           (r.carteira === "CARTEIRA_REVENDAS" && !r.vendedor_id)
       );
@@ -147,6 +148,13 @@ export async function GET(request: NextRequest) {
     const uniqueUfs = [...new Set(visibleRecords.map((r) => r.uf).filter(Boolean))];
     const uniqueCarteiras = [...new Set(visibleRecords.map((r) => r.carteira).filter(Boolean))];
 
+    // Get all active vendor users for assignment dropdown
+    const vendedorUsers = await db.user.findMany({
+      where: { active: true, role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] } },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, role: true },
+    });
+
     // Cidades grouped by UF (for cascading filter)
     const cidadesPorUf: Record<string, string[]> = {};
     for (const r of visibleRecords) {
@@ -211,6 +219,7 @@ export async function GET(request: NextRequest) {
         ufs: uniqueUfs.sort(),
         cidadesPorUf,
         carteiras: uniqueCarteiras.sort(),
+        vendedorUsers: vendedorUsers.map(v => ({ id: v.id, name: v.name, role: v.role })),
       },
       stats: {
         total: visibleRecords.length,
@@ -326,10 +335,16 @@ export async function PATCH(request: NextRequest) {
     const changedBy = session.user.name || session.user.email || "user";
 
     const body = await request.json();
-    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes } = body;
+    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes, carteira } = body;
 
     if (!codigo) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
+    }
+
+    // Check permission for carteira changes
+    const role = (session.user as any).role;
+    if (carteira !== undefined && role === "VENDEDOR") {
+      return NextResponse.json({ error: "Vendedores não podem alterar carteira" }, { status: 403 });
     }
 
     // Get old values for audit logging
@@ -365,19 +380,30 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Update the Cliente record directly
+    const updateData: any = {};
+    if (telefone1 !== undefined) updateData.telefone1 = telefone1;
+    if (telefone2 !== undefined) updateData.telefone2 = telefone2;
+    if (telefone3 !== undefined) updateData.telefone3 = telefone3;
+    if (telefone4 !== undefined) updateData.telefone4 = telefone4;
+    if (email1 !== undefined) updateData.email1 = email1;
+    if (email2 !== undefined) updateData.email2 = email2;
+    if (email3 !== undefined) updateData.email3 = email3;
+    if (pessoaContato !== undefined) updateData.pessoaContato = pessoaContato;
+    if (observacoes !== undefined) updateData.observacoes = observacoes;
+    if (carteira !== undefined) {
+      updateData.carteira = carteira;
+      // Set timestamp fields for carteira changes
+      if (carteira === "BOLSAO" && !existing.dataEntradaBolsao) updateData.dataEntradaBolsao = new Date();
+      if (carteira === "CARTEIRA_FRIA" && !existing.dataEntradaCarteiraFria) updateData.dataEntradaCarteiraFria = new Date();
+      // Audit log for carteira change
+      await db.auditLog.create({
+        data: { codigo, field: "carteira", oldValue: existing.carteira, newValue: carteira, changedBy },
+      });
+    }
+
     const updated = await db.cliente.update({
       where: { codigo },
-      data: {
-        telefone1: telefone1 ?? undefined,
-        telefone2: telefone2 ?? undefined,
-        telefone3: telefone3 ?? undefined,
-        telefone4: telefone4 ?? undefined,
-        email1: email1 ?? undefined,
-        email2: email2 ?? undefined,
-        email3: email3 ?? undefined,
-        pessoaContato: pessoaContato ?? undefined,
-        observacoes: observacoes ?? undefined,
-      },
+      data: updateData,
     });
 
     // Invalidate cache so next read picks up changes
