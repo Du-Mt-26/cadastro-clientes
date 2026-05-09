@@ -716,10 +716,6 @@ function Home() {
               <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</span>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-emerald-700 dark:text-emerald-400 flex items-center gap-2"><CheckCircle2 className="size-4" />Ativa</span>
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
               <span className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2"><AlertTriangle className="size-4" />Irregular</span>
               <div className="text-right text-xs">
                 <span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} baixadas</span>
@@ -737,10 +733,6 @@ function Home() {
               <span className="text-sm text-purple-700 dark:text-purple-400 flex items-center gap-2"><Building2 className="size-4" />Corporativo</span>
               <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</span>
             </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2"><AlertCircle className="size-4" />Bolsão (151+)</span>
-              <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
             <div className="flex items-center justify-between py-1.5">
               <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2"><Users className="size-4" />Carteira Fria</span>
               <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{(data?.stats.carteira?.carteira_fria ?? 0).toLocaleString('pt-BR')}</span>
@@ -749,9 +741,8 @@ function Home() {
         </div>
 
         {/* Stats Row 1 — Desktop: card grid */}
-        <div className="hidden md:grid grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
+        <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Ativa</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-3"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div className="min-w-0"><p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Irregular</p><div className="flex flex-col gap-0.5 text-xs"><span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-red-400 dark:text-red-500">baixadas</span></span><span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-amber-400 dark:text-amber-500">inaptas</span></span><span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-orange-400 dark:text-orange-500">suspensas</span></span></div></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800">
             <CardContent className="p-3 flex items-center gap-2">
@@ -772,17 +763,6 @@ function Home() {
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Corporativo</p>
                 <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${carteiraFilter === 'BOLSAO' ? 'ring-2 ring-amber-500' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setCarteiraFilter(carteiraFilter === 'BOLSAO' ? 'all' : 'BOLSAO'); setPage(1) }}>
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0">
-                <AlertCircle className="size-4" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Bolsão (151+)</p>
-                <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
           </Card>
