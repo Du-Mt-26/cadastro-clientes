@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
           data: {
             carteira: 'BOLSAO',
             dataEntradaBolsao: now,
+            vendedorId: null,  // Remove from vendedor's carteira — goes to shared pool
           },
         })
         movedToBolsao++
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     // Also check for Carteira Fria: clients in BOLSAO that have been approached by all active vendors
     const activeVendors = await db.user.findMany({
-      where: { role: 'VENDEDOR', active: true },
+      where: { role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] }, active: true },
       select: { id: true },
     })
     const activeVendorIds = activeVendors.map(v => v.id)
