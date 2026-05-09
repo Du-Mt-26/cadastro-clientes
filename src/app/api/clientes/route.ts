@@ -147,6 +147,18 @@ export async function GET(request: NextRequest) {
     const uniqueUfs = [...new Set(visibleRecords.map((r) => r.uf).filter(Boolean))];
     const uniqueCarteiras = [...new Set(visibleRecords.map((r) => r.carteira).filter(Boolean))];
 
+    // Cidades grouped by UF (for cascading filter)
+    const cidadesPorUf: Record<string, string[]> = {};
+    for (const r of visibleRecords) {
+      if (r.uf && r.cidade) {
+        if (!cidadesPorUf[r.uf]) cidadesPorUf[r.uf] = [];
+        if (!cidadesPorUf[r.uf].includes(r.cidade)) cidadesPorUf[r.uf].push(r.cidade);
+      }
+    }
+    for (const uf of Object.keys(cidadesPorUf)) {
+      cidadesPorUf[uf].sort();
+    }
+
     // Summary stats (from visibleRecords)
     const situacaoCadastralStats: Record<string, number> = {};
     for (const r of visibleRecords) {
@@ -197,6 +209,7 @@ export async function GET(request: NextRequest) {
         vendedores: uniqueVendedores.sort(),
         cidades: uniqueCidades.sort(),
         ufs: uniqueUfs.sort(),
+        cidadesPorUf,
         carteiras: uniqueCarteiras.sort(),
       },
       stats: {
