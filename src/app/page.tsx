@@ -727,6 +727,14 @@ function Home() {
               </div>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
+              <span className="text-sm text-teal-700 dark:text-teal-400 flex items-center gap-2"><Briefcase className="size-4" />Revendas</span>
+              <span className="text-sm font-bold text-teal-700 dark:text-teal-400">{(data?.stats.carteira?.carteira_revendas ?? 0).toLocaleString('pt-BR')}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
+              <span className="text-sm text-purple-700 dark:text-purple-400 flex items-center gap-2"><Building2 className="size-4" />Corporativo</span>
+              <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</span>
+            </div>
+            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
               <span className="text-sm text-amber-700 dark:text-amber-400 flex items-center gap-2"><Briefcase className="size-4" />Bolsão</span>
               <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</span>
             </div>
@@ -738,10 +746,32 @@ function Home() {
         </div>
 
         {/* Stats Row 1 — Desktop: card grid */}
-        <div className="hidden md:grid grid-cols-5 gap-3 mb-3">
+        <div className="hidden md:grid grid-cols-3 lg:grid-cols-6 gap-3 mb-3">
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 shrink-0"><CheckCircle2 className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Ativa</p><p className="text-lg font-bold text-emerald-700 dark:text-emerald-400">{(scStats['ATIVA'] ?? 0).toLocaleString('pt-BR')}</p></div></CardContent></Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-3"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div className="min-w-0"><p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Irregular</p><div className="flex flex-col gap-0.5 text-xs"><span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-red-400 dark:text-red-500">baixadas</span></span><span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-amber-400 dark:text-amber-500">inaptas</span></span><span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-orange-400 dark:text-orange-500">suspensas</span></span></div></div></CardContent></Card>
+          <Card className="border-0 shadow-sm dark:bg-slate-800">
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 shrink-0">
+                <Briefcase className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Revendas</p>
+                <p className="text-lg font-bold text-teal-700 dark:text-teal-400">{(data?.stats.carteira?.carteira_revendas ?? 0).toLocaleString('pt-BR')}</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="border-0 shadow-sm dark:bg-slate-800">
+            <CardContent className="p-3 flex items-center gap-2">
+              <div className="flex items-center justify-center size-9 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 shrink-0">
+                <Building2 className="size-4" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Corporativo</p>
+                <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</p>
+              </div>
+            </CardContent>
+          </Card>
           <Card className="border-0 shadow-sm dark:bg-slate-800">
             <CardContent className="p-3 flex items-center gap-2">
               <div className="flex items-center justify-center size-9 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 shrink-0">
@@ -750,17 +780,6 @@ function Home() {
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Bolsão</p>
                 <p className="text-lg font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800">
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
-                <Users className="size-4" />
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Carteira Fria</p>
-                <p className="text-lg font-bold text-slate-500 dark:text-slate-400">{(data?.stats.carteira?.carteira_fria ?? 0).toLocaleString('pt-BR')}</p>
               </div>
             </CardContent>
           </Card>
@@ -835,7 +854,7 @@ function Home() {
               <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
               <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{data?.filters.cidades.map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
               <Select value={uf} onValueChange={(val) => { setUf(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[100px]"><SelectValue placeholder="UF" /></SelectTrigger><SelectContent><SelectItem value="all">Todos UF</SelectItem>{data?.filters.ufs.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent></Select>
-              <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_ATUAL">Carteira Atual</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
+              <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem><SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
               <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-48">0–48 dias 🟢</SelectItem><SelectItem value="49-90">49–90 dias 🟡</SelectItem><SelectItem value="91-150">91–150 dias 🟠</SelectItem><SelectItem value="151+">151+ dias 🔴</SelectItem></SelectContent></Select>
               <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-full sm:w-[140px]"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
@@ -894,7 +913,7 @@ function Home() {
 
                             if (col.key === 'situacao_cadastral') return <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></td>
                             if (col.key === 'carteira') {
-                              const carteiraValue = (r as any).carteira || 'CARTEIRA_ATUAL'
+                              const carteiraValue = (r as any).carteira || 'CARTEIRA_REVENDAS'
                               const label = CARTEIRA_LABELS[carteiraValue] || carteiraValue
                               const colorClass = CARTEIRA_COLORS[carteiraValue] || ''
                               return (

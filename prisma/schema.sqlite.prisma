@@ -46,7 +46,7 @@ model Cliente {
   source            String  @default("manual")
   sheetsRow         Int     @default(0)
 
-  carteira                   String   @default("CARTEIRA_ATUAL")
+  carteira                   String   @default("CARTEIRA_REVENDAS")
   vendedorId                 String?
   dataEntradaBolsao          DateTime?
   dataEntradaCarteiraFria    DateTime?

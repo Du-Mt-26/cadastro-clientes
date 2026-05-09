@@ -80,7 +80,7 @@ export function dbToRecord(c: {
     cnae_principal: c.cnaePrincipal,
     natureza_juridica: c.naturezaJuridica,
     porte: c.porte,
-    carteira: c.carteira || 'CARTEIRA_ATUAL',
+    carteira: c.carteira || 'CARTEIRA_REVENDAS',
     vendedor_id: c.vendedorId || '',
     parsed: {
       codigo: c.codigo,

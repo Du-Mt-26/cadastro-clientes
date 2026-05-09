@@ -63,7 +63,7 @@ export interface ClienteRecord {
   cnae_principal: string
   natureza_juridica: string
   porte: string
-  carteira: string          // "CARTEIRA_ATUAL" | "BOLSAO" | "CARTEIRA_FRIA"
+  carteira: string          // "CARTEIRA_REVENDAS" | "CARTEIRA_CORPORATIVO" | "BOLSAO" | "CARTEIRA_FRIA"
   vendedor_id: string      // system-assigned vendor user ID
   parsed: ParsedFields
   editable: EditableFields
@@ -95,7 +95,8 @@ export interface ApiResponse {
       vermelho: number // 151+ dias
     }
     carteira: {
-      carteira_atual: number
+      carteira_revendas: number
+      carteira_corporativo: number
       bolsao: number
       carteira_fria: number
     }

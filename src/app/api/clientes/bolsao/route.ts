@@ -22,9 +22,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    // Find all clients in CARTEIRA_ATUAL
+    // Find all clients in CARTEIRA_REVENDAS or CARTEIRA_CORPORATIVO
     const clientes = await db.cliente.findMany({
-      where: { carteira: 'CARTEIRA_ATUAL' },
+      where: { carteira: { in: ['CARTEIRA_REVENDAS', 'CARTEIRA_CORPORATIVO'] } },
       select: { id: true, codigo: true, ultimaVenda: true, vendedorId: true },
     })
 
@@ -143,7 +143,7 @@ export async function PATCH(request: NextRequest) {
 
     if (action === 'mover' && carteira) {
       // Manually move client to a different carteira
-      const validCarteiras = ['CARTEIRA_ATUAL', 'BOLSAO', 'CARTEIRA_FRIA']
+      const validCarteiras = ['CARTEIRA_REVENDAS', 'CARTEIRA_CORPORATIVO', 'BOLSAO', 'CARTEIRA_FRIA']
       if (!validCarteiras.includes(carteira)) {
         return NextResponse.json({ error: 'Carteira inválida' }, { status: 400 })
       }
@@ -151,7 +151,7 @@ export async function PATCH(request: NextRequest) {
       const updateData: any = { carteira }
       if (carteira === 'BOLSAO') updateData.dataEntradaBolsao = new Date()
       if (carteira === 'CARTEIRA_FRIA') updateData.dataEntradaCarteiraFria = new Date()
-      if (carteira === 'CARTEIRA_ATUAL') {
+      if (carteira === 'CARTEIRA_REVENDAS' || carteira === 'CARTEIRA_CORPORATIVO') {
         updateData.dataEntradaBolsao = null
         updateData.dataEntradaCarteiraFria = null
         updateData.vendedoresQueAbordaram = ''

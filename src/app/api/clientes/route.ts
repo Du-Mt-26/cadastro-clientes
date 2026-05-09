@@ -166,13 +166,14 @@ export async function GET(request: NextRequest) {
     const diasSemVendaStats = { verde, amarelo, laranja, vermelho };
 
     // Carteira stats
-    let carteiraAtual = 0, bolsao = 0, carteiraFria = 0;
+    let carteiraRevendas = 0, carteiraCorporativo = 0, bolsao = 0, carteiraFria = 0;
     for (const r of visibleRecords) {
-      if (r.carteira === "CARTEIRA_ATUAL") carteiraAtual++;
+      if (r.carteira === "CARTEIRA_REVENDAS") carteiraRevendas++;
+      else if (r.carteira === "CARTEIRA_CORPORATIVO") carteiraCorporativo++;
       else if (r.carteira === "BOLSAO") bolsao++;
       else if (r.carteira === "CARTEIRA_FRIA") carteiraFria++;
     }
-    const carteiraStats = { carteira_atual: carteiraAtual, bolsao, carteira_fria: carteiraFria };
+    const carteiraStats = { carteira_revendas: carteiraRevendas, carteira_corporativo: carteiraCorporativo, bolsao, carteira_fria: carteiraFria };
 
     // Pagination
     const total = filtered.length;
