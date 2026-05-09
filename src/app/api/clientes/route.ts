@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
       visibleRecords = allRecords.filter(
         (r) =>
           r.parsed.vendedor.toLowerCase() === userName.toLowerCase() ||
-          r.carteira === "BOLSAO"
+          r.carteira === "BOLSAO" ||
+          (r.carteira === "CARTEIRA_REVENDAS" && !r.vendedor_id)
       );
     }
 
