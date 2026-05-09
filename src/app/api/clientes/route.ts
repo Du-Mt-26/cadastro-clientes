@@ -153,18 +153,17 @@ export async function GET(request: NextRequest) {
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
 
-    // Dias sem venda stats
-    let verde = 0, amarelo = 0, laranja = 0, vermelho = 0, preto = 0;
+    // Dias sem venda stats (0-48 verde, 49-90 amarelo, 91-150 laranja, 151+ vermelho)
+    let verde = 0, amarelo = 0, laranja = 0, vermelho = 0;
     for (const r of visibleRecords) {
       const dias = calcDiasSemVenda(r.parsed.ultima_venda);
-      if (dias === null) { preto++; continue; }
-      if (dias <= 30) verde++;
-      else if (dias <= 60) amarelo++;
-      else if (dias <= 90) laranja++;
-      else if (dias <= 120) vermelho++;
-      else preto++;
+      if (dias === null) { vermelho++; continue; }
+      if (dias <= 48) verde++;
+      else if (dias <= 90) amarelo++;
+      else if (dias <= 150) laranja++;
+      else vermelho++;
     }
-    const diasSemVendaStats = { verde, amarelo, laranja, vermelho, preto };
+    const diasSemVendaStats = { verde, amarelo, laranja, vermelho };
 
     // Carteira stats
     let carteiraAtual = 0, bolsao = 0, carteiraFria = 0;
