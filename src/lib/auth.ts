@@ -5,7 +5,7 @@
  *  - ADMIN             → total access
  *  - DIRETOR_COMERCIAL → full read/write on data
  *  - GERENTE_COMERCIAL → read/write on commercial data
- *  - VENDEDOR          → own clients + Bolsão 151+ clients
+ *  - VENDEDOR          → own clients + Bolsão + unassigned Revendas
  */
 
 import type { NextAuthOptions } from 'next-auth'
@@ -162,22 +162,23 @@ export function canAssignVendedor(role: Role): boolean {
 
 /**
  * Returns the filter that should be applied to client queries based on user role.
- * Vendors can only see their own clients + Bolsão clients.
+ * Vendors can see their own clients + Bolsão + unassigned Revendas.
  */
 export function getClientFilterForRole(role: Role, userId: string): {
   vendedorId?: string
   carteira?: string
-  orConditions?: Array<{ vendedorId: string } | { carteira: string }>
+  orConditions?: Array<{ vendedorId: string } | { carteira: string } | { carteira: string; vendedorId: null }>
 } {
   if (canSeeAllClients(role)) {
     return {} // No filter — sees everything
   }
 
-  // VENDEDOR: own clients + Bolsão
+  // VENDEDOR: own clients + Bolsão + unassigned Revendas
   return {
     orConditions: [
       { vendedorId: userId },
       { carteira: 'BOLSAO' },
+      { carteira: 'CARTEIRA_REVENDAS', vendedorId: null },
     ],
   }
 }
