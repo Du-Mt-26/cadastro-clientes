@@ -180,15 +180,33 @@ let _systemUserIds: { bolsao: string; listaFria: string; fornecedor: string } | 
 /**
  * Get system user IDs from the database.
  * Results are cached after the first call.
+ *
+ * Optimized: first tries a fast findMany (no hashing, no writes).
+ * Only falls back to upsert if any system user is missing.
  */
 export async function getSystemUserIds() {
   if (_systemUserIds) return _systemUserIds
 
-  // Auto-create system users if they don't exist (using upsert to avoid race conditions in serverless)
+  // Fast path: check if all system users already exist (no hashing, no writes)
+  const existing = await db.user.findMany({
+    where: { isSystemUser: true },
+    select: { id: true, email: true },
+  })
+
+  const bolsao = existing.find((u) => u.email === SYSTEM_USER_EMAILS.BOLSAO)
+  const listaFria = existing.find((u) => u.email === SYSTEM_USER_EMAILS.LISTA_FRIA)
+  const fornecedor = existing.find((u) => u.email === SYSTEM_USER_EMAILS.FORNECEDOR)
+
+  if (bolsao && listaFria && fornecedor) {
+    _systemUserIds = { bolsao: bolsao.id, listaFria: listaFria.id, fornecedor: fornecedor.id }
+    return _systemUserIds
+  }
+
+  // Slow path: some system users are missing — need to upsert (requires hashing)
   const bcrypt = await import('bcryptjs')
   const hashedPassword = await bcrypt.hash('sistema@mtech2024', 12)
 
-  const [bolsao, listaFria, fornecedor] = await Promise.all([
+  const [bolsaoUser, listaFriaUser, fornecedorUser] = await Promise.all([
     db.user.upsert({
       where: { email: SYSTEM_USER_EMAILS.BOLSAO },
       update: {},
@@ -206,7 +224,7 @@ export async function getSystemUserIds() {
     }),
   ])
 
-  _systemUserIds = { bolsao: bolsao.id, listaFria: listaFria.id, fornecedor: fornecedor.id }
+  _systemUserIds = { bolsao: bolsaoUser.id, listaFria: listaFriaUser.id, fornecedor: fornecedorUser.id }
   return _systemUserIds
 }
 
