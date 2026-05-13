@@ -88,6 +88,7 @@ import {
   EMPTY_FORM,
   DETAIL_TABS,
   PHONE_FIELDS,
+  EMAIL_FIELDS,
   FIELD_LABELS,
 } from '@/lib/types'
 import {
@@ -141,10 +142,10 @@ function DiasSemVendaBadge({ dias, ultimaVenda }: { dias: number | null; ultimaV
   )
 }
 
-function EditableCell({ value, codigo, field, onSave, isPhone, isObservacoes }: {
+function EditableCell({ value, codigo, field, onSave, isPhone, isEmail, isObservacoes }: {
   value: string; codigo: string; field: keyof EditableFields;
   onSave: (codigo: string, field: keyof EditableFields, value: string) => void; isPhone: boolean;
-  isObservacoes?: boolean
+  isEmail?: boolean; isObservacoes?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [editValue, setEditValue] = useState(value)
@@ -157,7 +158,11 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isObservacoes }: 
     else if (editing && inputRef.current) { inputRef.current.focus(); inputRef.current.select() }
   }, [editing, isObservacoes])
 
-  const handleSave = () => { if (editValue !== value) onSave(codigo, field, editValue); setEditing(false) }
+  const handleSave = () => {
+    const saveValue = isEmail ? editValue.toLowerCase().trim() : editValue
+    if (saveValue !== value) onSave(codigo, field, saveValue)
+    setEditing(false)
+  }
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !isObservacoes) handleSave()
     else if (e.key === 'Escape') { setEditValue(value); setEditing(false) }
@@ -180,6 +185,7 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isObservacoes }: 
   if (editing) return <Input ref={inputRef} value={editValue} onChange={(e) => setEditValue(e.target.value)} onBlur={handleSave} onKeyDown={handleKeyDown} className="h-7 text-xs w-full min-w-[100px] border-teal-400 focus:border-teal-600" placeholder={isPhone ? '(XX) XXXXX-XXXX' : ''} />
 
   const displayValue = isPhone ? formatPhone(value) : (isObservacoes ? (value ? (value.length > 30 ? value.slice(0, 30) + '…' : value) : '—') : (value || '—'))
+  const emailDisplay = isEmail && value ? value.toLowerCase() : null
   return (
     <span className="cursor-pointer group flex items-center gap-1" onClick={(e) => { e.stopPropagation(); setEditing(true) }} title={isObservacoes && value ? value : "Clique para editar"}>
       {isPhone && value && (
@@ -194,7 +200,18 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isObservacoes }: 
           <MessageCircle className="size-3.5" />
         </a>
       )}
-      <span className="text-xs">{displayValue}</span>
+      {emailDisplay ? (
+        <a
+          href={`mailto:${emailDisplay}`}
+          className="text-xs text-teal-700 hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300 underline underline-offset-2 decoration-teal-300 dark:decoration-teal-700"
+          onClick={(e) => e.stopPropagation()}
+          title={`Enviar email para ${emailDisplay}`}
+        >
+          {emailDisplay}
+        </a>
+      ) : (
+        <span className="text-xs">{displayValue}</span>
+      )}
       <Pencil className="size-2.5 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
     </span>
   )
@@ -1064,8 +1081,9 @@ export default function HomeClient() {
 
                             if (col.editable && editableKey) {
                               const isPhone = PHONE_FIELDS.has(col.key)
+                              const isEmailCell = EMAIL_FIELDS.has(col.key)
                               const isObs = col.key === 'observacoes'
-                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isObservacoes={isObs} /></td>
+                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></td>
                             }
 
                             if (isSticky) {
@@ -1291,9 +1309,9 @@ export default function HomeClient() {
                           <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                             <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Mail className="size-3.5" />Emails</legend>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value)} type="email" /></div>
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value)} type="email" /></div>
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value)} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value.toLowerCase())} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value.toLowerCase())} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value.toLowerCase())} type="email" /></div>
                             </div>
                           </fieldset>
                           <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
@@ -1315,9 +1333,9 @@ export default function HomeClient() {
                           <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                             <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Mail className="size-3.5" />Emails</legend>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={r.editable.email1} onChange={(e) => handleSave(r.parsed.codigo, 'email1', e.target.value)} type="email" /></div>
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={r.editable.email2} onChange={(e) => handleSave(r.parsed.codigo, 'email2', e.target.value)} type="email" /></div>
-                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={r.editable.email3} onChange={(e) => handleSave(r.parsed.codigo, 'email3', e.target.value)} type="email" /></div>
+                              <div className="flex items-end gap-2">{r.editable.email1 && <a href={`mailto:${r.editable.email1.toLowerCase()}`} className="text-teal-600 hover:text-teal-700 dark:text-teal-400 mb-0.5 shrink-0" title="Enviar email"><Mail className="size-4" /></a>}<div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={r.editable.email1} onChange={(e) => handleSave(r.parsed.codigo, 'email1', e.target.value.toLowerCase())} type="email" /></div></div>
+                              <div className="flex items-end gap-2">{r.editable.email2 && <a href={`mailto:${r.editable.email2.toLowerCase()}`} className="text-teal-600 hover:text-teal-700 dark:text-teal-400 mb-0.5 shrink-0" title="Enviar email"><Mail className="size-4" /></a>}<div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={r.editable.email2} onChange={(e) => handleSave(r.parsed.codigo, 'email2', e.target.value.toLowerCase())} type="email" /></div></div>
+                              <div className="flex items-end gap-2">{r.editable.email3 && <a href={`mailto:${r.editable.email3.toLowerCase()}`} className="text-teal-600 hover:text-teal-700 dark:text-teal-400 mb-0.5 shrink-0" title="Enviar email"><Mail className="size-4" /></a>}<div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={r.editable.email3} onChange={(e) => handleSave(r.parsed.codigo, 'email3', e.target.value.toLowerCase())} type="email" /></div></div>
                             </div>
                           </fieldset>
                           <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">

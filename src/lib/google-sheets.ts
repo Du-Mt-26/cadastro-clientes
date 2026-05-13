@@ -249,7 +249,7 @@ export async function pullFromSheet(spreadsheetId: string, _sheetName: string, h
               cidade: record.cidade || '', cep: record.cep || '', uf: record.uf || '',
               telefone1: record.telefone1 || '', telefone2: record.telefone2 || '',
               telefone3: record.telefone3 || '', telefone4: record.telefone4 || '',
-              email1: record.email1 || '', email2: record.email2 || '', email3: record.email3 || '',
+              email1: (record.email1 || '').toLowerCase().trim(), email2: (record.email2 || '').toLowerCase().trim(), email3: (record.email3 || '').toLowerCase().trim(),
               pessoaContato: record.pessoaContato || '', dataSituacao: record.dataSituacao || '',
               dataAbertura: record.dataAbertura || '', cnaePrincipal: record.cnaePrincipal || '',
               naturezaJuridica: record.naturezaJuridica || '', porte: record.porte || '',
