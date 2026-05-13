@@ -157,7 +157,7 @@ export default function LoginPage() {
           </div>
 
           <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-            M-Tech Distribuidora de Informática Ltda
+            M-Tech Distribuidora de Informática Ltda · v{process.env.NEXT_PUBLIC_APP_VERSION || '0.3.0'}
           </p>
         </div>
       </div>
@@ -295,7 +295,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          M-Tech Distribuidora de Informática Ltda
+          M-Tech Distribuidora de Informática Ltda · v{process.env.NEXT_PUBLIC_APP_VERSION || '0.3.0'}
         </p>
       </div>
     </div>
