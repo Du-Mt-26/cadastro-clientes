@@ -198,9 +198,9 @@ export async function POST(request: NextRequest) {
         telefone2: body.telefone2 || "",
         telefone3: body.telefone3 || "",
         telefone4: body.telefone4 || "",
-        email1: body.email1 || "",
-        email2: body.email2 || "",
-        email3: body.email3 || "",
+        email1: (body.email1 || "").toLowerCase().trim(),
+        email2: (body.email2 || "").toLowerCase().trim(),
+        email3: (body.email3 || "").toLowerCase().trim(),
         pessoaContato: body.pessoaContato || "",
         dataSituacao: body.dataSituacao || "",
         dataAbertura: body.dataAbertura || "",
@@ -273,10 +273,17 @@ export async function PATCH(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
     const auditEntries: Array<{ field: string; oldValue: string; newValue: string }> = [];
 
+    const emailFields = new Set(['email1', 'email2', 'email3']);
+
     for (const field of editableTextFields) {
       if (body[field] !== undefined) {
-        const newValue = String(body[field]);
+        let newValue = String(body[field]);
         const oldValue = String(existing[field as keyof typeof existing] ?? "");
+
+        // Force lowercase for email fields
+        if (emailFields.has(field)) {
+          newValue = newValue.toLowerCase().trim();
+        }
 
         // Validate tipo
         if (field === 'tipo' && newValue !== 'REVENDA' && newValue !== 'CORPORATIVO') {

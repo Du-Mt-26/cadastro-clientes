@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       cep: data.cep ? data.cep.replace(/\D/g, "") : "",
       uf: data.uf || "",
       telefone1: data.telefone || "",
-      email1: data.email || "",
+      email1: (data.email || "").toLowerCase().trim(),
       data_abertura: data.abertura || "",
       cnae_principal: data.atividade_principal?.[0]?.text || "",
       natureza_juridica: data.natureza_juridica || "",

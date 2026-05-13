@@ -239,6 +239,8 @@ export const DETAIL_TABS: { key: DetailTab; label: string; icon: React.ElementTy
 
 export const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4'])
 
+export const EMAIL_FIELDS = new Set(['email1', 'email2', 'email3'])
+
 export const FIELD_LABELS: Record<string, string> = {
   telefone1: 'Tel. 1',
   telefone2: 'Tel. 2',
