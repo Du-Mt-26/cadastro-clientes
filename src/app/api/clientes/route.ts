@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { calcDiasSemVenda } from "@/lib/clientes";
-import type { ClienteRecord } from "@/lib/types";
-import { getRecords, invalidateCache, dbToRecord } from "@/lib/clientes-cache";
+import { dbToRecord, invalidateCache } from "@/lib/clientes-cache";
 import { getServerSession } from "next-auth";
 import { authOptions, getSystemUserIds, computeCarteira, canSeeListaFria, canSeeFornecedor, type Role } from "@/lib/auth";
+import type { ClienteRecord } from "@/lib/types";
+import {
+  SORT_FIELD_MAP,
+  COMPUTED_SORT_FIELDS,
+  buildVisibilityWhere,
+  buildFilterWhere,
+  buildSearchWhere,
+  combineWhere,
+  fetchFilterOptions,
+  fetchStats,
+  handleComputedSort,
+} from "@/lib/clientes-api-helpers";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,6 +27,7 @@ export async function GET(request: NextRequest) {
     const userId = (session.user as any).id;
     const userEmail = session.user.email || "";
 
+    // ── Parse query params ──
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
     const limitParam = searchParams.get("limit") || "50";
@@ -32,303 +43,91 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
-    // Get system user IDs for carteira computation
+    // ── Get system user IDs for carteira computation ──
     const systemUserIds = await getSystemUserIds();
+    const systemUserIdList = [systemUserIds.bolsao, systemUserIds.listaFria, systemUserIds.fornecedor];
 
-    const allRecords = await getRecords();
+    // ── Build where clauses ──
+    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail, systemUserIds);
+    const filterWhere = buildFilterWhere({
+      situacaoCadastral,
+      vendedor,
+      cidade,
+      uf,
+      carteira,
+      tipo: tipoFilter,
+      role,
+      systemUserIds,
+      systemUserIdList,
+    });
+    const searchWhere = buildSearchWhere(search);
+    const fullWhere = combineWhere(visibilityWhere, filterWhere, searchWhere);
 
-    // ── Compute carteira for each record ──
-    for (const r of allRecords) {
-      r.carteira = computeCarteira(r.vendedor_id, r.tipo, systemUserIds);
-    }
+    // ── Determine sort strategy ──
+    const isComputedSort = Boolean(sortBy) && COMPUTED_SORT_FIELDS.has(sortBy);
+    const prismaSortField = sortBy && SORT_FIELD_MAP[sortBy] ? SORT_FIELD_MAP[sortBy] : null;
 
-    // ── Role-based visibility ──
-    // ADMIN, DIRETOR_COMERCIAL, GERENTE_COMERCIAL → see all clients (including fornecedores)
-    // VENDEDOR → see only own clients + BOLSAO + (LISTA_FRIA if PRISCILA) + (FORNECEDOR if PRISCILA/FORNECEDOR user)
-    let visibleRecords = allRecords;
-    if (role === "VENDEDOR") {
-      visibleRecords = allRecords.filter(r => {
-        // Never show fornecedor-flagged clients to regular vendedores
-        // (unless they are in FORNECEDOR carteira and user has access)
-        if (r.fornecedor && r.carteira !== "FORNECEDOR") return false;
+    // ── Execute data + filters + stats in parallel ──
+    const [dataResult, filtersData, statsData] = await Promise.all([
+      // Data query (with pagination)
+      (async (): Promise<{ records: ClienteRecord[]; total: number }> => {
+        if (isComputedSort) {
+          return handleComputedSort({
+            fullWhere,
+            sortBy,
+            sortOrder,
+            page,
+            limit,
+            showAll,
+            systemUserIds,
+          });
+        }
 
-        // Own clients
-        if (r.vendedor_id === userId) return true;
-        // Bolsão — all vendedores can see
-        if (r.carteira === "BOLSAO") return true;
-        // Lista Fria — only authorized roles
-        if (r.carteira === "LISTA_FRIA" && canSeeListaFria(role)) return true;
-        // Fornecedor — only authorized roles + FORNECEDOR system user
-        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role, userEmail)) return true;
-        return false;
-      });
-    }
+        // Prisma-sortable field — use server-side orderBy + skip/take
+        const orderBy = prismaSortField
+          ? { [prismaSortField]: sortOrder as 'asc' | 'desc' }
+          : { codigo: 'desc' as const };
 
-    // Apply filters
-    let filtered = visibleRecords;
+        const [clientes, countResult] = await Promise.all([
+          db.cliente.findMany({
+            where: fullWhere,
+            orderBy,
+            ...(showAll ? {} : { skip: (page - 1) * limit, take: limit }),
+          }),
+          db.cliente.count({ where: fullWhere }),
+        ]);
 
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.razao_social.toLowerCase().includes(searchLower) ||
-          r.nome_fantasia.toLowerCase().includes(searchLower) ||
-          r.cnpj.includes(search) ||
-          r.parsed.codigo.includes(search) ||
-          r.cidade.toLowerCase().includes(searchLower) ||
-          r.parsed.vendedor.toLowerCase().includes(searchLower) ||
-          r.email1.toLowerCase().includes(searchLower) ||
-          r.bairro.toLowerCase().includes(searchLower) ||
-          r.uf.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (situacaoCadastral) {
-      filtered = filtered.filter(
-        (r) => r.situacao_cadastral.toLowerCase() === situacaoCadastral.toLowerCase()
-      );
-    }
-
-    if (vendedor) {
-      // For VENDEDOR role, skip the vendedor filter - their visibility
-      // is already controlled by role-based rules above.
-      // Bolsão clients have a different vendedor name, so applying
-      // this filter would incorrectly hide them.
-      if (role !== 'VENDEDOR') {
-        filtered = filtered.filter(
-          (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
-        );
-      }
-    }
-
-    if (cidade) {
-      filtered = filtered.filter(
-        (r) => r.cidade.toLowerCase() === cidade.toLowerCase()
-      );
-    }
-
-    if (uf) {
-      filtered = filtered.filter(
-        (r) => r.uf.toLowerCase() === uf.toLowerCase()
-      );
-    }
-
-    // Carteira filter
-    if (carteira) {
-      if (carteira === "FORNECEDOR") {
-        filtered = filtered.filter((r) => r.carteira === "FORNECEDOR");
-      } else if (carteira === "LISTA_FRIA") {
-        filtered = filtered.filter((r) => r.carteira === "LISTA_FRIA");
-      } else if (carteira === "BOLSAO") {
-        filtered = filtered.filter((r) => r.carteira === "BOLSAO");
-      } else if (carteira === "COM_VENDEDOR") {
-        filtered = filtered.filter((r) => r.carteira === "COM_VENDEDOR");
-      } else if (carteira === "SEM_VENDEDOR") {
-        filtered = filtered.filter((r) => r.carteira === "SEM_VENDEDOR");
-      }
-    }
-
-    // Tipo filter
-    if (tipoFilter) {
-      filtered = filtered.filter((r) => r.tipo === tipoFilter);
-    }
-
-    // Sorting
-    if (sortBy) {
-      const getFieldValue = (r: ClienteRecord, field: string): string => {
-        const fieldMap: Record<string, string> = {
-          codigo: r.parsed.codigo,
-          ie_rg: r.parsed.ie_rg,
-          razao_social: r.razao_social,
-          nome_fantasia: r.nome_fantasia,
-          situacao_cadastral: r.situacao_cadastral,
-          cnpj: r.cnpj,
-          endereco: r.endereco,
-          numero: r.numero,
-          complemento: r.complemento,
-          bairro: r.bairro,
-          cidade: r.cidade,
-          cep: r.cep,
-          uf: r.uf,
-          telefone1: r.telefone1,
-          telefone2: r.telefone2,
-          telefone3: r.telefone3,
-          telefone4: r.telefone4,
-          email1: r.email1,
-          email2: r.email2,
-          email3: r.email3,
-          pessoa_contato: r.pessoa_contato,
-          data_situacao: r.data_situacao,
-          data_abertura: r.data_abertura,
-          cnae_principal: r.cnae_principal,
-          natureza_juridica: r.natureza_juridica,
-          porte: r.porte,
-          cadastro: r.parsed.cadastro,
-          ultima_venda: r.parsed.ultima_venda,
-          reg_simples: r.parsed.reg_simples,
-          vendedor: r.parsed.vendedor,
-          carteira: r.carteira,
-          tipo: r.tipo,
+        return {
+          total: countResult,
+          records: clientes.map((c) => {
+            const record = dbToRecord(c);
+            record.carteira = computeCarteira(c.vendedorId, c.tipo, systemUserIds);
+            return record;
+          }),
         };
-        return (fieldMap[field] || "").toLowerCase();
-      };
+      })(),
 
-      filtered = [...filtered].sort((a, b) => {
-        const valA = getFieldValue(a, sortBy);
-        const valB = getFieldValue(b, sortBy);
-        const cmp = valA.localeCompare(valB, "pt-BR");
-        return sortOrder === "desc" ? -cmp : cmp;
-      });
-    }
+      // Filter options (visibility-only where, no search/filter)
+      fetchFilterOptions(visibilityWhere, role, userEmail),
 
-    // Get unique values for filters (from visibleRecords, not allRecords)
-    const uniqueSituacaoCadastral = [...new Set(visibleRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
-    const systemUserNames = new Set(['BOLSÃO', 'LISTA FRIA', 'FORNECEDOR']);
-    const uniqueVendedores = [...new Set(visibleRecords.map((r) => r.parsed.vendedor).filter(v => v && !systemUserNames.has(v.toUpperCase())))];
-    const uniqueCidades = [...new Set(visibleRecords.map((r) => r.cidade).filter(Boolean))];
-    const uniqueUfs = [...new Set(visibleRecords.map((r) => r.uf).filter(Boolean))];
+      // Stats (visibility-only where, no search/filter)
+      fetchStats(role, userId, systemUserIds),
+    ]);
 
-    // Available carteiras based on user role
-    const availableCarteiras = ['COM_VENDEDOR', 'BOLSAO', 'SEM_VENDEDOR'];
-    if (canSeeListaFria(role)) availableCarteiras.push('LISTA_FRIA');
-    if (canSeeFornecedor(role, userEmail)) availableCarteiras.push('FORNECEDOR');
-
-    // Get all active vendor users (including system users) for assignment dropdown
-    const vendedorUsers = await db.user.findMany({
-      where: { active: true, role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] } },
-      orderBy: [{ isSystemUser: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, role: true, isSystemUser: true, email: true },
-    });
-
-    // Also include system users for admin assignment
-    const systemUsers = await db.user.findMany({
-      where: { isSystemUser: true, active: true },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, role: true, isSystemUser: true, email: true },
-    });
-
-    // Merge and deduplicate
-    const allUsers = [...vendedorUsers];
-    for (const su of systemUsers) {
-      if (!allUsers.some(u => u.id === su.id)) {
-        allUsers.push(su);
-      }
-    }
-
-    // Cidades grouped by UF (for cascading filter)
-    const cidadesPorUf: Record<string, string[]> = {};
-    for (const r of visibleRecords) {
-      if (r.uf && r.cidade) {
-        if (!cidadesPorUf[r.uf]) cidadesPorUf[r.uf] = [];
-        if (!cidadesPorUf[r.uf].includes(r.cidade)) cidadesPorUf[r.uf].push(r.cidade);
-      }
-    }
-    for (const ufKey of Object.keys(cidadesPorUf)) {
-      cidadesPorUf[ufKey].sort();
-    }
-
-    // ── Stats computation ──
-    // For VENDEDOR: split into "own" (vendedor_id === userId) and "bolsao" (carteira === BOLSAO)
-    // For others: all visibleRecords
-    const isVendedor = role === "VENDEDOR";
-    const ownRecords = isVendedor
-      ? visibleRecords.filter(r => r.vendedor_id === userId)
-      : visibleRecords.filter(r => !r.fornecedor);
-    const bolsaoRecords = isVendedor
-      ? visibleRecords.filter(r => r.carteira === "BOLSAO")
-      : [];
-
-    // Summary stats (from ownRecords for vendedor, visibleRecords for others)
-    const statsSource = isVendedor ? ownRecords : visibleRecords;
-    const situacaoCadastralStats: Record<string, number> = {};
-    for (const r of statsSource) {
-      const key = r.situacao_cadastral || "Sem info";
-      situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
-    }
-
-    // Dias sem venda stats (0-45 verde, 46-90 amarelo, 91-150 laranja, 151+ vermelho)
-    let verde = 0, amarelo = 0, laranja = 0, vermelho = 0;
-    for (const r of statsSource) {
-      if (r.fornecedor) continue; // skip fornecedores from dias stats
-      const dias = calcDiasSemVenda(r.parsed.ultima_venda);
-      if (dias === null) { vermelho++; continue; }
-      if (dias <= 45) verde++;
-      else if (dias <= 90) amarelo++;
-      else if (dias <= 150) laranja++;
-      else vermelho++;
-    }
-    const diasSemVendaStats = { verde, amarelo, laranja, vermelho };
-
-    // Carteira stats
-    let comVendedor = 0, bolsao = 0, listaFria = 0, fornecedores = 0;
-    if (isVendedor) {
-      comVendedor = ownRecords.filter(r => !r.fornecedor).length;
-      bolsao = bolsaoRecords.filter(r => !r.fornecedor).length;
-      // Vendedor doesn't see lista_fria or fornecedores
-    } else {
-      for (const r of visibleRecords) {
-        if (r.carteira === "COM_VENDEDOR" && !r.fornecedor) comVendedor++;
-        else if (r.carteira === "BOLSAO" && !r.fornecedor) bolsao++;
-        else if (r.carteira === "LISTA_FRIA" && !r.fornecedor) listaFria++;
-        else if (r.carteira === "FORNECEDOR" || r.fornecedor) fornecedores++;
-      }
-    }
-    const carteiraStats = {
-      com_vendedor: comVendedor,
-      bolsao,
-      lista_fria: listaFria,
-      fornecedores,
-    };
-
-    // Tipo stats (from own records for vendedor)
-    let revendas = 0, corporativo = 0;
-    for (const r of statsSource) {
-      if (!r.fornecedor) {
-        if (r.tipo === 'CORPORATIVO') corporativo++;
-        else revendas++;
-      }
-    }
-    const tipoStats = { revendas, corporativo };
-
-    // Pagination
-    const total = filtered.length;
-    const effectiveLimit = showAll ? total : limit;
-    const totalPages = showAll ? 1 : Math.ceil(total / limit);
-    const start = showAll ? 0 : (page - 1) * limit;
-    const paginatedRecords = filtered.slice(start, start + effectiveLimit);
+    // ── Pagination info ──
+    const totalPages = showAll ? 1 : Math.ceil(dataResult.total / limit);
 
     return NextResponse.json({
-      data: paginatedRecords,
+      data: dataResult.records,
       pagination: {
         page: showAll ? 1 : page,
-        limit: showAll ? total : limit,
-        total,
+        limit: showAll ? dataResult.total : limit,
+        total: dataResult.total,
         totalPages,
         showAll,
       },
-      filters: {
-        situacao_cadastral: uniqueSituacaoCadastral.sort(),
-        vendedores: uniqueVendedores.sort(),
-        cidades: uniqueCidades.sort(),
-        ufs: uniqueUfs.sort(),
-        cidadesPorUf,
-        carteiras: availableCarteiras,
-        vendedorUsers: allUsers.map(v => ({
-          id: v.id,
-          name: v.name,
-          role: v.role,
-          isSystemUser: v.isSystemUser,
-          email: v.email,
-        })),
-      },
-      stats: {
-        total: statsSource.filter(r => !r.fornecedor).length,
-        situacao_cadastral: situacaoCadastralStats,
-        dias_sem_venda: diasSemVendaStats,
-
-        carteira: carteiraStats,
-        tipo: tipoStats,
-      },
+      filters: filtersData,
+      stats: statsData,
     });
   } catch (error) {
     console.error("Error loading clients:", error);
