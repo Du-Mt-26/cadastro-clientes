@@ -1,0 +1,163 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+//
+// Database: PostgreSQL (Neon) — production and local dev use the same Neon database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Unified Cliente table ─────────────────────────
+// All client data lives here, regardless of source (XLSX import, Google Sheets, manual)
+// The `source` field tracks origin: "xlsx" | "sheets" | "manual"
+
+model Cliente {
+  id                String  @id @default(cuid())
+  codigo            String  @unique
+  ieRg              String  @default("")
+  razaoSocial       String  @default("")
+  nomeFantasia      String  @default("")
+  situacaoCadastral String  @default("")
+  cnpj              String  @default("")
+  endereco          String  @default("")
+  numero            String  @default("")
+  complemento       String  @default("")
+  bairro            String  @default("")
+  cidade            String  @default("")
+  cep               String  @default("")
+  uf                String  @default("")
+  telefone1         String  @default("")
+  telefone2         String  @default("")
+  telefone3         String  @default("")
+  telefone4         String  @default("")
+  email1            String  @default("")
+  email2            String  @default("")
+  email3            String  @default("")
+  pessoaContato     String  @default("")
+  dataSituacao      String  @default("")
+  dataAbertura      String  @default("")
+  cnaePrincipal     String  @default("")
+  naturezaJuridica  String  @default("")
+  porte             String  @default("")
+  cadastro          String  @default("")
+  ultimaVenda       String  @default("")
+  regSimples        String  @default("")
+  vendedor          String  @default("")
+  observacoes       String  @default("")  @db.Text
+  source            String  @default("manual")   // "xlsx" | "sheets" | "manual"
+  sheetsRow         Int     @default(0)           // Row number in Google Sheets (for sync)
+
+  // ─── Tipo ─────────────────────────────────────
+  // tipo: "REVENDA" | "CORPORATIVO"
+  tipo                       String   @default("REVENDA")
+
+  // ─── Fornecedor ───────────────────────────────
+  fornecedor                 Boolean  @default(false)
+
+  // ─── Carteira (computed from vendedorId + tipo) ──
+  // carteira is no longer stored — it is computed
+  vendedorId                 String?  // FK → User.id (system-assigned vendor)
+  dataAtribuicaoVendedor     DateTime?  // When current vendedor was assigned
+  dataEntradaBolsao          DateTime?
+  vendedoresQueAbordaram     String   @default("")  @db.Text  // comma-separated User IDs who approached
+
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  vendedorUser User? @relation("VendedorClientes", fields: [vendedorId], references: [id], onDelete: SetNull)
+  favorites   Favorite[]
+
+  @@index([cnpj])
+  @@index([cidade])
+  @@index([uf])
+  @@index([vendedor])
+  @@index([situacaoCadastral])
+  @@index([source])
+  @@index([tipo])
+  @@index([vendedorId])
+}
+
+// ─── User / Authentication ────────────────────────
+
+model User {
+  id               String   @id @default(cuid())
+  name             String
+  email            String   @unique
+  password         String                          // bcrypt hash
+  role             String   @default("VENDEDOR")   // ADMIN | DIRETOR_COMERCIAL | GERENTE_COMERCIAL | VENDEDOR
+  active           Boolean  @default(true)
+  twoFactorSecret  String?                          // TOTP secret (base32), null = 2FA not set up
+  twoFactorEnabled Boolean  @default(false)
+  imagem           String?  @default("")            // avatar URL or base64
+  isSystemUser     Boolean  @default(false)         // Marks system users: BOLSÃO, LISTA FRIA, FORNECEDOR
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  clientes  Cliente[]  @relation("VendedorClientes")
+  favorites  Favorite[]
+
+  @@index([email])
+  @@index([role])
+  @@index([isSystemUser])
+}
+
+// ─── Google Sheets Sync Config ─────────────────────
+
+model SyncConfig {
+  id              String   @id @default(cuid())
+  sheetsUrl       String   @default("")         @db.Text  // Full Google Sheets URL
+  spreadsheetId   String   @default("")         // Extracted spreadsheet ID
+  sheetName       String   @default("Sheet1")   // Tab/sheet name
+  connected       Boolean  @default(false)
+  lastSyncAt      DateTime?
+  lastSyncStatus  String   @default("")         // "success" | "error" | "partial"
+  lastSyncCount   Int      @default(0)          // Records synced
+  lastSyncError   String   @default("")         @db.Text
+  headerRow       Int      @default(1)          // Row number of headers (1-indexed)
+  dataStartRow    Int      @default(2)          // First data row (1-indexed)
+  columnMapping   String   @default("{}")       @db.Text  // JSON: sheets col → DB field mapping
+  syncMode        String   @default("pull")     // "pull" | "push" | "bidirectional"
+  autoSync        Boolean  @default(false)      // Auto-sync on interval
+  autoSyncMinutes Int      @default(30)         // Minutes between auto-syncs
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// ─── Audit Log ─────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  codigo     String
+  field      String
+  oldValue   String   @default("")  @db.Text
+  newValue   String   @default("")  @db.Text
+  changedBy  String   @default("user")
+  source     String   @default("ui")       // "ui" | "sheets-sync"
+  createdAt  DateTime @default(now())
+
+  @@index([codigo])
+  @@index([createdAt])
+}
+
+// ─── Favorites ────────────────────────────────────
+// Each user can favorite up to 50 clients
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  codigo    String
+  ordem     Int      @default(0)    // Order within favorites (0 = first)
+  createdAt DateTime @default(now())
+
+  user  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [codigo], references: [codigo], onDelete: Cascade)
+
+  @@unique([userId, codigo])
+  @@index([userId])
+  @@index([userId, ordem])
+}
