@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     const users = await db.user.findMany({
-      orderBy: [{ active: 'desc' }, { name: 'asc' }],
+      orderBy: [{ isSystemUser: 'asc' }, { active: 'desc' }, { name: 'asc' }],
       select: {
         id: true,
         name: true,
@@ -29,19 +29,41 @@ export async function GET() {
         role: true,
         active: true,
         twoFactorEnabled: true,
+        isSystemUser: true,
         clientes: {
           select: {
-            carteira: true,
+            tipo: true,
+            fornecedor: true,
+            vendedorId: true,
           },
         },
       },
     })
 
     const vendedores = users.map((u) => {
-      const carteiraRevendas = u.clientes.filter((c) => c.carteira === 'CARTEIRA_REVENDAS').length
-      const carteiraCorporativo = u.clientes.filter((c) => c.carteira === 'CARTEIRA_CORPORATIVO').length
-      const carteiraFria = u.clientes.filter((c) => c.carteira === 'CARTEIRA_FRIA').length
-      const bolsao = u.clientes.filter((c) => c.carteira === 'BOLSAO').length
+      // Compute carteira counts using the new logic
+      let carteiraRevendas = 0
+      let carteiraCorporativo = 0
+      let bolsao = 0
+      let listaFria = 0
+      let fornecedores = 0
+
+      for (const c of u.clientes) {
+        if (u.isSystemUser) {
+          if (u.email === 'bolsao@sistema.mtech') bolsao++
+          else if (u.email === 'lista-fria@sistema.mtech') listaFria++
+          else if (u.email === 'fornecedor@sistema.mtech') fornecedores++
+        } else {
+          // Regular vendedor
+          if (c.fornecedor) {
+            fornecedores++
+          } else if (c.tipo === 'CORPORATIVO') {
+            carteiraCorporativo++
+          } else {
+            carteiraRevendas++
+          }
+        }
+      }
 
       return {
         id: u.id,
@@ -50,11 +72,13 @@ export async function GET() {
         role: u.role,
         active: u.active,
         twoFactorEnabled: u.twoFactorEnabled,
+        isSystemUser: u.isSystemUser,
         clientCount: u.clientes.length,
         carteiraRevendas,
         carteiraCorporativo,
-        carteiraFria,
         bolsao,
+        listaFria,
+        fornecedores,
       }
     })
 
@@ -81,7 +105,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, password: rawPassword, role: newRole } = body
+    const { name, email, password: rawPassword, role: newRole, isSystemUser } = body
 
     if (!name || !email || !rawPassword) {
       return NextResponse.json(
@@ -119,6 +143,7 @@ export async function POST(request: NextRequest) {
         email: email.toLowerCase().trim(),
         password: hashedPassword,
         role: newRole,
+        isSystemUser: isSystemUser || false,
       },
       select: {
         id: true,
@@ -127,9 +152,16 @@ export async function POST(request: NextRequest) {
         role: true,
         active: true,
         twoFactorEnabled: true,
+        isSystemUser: true,
         createdAt: true,
       },
     })
+
+    // Invalidate system user IDs cache if creating a system user
+    if (isSystemUser) {
+      const { invalidateSystemUserIds } = await import('@/lib/auth')
+      invalidateSystemUserIds()
+    }
 
     return NextResponse.json({ user }, { status: 201 })
   } catch (error) {
@@ -165,7 +197,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Vendedor não encontrado' }, { status: 404 })
     }
 
-    const updateData: any = {}
+    const updateData: Record<string, unknown> = {}
     if (name !== undefined) updateData.name = name.trim()
     if (email !== undefined) updateData.email = email.toLowerCase().trim()
     if (role !== undefined) {
@@ -193,6 +225,7 @@ export async function PATCH(request: NextRequest) {
         role: true,
         active: true,
         twoFactorEnabled: true,
+        isSystemUser: true,
         createdAt: true,
         updatedAt: true,
       },

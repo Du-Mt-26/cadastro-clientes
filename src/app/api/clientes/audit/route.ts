@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getServerSession } from "next-auth";
+import { authOptions, type Role } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    const role = (session.user as any).role as Role;
+
+    // Only ADMIN, DIRETOR_COMERCIAL, and GERENTE_COMERCIAL can view audit logs
+    if (role !== "ADMIN" && role !== "DIRETOR_COMERCIAL" && role !== "GERENTE_COMERCIAL") {
+      return NextResponse.json({ error: "Acesso negado" }, { status: 403 });
+    }
+
     const codigo = request.nextUrl.searchParams.get("codigo");
     if (!codigo) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });

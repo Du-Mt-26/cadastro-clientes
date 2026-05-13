@@ -1,10 +1,8 @@
 /**
  * Database client — PostgreSQL via Neon.
  *
- * Development: uses DATABASE_URL (local PostgreSQL or Neon dev branch)
- * Production (Vercel): uses DATABASE_URL from Neon (set in Vercel env vars)
- *
- * No adapter needed — Prisma natively supports PostgreSQL.
+ * Both local dev and production use the same Neon PostgreSQL database
+ * via the DATABASE_URL environment variable.
  */
 
 import { PrismaClient } from '@prisma/client'

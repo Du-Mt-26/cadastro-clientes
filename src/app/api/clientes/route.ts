@@ -4,7 +4,7 @@ import { calcDiasSemVenda } from "@/lib/clientes";
 import type { ClienteRecord } from "@/lib/types";
 import { getRecords, invalidateCache, dbToRecord } from "@/lib/clientes-cache";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { authOptions, getSystemUserIds, computeCarteira, canSeeListaFria, canSeeFornecedor, type Role } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,8 +13,9 @@ export async function GET(request: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
-    const role = (session.user as any).role;
+    const role = (session.user as any).role as Role;
     const userId = (session.user as any).id;
+    const userEmail = session.user.email || "";
 
     const searchParams = request.nextUrl.searchParams;
     const page = parseInt(searchParams.get("page") || "1");
@@ -27,22 +28,40 @@ export async function GET(request: NextRequest) {
     const cidade = searchParams.get("cidade") || "";
     const uf = searchParams.get("uf") || "";
     const carteira = searchParams.get("carteira") || "";
+    const tipoFilter = searchParams.get("tipo") || "";
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
+    // Get system user IDs for carteira computation
+    const systemUserIds = await getSystemUserIds();
+
     const allRecords = await getRecords();
 
-    // ── Role-based filtering ──
-    // ADMIN, DIRETOR_COMERCIAL, GERENTE_COMERCIAL → see all clients
-    // VENDEDOR → see only own clients (by vendedorId) + Bolsão + unassigned Revendas
+    // ── Compute carteira for each record ──
+    for (const r of allRecords) {
+      r.carteira = computeCarteira(r.vendedor_id, r.tipo, systemUserIds);
+    }
+
+    // ── Role-based visibility ──
+    // ADMIN, DIRETOR_COMERCIAL, GERENTE_COMERCIAL → see all clients (including fornecedores)
+    // VENDEDOR → see only own clients + BOLSAO + (LISTA_FRIA if PRISCILA) + (FORNECEDOR if PRISCILA/FORNECEDOR user)
     let visibleRecords = allRecords;
     if (role === "VENDEDOR") {
-      visibleRecords = allRecords.filter(
-        (r) =>
-          r.vendedor_id === userId ||
-          r.carteira === "BOLSAO" ||
-          (r.carteira === "CARTEIRA_REVENDAS" && !r.vendedor_id)
-      );
+      visibleRecords = allRecords.filter(r => {
+        // Never show fornecedor-flagged clients to regular vendedores
+        // (unless they are in FORNECEDOR carteira and user has access)
+        if (r.fornecedor && r.carteira !== "FORNECEDOR") return false;
+
+        // Own clients
+        if (r.vendedor_id === userId) return true;
+        // Bolsão — all vendedores can see
+        if (r.carteira === "BOLSAO") return true;
+        // Lista Fria — only authorized roles
+        if (r.carteira === "LISTA_FRIA" && canSeeListaFria(role)) return true;
+        // Fornecedor — only authorized roles + FORNECEDOR system user
+        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role, userEmail)) return true;
+        return false;
+      });
     }
 
     // Apply filters
@@ -71,9 +90,15 @@ export async function GET(request: NextRequest) {
     }
 
     if (vendedor) {
-      filtered = filtered.filter(
-        (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
-      );
+      // For VENDEDOR role, skip the vendedor filter - their visibility
+      // is already controlled by role-based rules above.
+      // Bolsão clients have a different vendedor name, so applying
+      // this filter would incorrectly hide them.
+      if (role !== 'VENDEDOR') {
+        filtered = filtered.filter(
+          (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
+        );
+      }
     }
 
     if (cidade) {
@@ -88,10 +113,24 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Carteira filter
     if (carteira) {
-      filtered = filtered.filter(
-        (r) => r.carteira === carteira
-      );
+      if (carteira === "FORNECEDOR") {
+        filtered = filtered.filter((r) => r.carteira === "FORNECEDOR");
+      } else if (carteira === "LISTA_FRIA") {
+        filtered = filtered.filter((r) => r.carteira === "LISTA_FRIA");
+      } else if (carteira === "BOLSAO") {
+        filtered = filtered.filter((r) => r.carteira === "BOLSAO");
+      } else if (carteira === "COM_VENDEDOR") {
+        filtered = filtered.filter((r) => r.carteira === "COM_VENDEDOR");
+      } else if (carteira === "SEM_VENDEDOR") {
+        filtered = filtered.filter((r) => r.carteira === "SEM_VENDEDOR");
+      }
+    }
+
+    // Tipo filter
+    if (tipoFilter) {
+      filtered = filtered.filter((r) => r.tipo === tipoFilter);
     }
 
     // Sorting
@@ -129,6 +168,7 @@ export async function GET(request: NextRequest) {
           reg_simples: r.parsed.reg_simples,
           vendedor: r.parsed.vendedor,
           carteira: r.carteira,
+          tipo: r.tipo,
         };
         return (fieldMap[field] || "").toLowerCase();
       };
@@ -143,17 +183,37 @@ export async function GET(request: NextRequest) {
 
     // Get unique values for filters (from visibleRecords, not allRecords)
     const uniqueSituacaoCadastral = [...new Set(visibleRecords.map((r) => r.situacao_cadastral).filter(Boolean))];
-    const uniqueVendedores = [...new Set(visibleRecords.map((r) => r.parsed.vendedor).filter(Boolean))];
+    const systemUserNames = new Set(['BOLSÃO', 'LISTA FRIA', 'FORNECEDOR']);
+    const uniqueVendedores = [...new Set(visibleRecords.map((r) => r.parsed.vendedor).filter(v => v && !systemUserNames.has(v.toUpperCase())))];
     const uniqueCidades = [...new Set(visibleRecords.map((r) => r.cidade).filter(Boolean))];
     const uniqueUfs = [...new Set(visibleRecords.map((r) => r.uf).filter(Boolean))];
-    const uniqueCarteiras = [...new Set(visibleRecords.map((r) => r.carteira).filter(Boolean))];
 
-    // Get all active vendor users for assignment dropdown
+    // Available carteiras based on user role
+    const availableCarteiras = ['COM_VENDEDOR', 'BOLSAO', 'SEM_VENDEDOR'];
+    if (canSeeListaFria(role)) availableCarteiras.push('LISTA_FRIA');
+    if (canSeeFornecedor(role, userEmail)) availableCarteiras.push('FORNECEDOR');
+
+    // Get all active vendor users (including system users) for assignment dropdown
     const vendedorUsers = await db.user.findMany({
       where: { active: true, role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] } },
-      orderBy: { name: 'asc' },
-      select: { id: true, name: true, role: true },
+      orderBy: [{ isSystemUser: 'asc' }, { name: 'asc' }],
+      select: { id: true, name: true, role: true, isSystemUser: true, email: true },
     });
+
+    // Also include system users for admin assignment
+    const systemUsers = await db.user.findMany({
+      where: { isSystemUser: true, active: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, role: true, isSystemUser: true, email: true },
+    });
+
+    // Merge and deduplicate
+    const allUsers = [...vendedorUsers];
+    for (const su of systemUsers) {
+      if (!allUsers.some(u => u.id === su.id)) {
+        allUsers.push(su);
+      }
+    }
 
     // Cidades grouped by UF (for cascading filter)
     const cidadesPorUf: Record<string, string[]> = {};
@@ -163,20 +223,33 @@ export async function GET(request: NextRequest) {
         if (!cidadesPorUf[r.uf].includes(r.cidade)) cidadesPorUf[r.uf].push(r.cidade);
       }
     }
-    for (const uf of Object.keys(cidadesPorUf)) {
-      cidadesPorUf[uf].sort();
+    for (const ufKey of Object.keys(cidadesPorUf)) {
+      cidadesPorUf[ufKey].sort();
     }
 
-    // Summary stats (from visibleRecords)
+    // ── Stats computation ──
+    // For VENDEDOR: split into "own" (vendedor_id === userId) and "bolsao" (carteira === BOLSAO)
+    // For others: all visibleRecords
+    const isVendedor = role === "VENDEDOR";
+    const ownRecords = isVendedor
+      ? visibleRecords.filter(r => r.vendedor_id === userId)
+      : visibleRecords.filter(r => !r.fornecedor);
+    const bolsaoRecords = isVendedor
+      ? visibleRecords.filter(r => r.carteira === "BOLSAO")
+      : [];
+
+    // Summary stats (from ownRecords for vendedor, visibleRecords for others)
+    const statsSource = isVendedor ? ownRecords : visibleRecords;
     const situacaoCadastralStats: Record<string, number> = {};
-    for (const r of visibleRecords) {
+    for (const r of statsSource) {
       const key = r.situacao_cadastral || "Sem info";
       situacaoCadastralStats[key] = (situacaoCadastralStats[key] || 0) + 1;
     }
 
     // Dias sem venda stats (0-45 verde, 46-90 amarelo, 91-150 laranja, 151+ vermelho)
     let verde = 0, amarelo = 0, laranja = 0, vermelho = 0;
-    for (const r of visibleRecords) {
+    for (const r of statsSource) {
+      if (r.fornecedor) continue; // skip fornecedores from dias stats
       const dias = calcDiasSemVenda(r.parsed.ultima_venda);
       if (dias === null) { vermelho++; continue; }
       if (dias <= 45) verde++;
@@ -187,14 +260,35 @@ export async function GET(request: NextRequest) {
     const diasSemVendaStats = { verde, amarelo, laranja, vermelho };
 
     // Carteira stats
-    let carteiraRevendas = 0, carteiraCorporativo = 0, bolsao = 0, carteiraFria = 0;
-    for (const r of visibleRecords) {
-      if (r.carteira === "CARTEIRA_REVENDAS") carteiraRevendas++;
-      else if (r.carteira === "CARTEIRA_CORPORATIVO") carteiraCorporativo++;
-      else if (r.carteira === "BOLSAO") bolsao++;
-      else if (r.carteira === "CARTEIRA_FRIA") carteiraFria++;
+    let comVendedor = 0, bolsao = 0, listaFria = 0, fornecedores = 0;
+    if (isVendedor) {
+      comVendedor = ownRecords.filter(r => !r.fornecedor).length;
+      bolsao = bolsaoRecords.filter(r => !r.fornecedor).length;
+      // Vendedor doesn't see lista_fria or fornecedores
+    } else {
+      for (const r of visibleRecords) {
+        if (r.carteira === "COM_VENDEDOR" && !r.fornecedor) comVendedor++;
+        else if (r.carteira === "BOLSAO" && !r.fornecedor) bolsao++;
+        else if (r.carteira === "LISTA_FRIA" && !r.fornecedor) listaFria++;
+        else if (r.carteira === "FORNECEDOR" || r.fornecedor) fornecedores++;
+      }
     }
-    const carteiraStats = { carteira_revendas: carteiraRevendas, carteira_corporativo: carteiraCorporativo, bolsao, carteira_fria: carteiraFria };
+    const carteiraStats = {
+      com_vendedor: comVendedor,
+      bolsao,
+      lista_fria: listaFria,
+      fornecedores,
+    };
+
+    // Tipo stats (from own records for vendedor)
+    let revendas = 0, corporativo = 0;
+    for (const r of statsSource) {
+      if (!r.fornecedor) {
+        if (r.tipo === 'CORPORATIVO') corporativo++;
+        else revendas++;
+      }
+    }
+    const tipoStats = { revendas, corporativo };
 
     // Pagination
     const total = filtered.length;
@@ -218,14 +312,22 @@ export async function GET(request: NextRequest) {
         cidades: uniqueCidades.sort(),
         ufs: uniqueUfs.sort(),
         cidadesPorUf,
-        carteiras: uniqueCarteiras.sort(),
-        vendedorUsers: vendedorUsers.map(v => ({ id: v.id, name: v.name, role: v.role })),
+        carteiras: availableCarteiras,
+        vendedorUsers: allUsers.map(v => ({
+          id: v.id,
+          name: v.name,
+          role: v.role,
+          isSystemUser: v.isSystemUser,
+          email: v.email,
+        })),
       },
       stats: {
-        total: visibleRecords.length,
+        total: statsSource.filter(r => !r.fornecedor).length,
         situacao_cadastral: situacaoCadastralStats,
         dias_sem_venda: diasSemVendaStats,
+
         carteira: carteiraStats,
+        tipo: tipoStats,
       },
     });
   } catch (error) {
@@ -275,6 +377,9 @@ export async function POST(request: NextRequest) {
     }
     const codigo = String(nextNum).padStart(6, "0");
 
+    // Validate tipo
+    const tipo = body.tipo === "CORPORATIVO" ? "CORPORATIVO" : "REVENDA";
+
     const novo = await db.cliente.create({
       data: {
         codigo,
@@ -308,13 +413,19 @@ export async function POST(request: NextRequest) {
         regSimples: body.regSimples || "",
         vendedor: body.vendedor || "",
         source: "manual",
+        tipo,
       },
     });
 
     // Invalidate cache
     invalidateCache();
 
-    return NextResponse.json({ success: true, cliente: dbToRecord(novo) }, { status: 201 });
+    // Compute carteira for the new record
+    const systemUserIds = await getSystemUserIds();
+    const record = dbToRecord(novo);
+    record.carteira = computeCarteira(novo.vendedorId, novo.tipo, systemUserIds);
+
+    return NextResponse.json({ success: true, cliente: record }, { status: 201 });
   } catch (error) {
     console.error("Error creating client:", error);
     return NextResponse.json(
@@ -333,18 +444,13 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
     const changedBy = session.user.name || session.user.email || "user";
+    const role = (session.user as any).role as Role;
 
     const body = await request.json();
-    const { codigo, telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes, carteira } = body;
+    const { codigo } = body;
 
     if (!codigo) {
       return NextResponse.json({ error: "Código é obrigatório" }, { status: 400 });
-    }
-
-    // Check permission for carteira changes
-    const role = (session.user as any).role;
-    if (carteira !== undefined && role === "VENDEDOR") {
-      return NextResponse.json({ error: "Vendedores não podem alterar carteira" }, { status: 403 });
     }
 
     // Get old values for audit logging
@@ -354,51 +460,68 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Cliente não encontrado" }, { status: 404 });
     }
 
-    const oldValues: Record<string, string> = {
-      telefone1: existing.telefone1,
-      telefone2: existing.telefone2,
-      telefone3: existing.telefone3,
-      telefone4: existing.telefone4,
-      email1: existing.email1,
-      email2: existing.email2,
-      email3: existing.email3,
-      pessoaContato: existing.pessoaContato,
-      observacoes: existing.observacoes,
-    };
+    // All editable text fields (basic info + contact)
+    const editableTextFields = [
+      'razaoSocial', 'nomeFantasia', 'tipo', 'cidade', 'uf', 'endereco',
+      'numero', 'complemento', 'bairro', 'cep', 'cnpj',
+      'situacaoCadastral', 'dataSituacao', 'dataAbertura',
+      'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
+      'telefone1', 'telefone2', 'telefone3', 'telefone4',
+      'email1', 'email2', 'email3',
+      'pessoaContato', 'observacoes',
+    ];
 
-    // Create audit logs for changed fields
-    const fields: Record<string, string | undefined> = { telefone1, telefone2, telefone3, telefone4, email1, email2, email3, pessoaContato, observacoes };
-    for (const [field, newValue] of Object.entries(fields)) {
-      if (newValue !== undefined) {
-        const oldVal = oldValues[field] ?? "";
-        if (oldVal !== newValue) {
-          await db.auditLog.create({
-            data: { codigo, field, oldValue: oldVal, newValue, changedBy },
-          });
+    const updateData: Record<string, unknown> = {};
+    const auditEntries: Array<{ field: string; oldValue: string; newValue: string }> = [];
+
+    for (const field of editableTextFields) {
+      if (body[field] !== undefined) {
+        const newValue = String(body[field]);
+        const oldValue = String(existing[field as keyof typeof existing] ?? "");
+
+        // Validate tipo
+        if (field === 'tipo' && newValue !== 'REVENDA' && newValue !== 'CORPORATIVO') {
+          continue; // Skip invalid tipo values
+        }
+
+        // Vendedores can only edit contact/obs fields
+        const isContactOrObs = ['telefone1', 'telefone2', 'telefone3', 'telefone4',
+          'email1', 'email2', 'email3', 'pessoaContato', 'observacoes'].includes(field);
+
+        if (role === 'VENDEDOR' && !isContactOrObs) {
+          continue; // Skip fields that vendedores can't edit
+        }
+
+        if (oldValue !== newValue) {
+          updateData[field] = newValue;
+          auditEntries.push({ field, oldValue, newValue });
         }
       }
     }
 
-    // Update the Cliente record directly
-    const updateData: any = {};
-    if (telefone1 !== undefined) updateData.telefone1 = telefone1;
-    if (telefone2 !== undefined) updateData.telefone2 = telefone2;
-    if (telefone3 !== undefined) updateData.telefone3 = telefone3;
-    if (telefone4 !== undefined) updateData.telefone4 = telefone4;
-    if (email1 !== undefined) updateData.email1 = email1;
-    if (email2 !== undefined) updateData.email2 = email2;
-    if (email3 !== undefined) updateData.email3 = email3;
-    if (pessoaContato !== undefined) updateData.pessoaContato = pessoaContato;
-    if (observacoes !== undefined) updateData.observacoes = observacoes;
-    if (carteira !== undefined) {
-      updateData.carteira = carteira;
-      // Set timestamp fields for carteira changes
-      if (carteira === "BOLSAO" && !existing.dataEntradaBolsao) updateData.dataEntradaBolsao = new Date();
-      if (carteira === "CARTEIRA_FRIA" && !existing.dataEntradaCarteiraFria) updateData.dataEntradaCarteiraFria = new Date();
-      // Audit log for carteira change
+    // Handle carteira changes via vendedorId assignment (not direct carteira field)
+    // The carteira is computed, so to change it we change vendedorId
+    // This is handled by the /api/vendedores/assign route
+
+    // Create audit logs for changed fields
+    for (const entry of auditEntries) {
       await db.auditLog.create({
-        data: { codigo, field: "carteira", oldValue: existing.carteira, newValue: carteira, changedBy },
+        data: {
+          codigo,
+          field: entry.field,
+          oldValue: entry.oldValue,
+          newValue: entry.newValue,
+          changedBy,
+        },
       });
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      // No changes to make
+      const systemUserIds = await getSystemUserIds();
+      const record = dbToRecord(existing);
+      record.carteira = computeCarteira(existing.vendedorId, existing.tipo, systemUserIds);
+      return NextResponse.json({ success: true, edit: record });
     }
 
     const updated = await db.cliente.update({
@@ -409,7 +532,11 @@ export async function PATCH(request: NextRequest) {
     // Invalidate cache so next read picks up changes
     invalidateCache();
 
-    return NextResponse.json({ success: true, edit: dbToRecord(updated) });
+    const systemUserIds = await getSystemUserIds();
+    const record = dbToRecord(updated);
+    record.carteira = computeCarteira(updated.vendedorId, updated.tipo, systemUserIds);
+
+    return NextResponse.json({ success: true, edit: record });
   } catch (error) {
     console.error("Error saving edit:", error);
     return NextResponse.json(

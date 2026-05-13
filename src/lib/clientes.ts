@@ -39,6 +39,7 @@ export function parseObservacoes(obs: string): ParsedFields {
     ultima_venda: '',
     reg_simples: '',
     vendedor: '',
+    data_atribuicao_vendedor: '',
   }
 
   if (!obs) return defaults
@@ -111,6 +112,8 @@ export function getRecordValue(r: ClienteRecord, key: string): string {
     data_abertura: r.data_abertura, cnae_principal: r.cnae_principal, natureza_juridica: r.natureza_juridica,
     porte: r.porte, cadastro: r.parsed.cadastro, ultima_venda: r.parsed.ultima_venda,
     reg_simples: r.parsed.reg_simples, vendedor: r.parsed.vendedor,
+    tipo: r.tipo, carteira: r.carteira,
+    data_atribuicao_vendedor: r.parsed.data_atribuicao_vendedor,
     observacoes: r.editable.observacoes,
   }
   return map[key] || ''

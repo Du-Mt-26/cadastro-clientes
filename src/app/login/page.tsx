@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { Building2, Eye, EyeOff, Shield, KeyRound, ArrowLeft, Mail, Lock, Loader2 } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -78,68 +79,54 @@ export default function LoginPage() {
     }
   }
 
-  const inputStyle = {
-    width: '100%',
-    padding: '0.625rem 0.75rem',
-    borderRadius: '8px',
-    border: '1px solid #d1d5db',
-    fontSize: '0.875rem',
-    outline: 'none',
-  }
-
-  const primaryBtnStyle = (disabled: boolean) => ({
-    width: '100%' as const,
-    padding: '0.625rem',
-    borderRadius: '8px',
-    border: 'none',
-    background: disabled ? '#99f6e4' : '#0d9488',
-    color: '#fff',
-    fontWeight: '600' as const,
-    fontSize: '0.875rem',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-  })
-
   // ── FORGOT PASSWORD VIEW ──
   if (showForgot) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', padding: '1rem' }}>
-        <div style={{ width: '100%', maxWidth: '400px' }}>
-          <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #14b8a6, #0d9488)', color: '#fff', fontSize: '28px', marginBottom: '1rem' }}>M</div>
-            <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a' }}>Mtech Geral</h1>
-            <p style={{ fontSize: '0.875rem', color: '#64748b', marginTop: '0.25rem' }}>Cadastro de Clientes</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-950 dark:to-slate-900 p-4">
+        <div className="w-full max-w-md">
+          {/* Branding */}
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg mb-4">
+              <Building2 className="size-8" />
+            </div>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">M-Tech Distribuidora</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Cadastro de Clientes</p>
           </div>
 
-          <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', padding: '1.5rem' }}>
-            <h2 style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: '600', marginBottom: '1.5rem' }}>🔑 Recuperar Senha</h2>
+          {/* Card */}
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+            <div className="flex items-center gap-2 mb-6">
+              <KeyRound className="size-5 text-teal-600 dark:text-teal-400" />
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Recuperar Senha</h2>
+            </div>
 
             {forgotSent ? (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ padding: '1rem', borderRadius: '8px', background: '#f0fdf4', color: '#166534', fontSize: '0.875rem', marginBottom: '1rem' }}>
-                  ✅ Solicitação registrada! Contate o administrador do sistema para receber sua nova senha.
+              <div className="text-center">
+                <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-sm mb-4">
+                  Solicitação registrada! Contate o administrador do sistema para receber sua nova senha.
                 </div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '1rem' }}>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
                   Administradores: Renato ou Artur
                 </p>
                 <button
                   onClick={() => { setShowForgot(false); setForgotSent(false); setForgotEmail('') }}
-                  style={{ background: 'none', border: 'none', color: '#0d9488', fontSize: '0.875rem', cursor: 'pointer', fontWeight: '500' }}
+                  className="text-sm text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium flex items-center gap-1 mx-auto"
                 >
-                  ← Voltar ao login
+                  <ArrowLeft className="size-4" /> Voltar ao login
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleForgotPassword} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <form onSubmit={handleForgotPassword} className="flex flex-col gap-4">
                 {error && (
-                  <div style={{ padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem', background: '#fef2f2', color: '#991b1b' }}>
-                    ⚠️ {error}
+                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
+                    {error}
                   </div>
                 )}
-                <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                <p className="text-sm text-slate-600 dark:text-slate-400">
                   Informe seu email cadastrado. O administrador será notificado para redefinir sua senha.
                 </p>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>Email</label>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
                   <input
                     type="email"
                     placeholder="seu@email.com"
@@ -147,25 +134,30 @@ export default function LoginPage() {
                     onChange={(e) => setForgotEmail(e.target.value)}
                     required
                     autoFocus
-                    style={inputStyle}
+                    className="w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   />
                 </div>
-                <button type="submit" disabled={forgotLoading} style={primaryBtnStyle(forgotLoading)}>
-                  {forgotLoading ? '⏳ Enviando...' : '📧 Solicitar Nova Senha'}
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+                >
+                  {forgotLoading ? <Loader2 className="size-4 animate-spin" /> : <Mail className="size-4" />}
+                  {forgotLoading ? 'Enviando...' : 'Solicitar Nova Senha'}
                 </button>
                 <button
                   type="button"
                   onClick={() => { setShowForgot(false); setError(''); setForgotEmail('') }}
-                  style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left' }}
+                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1"
                 >
-                  ← Voltar ao login
+                  <ArrowLeft className="size-3" /> Voltar ao login
                 </button>
               </form>
             )}
           </div>
 
-          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: '1.5rem' }}>
-            Mtech Geral — Sistema de Cadastro de Clientes
+          <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
+            M-Tech Distribuidora de Informática Ltda
           </p>
         </div>
       </div>
@@ -174,65 +166,87 @@ export default function LoginPage() {
 
   // ── LOGIN VIEW ──
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #f8fafc, #f1f5f9)', padding: '1rem' }}>
-      <div style={{ width: '100%', maxWidth: '400px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '64px', height: '64px', borderRadius: '16px', background: 'linear-gradient(135deg, #14b8a6, #0d9488)', color: '#fff', fontSize: '28px', marginBottom: '1rem' }}>M</div>
-          <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0f172a' }}>Mtech Geral</h1>
-          <p style={{ fontSize: '0.875rem', color: '#64748b', marginTop: '0.25rem' }}>Cadastro de Clientes</p>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-950 dark:to-slate-900 p-4">
+      <div className="w-full max-w-md">
+        {/* Branding */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center size-16 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 text-white shadow-lg mb-4">
+            <Building2 className="size-8" />
+          </div>
+          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">M-Tech Distribuidora de Informática Ltda</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Cadastro de Clientes</p>
         </div>
 
-        <div style={{ background: '#fff', borderRadius: '12px', boxShadow: '0 4px 24px rgba(0,0,0,0.08)', padding: '1.5rem' }}>
-          <h2 style={{ textAlign: 'center', fontSize: '1.125rem', fontWeight: '600', marginBottom: '1.5rem' }}>
-            {requires2FA ? '🔐 Autenticação em Dois Fatores' : '🔒 Entrar no Sistema'}
-          </h2>
+        {/* Card */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 p-6">
+          <div className="flex items-center gap-2 mb-6">
+            {requires2FA ? (
+              <>
+                <Shield className="size-5 text-teal-600 dark:text-teal-400" />
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Autenticação em Dois Fatores</h2>
+              </>
+            ) : (
+              <>
+                <Lock className="size-5 text-teal-600 dark:text-teal-400" />
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Acesso ao Sistema</h2>
+              </>
+            )}
+          </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {error && (
-              <div style={{ padding: '0.75rem', borderRadius: '8px', fontSize: '0.875rem', background: error.includes('código') ? '#fef3c7' : '#fef2f2', color: error.includes('código') ? '#92400e' : '#991b1b' }}>
-                ⚠️ {error}
+              <div className={`p-3 rounded-lg text-sm border ${
+                error.includes('código')
+                  ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
+                  : 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+              }`}>
+                {error}
               </div>
             )}
 
             {!requires2FA ? (
               <>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>Email</label>
-                  <input
-                    type="email"
-                    placeholder="seu@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoFocus
-                    style={inputStyle}
-                  />
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400 dark:text-slate-500" />
+                    <input
+                      type="email"
+                      placeholder="seu@email.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      autoFocus
+                      className="w-full pl-10 pr-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>Senha</label>
-                  <div style={{ position: 'relative' }}>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Senha</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400 dark:text-slate-500" />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      style={inputStyle}
+                      className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      style={{ position: 'absolute', right: '0.75rem', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', fontSize: '0.75rem' }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                     >
-                      {showPassword ? '🙈' : '👁️'}
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
                     </button>
                   </div>
                 </div>
-                <div style={{ textAlign: 'right' }}>
+                <div className="text-right">
                   <button
                     type="button"
                     onClick={() => { setShowForgot(true); setError('') }}
-                    style={{ background: 'none', border: 'none', color: '#0d9488', fontSize: '0.8rem', cursor: 'pointer', fontWeight: '500' }}
+                    className="text-xs text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 font-medium"
                   >
                     Esqueci minha senha
                   </button>
@@ -241,8 +255,8 @@ export default function LoginPage() {
             ) : (
               <>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.375rem' }}>Código do Autenticador</label>
-                  <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>Abra o app Google Authenticator e insira o código de 6 dígitos.</p>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Código do Autenticador</label>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Abra o app Google Authenticator e insira o código de 6 dígitos.</p>
                   <input
                     type="text"
                     placeholder="000000"
@@ -250,23 +264,38 @@ export default function LoginPage() {
                     onChange={(e) => setTwoFactorCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                     required
                     autoFocus
-                    style={{ width: '100%', padding: '0.625rem 0.75rem', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '1.5rem', textAlign: 'center', letterSpacing: '0.5em', fontFamily: 'monospace', outline: 'none' }}
+                    className="w-full px-3 py-3 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 text-2xl text-center tracking-[0.5em] font-mono focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                   />
                 </div>
-                <button type="button" onClick={() => { setRequires2FA(false); setTwoFactorCode(''); setError('') }} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '0.75rem', cursor: 'pointer', textAlign: 'left' }}>
-                  ← Voltar ao login
+                <button
+                  type="button"
+                  onClick={() => { setRequires2FA(false); setTwoFactorCode(''); setError('') }}
+                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1"
+                >
+                  <ArrowLeft className="size-3" /> Voltar ao login
                 </button>
               </>
             )}
 
-            <button type="submit" disabled={loading} style={primaryBtnStyle(loading)}>
-              {loading ? '⏳ Entrando...' : requires2FA ? '🔐 Verificar e Entrar' : '🔒 Entrar'}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : requires2FA ? (
+                <Shield className="size-4" />
+              ) : (
+                <Lock className="size-4" />
+              )}
+              {loading ? 'Entrando...' : requires2FA ? 'Verificar e Entrar' : 'Entrar'}
             </button>
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: '0.75rem', color: '#94a3b8', marginTop: '1.5rem' }}>
-          Mtech Geral — Sistema de Cadastro de Clientes
+        <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
+          M-Tech Distribuidora de Informática Ltda
         </p>
       </div>
     </div>

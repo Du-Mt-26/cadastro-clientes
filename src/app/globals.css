@@ -119,6 +119,15 @@
   body {
     @apply bg-background text-foreground;
   }
+  html, body {
+    min-height: 100vh;
+  }
+  body {
+    background: oklch(0.97 0 0); /* slate-100 to match gradient end */
+  }
+  .dark body {
+    background: oklch(0.205 0 0); /* slate-900 to match gradient end */
+  }
 }
 
 /* Custom scrollbar - always visible */

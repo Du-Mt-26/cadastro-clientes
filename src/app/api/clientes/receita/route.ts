@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { findRecordByCnpj } from "@/lib/clientes-cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
     const cnpj = request.nextUrl.searchParams.get("cnpj") || "";
 
     // Clean CNPJ - digits only

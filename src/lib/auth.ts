@@ -160,41 +160,112 @@ export function canAssignVendedor(role: Role): boolean {
   return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
 }
 
-/**
- * Returns the filter that should be applied to client queries based on user role.
- * Vendors can see their own clients + Bolsão + unassigned Revendas.
- */
-export function getClientFilterForRole(role: Role, userId: string): {
-  vendedorId?: string
-  carteira?: string
-  orConditions?: Array<{ vendedorId: string } | { carteira: string } | { carteira: string; vendedorId: null }>
-} {
-  if (canSeeAllClients(role)) {
-    return {} // No filter — sees everything
-  }
+// ─── System User Emails ────────────────────────────
 
-  // VENDEDOR: own clients + Bolsão + unassigned Revendas
-  return {
-    orConditions: [
-      { vendedorId: userId },
-      { carteira: 'BOLSAO' },
-      { carteira: 'CARTEIRA_REVENDAS', vendedorId: null },
-    ],
-  }
+export const SYSTEM_USER_EMAILS = {
+  BOLSAO: 'bolsao@sistema.mtech',
+  LISTA_FRIA: 'lista-fria@sistema.mtech',
+  FORNECEDOR: 'fornecedor@sistema.mtech',
+} as const
+
+export const SYSTEM_USER_NAMES = {
+  BOLSAO: 'BOLSÃO',
+  LISTA_FRIA: 'LISTA FRIA',
+  FORNECEDOR: 'FORNECEDOR',
+} as const
+
+// Cached system user IDs (populated after first DB call)
+let _systemUserIds: { bolsao: string; listaFria: string; fornecedor: string } | null = null
+
+/**
+ * Get system user IDs from the database.
+ * Results are cached after the first call.
+ */
+export async function getSystemUserIds() {
+  if (_systemUserIds) return _systemUserIds
+
+  // Auto-create system users if they don't exist (using upsert to avoid race conditions in serverless)
+  const bcrypt = await import('bcryptjs')
+  const hashedPassword = await bcrypt.hash('sistema@mtech2024', 12)
+
+  const [bolsao, listaFria, fornecedor] = await Promise.all([
+    db.user.upsert({
+      where: { email: SYSTEM_USER_EMAILS.BOLSAO },
+      update: {},
+      create: { email: SYSTEM_USER_EMAILS.BOLSAO, name: SYSTEM_USER_NAMES.BOLSAO, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
+    }),
+    db.user.upsert({
+      where: { email: SYSTEM_USER_EMAILS.LISTA_FRIA },
+      update: {},
+      create: { email: SYSTEM_USER_EMAILS.LISTA_FRIA, name: SYSTEM_USER_NAMES.LISTA_FRIA, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
+    }),
+    db.user.upsert({
+      where: { email: SYSTEM_USER_EMAILS.FORNECEDOR },
+      update: {},
+      create: { email: SYSTEM_USER_EMAILS.FORNECEDOR, name: SYSTEM_USER_NAMES.FORNECEDOR, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
+    }),
+  ])
+
+  _systemUserIds = { bolsao: bolsao.id, listaFria: listaFria.id, fornecedor: fornecedor.id }
+  return _systemUserIds
+}
+
+/**
+ * Invalidate the cached system user IDs.
+ * Call this after creating/migrating system users.
+ */
+export function invalidateSystemUserIds() {
+  _systemUserIds = null
+}
+
+/**
+ * Compute the carteira label from vendedorId + tipo.
+ * Carteira is no longer stored — it is derived from the relationship.
+ */
+export function computeCarteira(
+  vendedorId: string | null,
+  tipo: string,
+  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string }
+): string {
+  if (!vendedorId) return 'SEM_VENDEDOR'
+  if (vendedorId === systemUserIds.bolsao) return 'BOLSAO'
+  if (vendedorId === systemUserIds.listaFria) return 'LISTA_FRIA'
+  if (vendedorId === systemUserIds.fornecedor) return 'FORNECEDOR'
+  // Regular vendedor assigned
+  return 'COM_VENDEDOR'
+}
+
+/**
+ * Check if user can see LISTA FRIA clients.
+ */
+export function canSeeListaFria(role: Role): boolean {
+  if (role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL') return true
+  return false
+}
+
+/**
+ * Check if user can see FORNECEDOR clients.
+ */
+export function canSeeFornecedor(role: Role, userEmail: string): boolean {
+  if (role === 'ADMIN' || role === 'DIRETOR_COMERCIAL') return true
+  if (userEmail === SYSTEM_USER_EMAILS.FORNECEDOR) return true
+  return false
 }
 
 // ─── Carteira Labels ───────────────────────────────
 
 export const CARTEIRA_LABELS: Record<string, string> = {
-  CARTEIRA_REVENDAS: 'Carteira Revendas',
-  CARTEIRA_CORPORATIVO: 'Carteira Corporativo',
-  BOLSAO: 'Bolsão (151+ dias)',
-  CARTEIRA_FRIA: 'Carteira Fria',
+  COM_VENDEDOR: 'COM VENDEDOR',
+  BOLSAO: 'BOLSÃO',
+  LISTA_FRIA: 'LISTA FRIA',
+  FORNECEDOR: 'FORNECEDOR',
+  SEM_VENDEDOR: 'SEM USUÁRIO',
 }
 
 export const CARTEIRA_COLORS: Record<string, string> = {
-  CARTEIRA_REVENDAS: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
-  CARTEIRA_CORPORATIVO: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
+  COM_VENDEDOR: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
   BOLSAO: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  CARTEIRA_FRIA: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  LISTA_FRIA: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  FORNECEDOR: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
+  SEM_VENDEDOR: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }

@@ -23,6 +23,7 @@ export interface ParsedFields {
   ultima_venda: string
   reg_simples: string
   vendedor: string
+  data_atribuicao_vendedor: string
   [key: string]: string
 }
 
@@ -36,6 +37,13 @@ export interface EditableFields {
   email3: string
   pessoaContato: string
   observacoes: string
+  endereco: string
+  numero: string
+  complemento: string
+  bairro: string
+  cidade: string
+  cep: string
+  uf: string
 }
 
 export interface ClienteRecord {
@@ -63,8 +71,10 @@ export interface ClienteRecord {
   cnae_principal: string
   natureza_juridica: string
   porte: string
-  carteira: string          // "CARTEIRA_REVENDAS" | "CARTEIRA_CORPORATIVO" | "BOLSAO" | "CARTEIRA_FRIA"
-  vendedor_id: string      // system-assigned vendor user ID
+  tipo: string              // "REVENDA" | "CORPORATIVO"
+  fornecedor: boolean       // true = fornecedor (não é cliente real, vendedores não veem)
+  carteira: string          // computed: "COM_VENDEDOR" | "BOLSAO" | "LISTA_FRIA" | "FORNECEDOR" | "SEM_VENDEDOR"
+  vendedor_id: string       // system-assigned vendor user ID
   parsed: ParsedFields
   editable: EditableFields
 }
@@ -85,7 +95,7 @@ export interface ApiResponse {
     ufs: string[]
     cidadesPorUf: Record<string, string[]>
     carteiras: string[]
-    vendedorUsers: { id: string; name: string; role: string }[]
+    vendedorUsers: { id: string; name: string; role: string; isSystemUser: boolean; email: string }[]
   }
   stats: {
     total: number
@@ -97,10 +107,14 @@ export interface ApiResponse {
       vermelho: number // 151+ dias
     }
     carteira: {
-      carteira_revendas: number
-      carteira_corporativo: number
+      com_vendedor: number
       bolsao: number
-      carteira_fria: number
+      lista_fria: number
+      fornecedores: number
+    }
+    tipo: {
+      revendas: number
+      corporativo: number
     }
   }
 }
@@ -142,6 +156,7 @@ export interface NewClientForm {
   porte: string
   regSimples: string
   vendedor: string
+  tipo: string   // "REVENDA" | "CORPORATIVO"
 }
 
 // ─── Column definitions ────────────────────────────
@@ -170,6 +185,7 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'email2', label: 'Email 2', editable: true, minWidth: '140px' },
   { key: 'email3', label: 'Email 3', editable: true, minWidth: '140px' },
   { key: 'vendedor', label: 'Vendedora', minWidth: '140px' },
+  { key: 'tipo', label: 'Tipo', minWidth: '110px' },
   { key: 'carteira', label: 'Carteira', minWidth: '130px' },
   { key: 'situacao_cadastral', label: 'Sit. Cadastral', minWidth: '120px' },
   { key: 'nome_fantasia', label: 'Nome Fantasia', minWidth: '160px' },
@@ -203,7 +219,7 @@ export const EMPTY_FORM: NewClientForm = {
   telefone1: '', telefone2: '', telefone3: '', telefone4: '',
   email1: '', email2: '', email3: '', pessoaContato: '',
   dataAbertura: '', cnaePrincipal: '', naturezaJuridica: '', porte: '',
-  regSimples: '', vendedor: '',
+  regSimples: '', vendedor: '', tipo: 'REVENDA',
 }
 
 // ─── Detail Modal Tabs ────────────────────────────
@@ -233,4 +249,11 @@ export const FIELD_LABELS: Record<string, string> = {
   email3: 'Email 3',
   pessoaContato: 'Contato',
   observacoes: 'Observações',
+  endereco: 'Endereço',
+  numero: 'Número',
+  complemento: 'Complemento',
+  bairro: 'Bairro',
+  cidade: 'Cidade',
+  cep: 'CEP',
+  uf: 'Estado',
 }
