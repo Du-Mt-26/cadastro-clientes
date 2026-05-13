@@ -61,6 +61,9 @@ import {
   Shield,
   LogOut,
   UserCog,
+  Package,
+  MessageCircle,
+  Star,
 } from 'lucide-react'
 import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import { useSession } from 'next-auth/react'
@@ -180,6 +183,18 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isObservacoes }: 
   return (
     <span className="cursor-pointer group flex items-center gap-1" onClick={(e) => { e.stopPropagation(); setEditing(true) }} title={isObservacoes && value ? value : "Clique para editar"}>
       <span className="text-xs">{displayValue}</span>
+      {isPhone && value && (
+        <a
+          href={`https://wa.me/55${value.replace(/\D/g, '').replace(/^0+/, '')}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="size-4 text-green-600 hover:text-green-700 dark:text-green-400 shrink-0"
+          onClick={(e) => e.stopPropagation()}
+          title="Abrir no WhatsApp"
+        >
+          <MessageCircle className="size-3.5" />
+        </a>
+      )}
       <Pencil className="size-2.5 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
     </span>
   )
@@ -198,11 +213,11 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
   const isSticky = col.sticky === 'left'
   const isEditable = col.editable
   let headerBg = 'bg-slate-50 dark:bg-slate-800'
-  let headerText = 'text-slate-700 dark:text-slate-300'
-  if (isEditable) { headerBg = 'bg-teal-50 dark:bg-teal-950/40'; headerText = 'text-teal-700 dark:text-teal-400' }
+  let headerText = 'text-slate-700 dark:text-slate-200'
+  if (isEditable) { headerBg = 'bg-teal-50 dark:bg-teal-900'; headerText = 'text-teal-800 dark:text-teal-200' }
   if (isSticky) headerBg = 'bg-slate-100 dark:bg-slate-800'
-  if (isDragging) { headerBg = 'bg-teal-100 dark:bg-teal-900/50'; headerText = 'text-teal-800 dark:text-teal-300' }
-  if (isDragOver) headerBg = 'bg-amber-100 dark:bg-amber-900/50'
+  if (isDragging) { headerBg = 'bg-teal-100 dark:bg-teal-900'; headerText = 'text-teal-900 dark:text-teal-200' }
+  if (isDragOver) headerBg = 'bg-amber-100 dark:bg-amber-900'
 
   return (
     <th
@@ -218,14 +233,14 @@ function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, 
       <span className="flex items-center gap-1">
         {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
         {col.label}
-        {isEditable && <Pencil className="size-2.5 text-teal-500 dark:text-teal-400 shrink-0" />}
+        {isEditable && <Pencil className="size-2.5 text-teal-600 dark:text-teal-300 shrink-0" />}
         {isActive ? (
           col.numericSort ? (
-            sortOrder === 'asc' ? <ArrowUpNarrowWide className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" /> : <ArrowDownWideNarrow className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+            sortOrder === 'asc' ? <ArrowUpNarrowWide className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownWideNarrow className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
           ) : (
-            sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+            sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
           )
-        ) : <ArrowUpDown className="size-3 text-slate-300 dark:text-slate-600 shrink-0" />}
+        ) : <ArrowUpDown className="size-3 text-slate-400 dark:text-slate-500 shrink-0" />}
       </span>
     </th>
   )
@@ -249,14 +264,17 @@ function Home() {
   const [uf, setUf] = useState(searchParams.get('uf') || 'all')
   const [diasSemVendaFilter, setDiasSemVendaFilter] = useState(searchParams.get('dias') || 'all')
   const [carteiraFilter, setCarteiraFilter] = useState(searchParams.get('carteira') || 'all')
+  const [tipoFilter, setTipoFilter] = useState(searchParams.get('tipo') || 'all')
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
-  const [limit, setLimit] = useState<string>(searchParams.get('limit') || '10')
+  const [limit, setLimit] = useState<string>(searchParams.get('limit') || 'all')
   const [debouncedSearch, setDebouncedSearch] = useState(search)
   const [saving, setSaving] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || '')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sort_order') as 'asc' | 'desc') || 'asc')
+  const [favoritos, setFavoritos] = useState<string[]>([])
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const [focusedRow, setFocusedRow] = useState(-1)
+  const [focusedCol, setFocusedCol] = useState(-1)
   const [pageJump, setPageJump] = useState('')
 
   // Column ordering state
@@ -275,6 +293,7 @@ function Home() {
 
   // New client modal
   const [showNewClient, setShowNewClient] = useState(false)
+  const [newClientTab, setNewClientTab] = useState<'empresa' | 'endereco' | 'contato'>('empresa')
   const [form, setForm] = useState<NewClientForm>(EMPTY_FORM)
   const [consulting, setConsulting] = useState(false)
   const [consultError, setConsultError] = useState('')
@@ -297,6 +316,37 @@ function Home() {
       .then(data => setSheetsConnected(data.connected && data.config?.connected))
       .catch(() => {})
   }, [showSheetsSync])
+
+  // Load favorites
+  useEffect(() => {
+    fetch('/api/clientes/favoritos')
+      .then(res => res.json())
+      .then(data => { if (data.data) setFavoritos(data.data) })
+      .catch(() => {})
+  }, [])
+
+  // Toggle favorite
+  const toggleFavorito = async (codigo: string) => {
+    try {
+      const res = await fetch('/api/clientes/favoritos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codigo }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setFavoritos(prev =>
+          data.favorited
+            ? [...prev, codigo]
+            : prev.filter(c => c !== codigo)
+        )
+      } else if (data.error) {
+        toast({ title: 'Limite atingido', description: data.error, variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Erro', description: 'Não foi possível atualizar favorito', variant: 'destructive' })
+    }
+  }
 
   // Client detail modal
   const [detailClient, setDetailClient] = useState<ClienteRecord | null>(null)
@@ -321,16 +371,17 @@ function Home() {
     const params = new URLSearchParams()
     if (search) params.set('search', search)
     if (situacaoCadastral !== 'all') params.set('situacao', situacaoCadastral)
-    if (vendedor !== 'all') params.set('vendedor', vendedor)
+    if (vendedor !== 'all' && !isVendedor) params.set('vendedor', vendedor)
     if (cidade !== 'all') params.set('cidade', cidade)
     if (uf !== 'all') params.set('uf', uf)
     if (diasSemVendaFilter !== 'all') params.set('dias', diasSemVendaFilter)
     if (carteiraFilter !== 'all') params.set('carteira', carteiraFilter)
+    if (tipoFilter !== 'all') params.set('tipo', tipoFilter)
     if (page > 1) params.set('page', page.toString())
-    if (limit !== '10') params.set('limit', limit)
+    if (limit !== 'all') params.set('limit', limit)
     if (sortBy) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
     router.replace(`?${params.toString()}`, { scroll: false })
-  }, [search, situacaoCadastral, vendedor, cidade, uf, diasSemVendaFilter, carteiraFilter, page, limit, sortBy, sortOrder, router])
+  }, [search, situacaoCadastral, vendedor, cidade, uf, diasSemVendaFilter, carteiraFilter, tipoFilter, page, limit, sortBy, sortOrder, router])
 
   // Reorder columns
   const columns = useMemo(() => {
@@ -377,14 +428,16 @@ function Home() {
   const buildFilterParams = useCallback(() => {
     const params = new URLSearchParams()
     if (situacaoCadastral && situacaoCadastral !== 'all') params.set('situacao_cadastral', situacaoCadastral)
-    if (vendedor && vendedor !== 'all') params.set('vendedor', vendedor)
+    // For VENDEDOR role, don't send vendedor filter - visibility is controlled by backend role rules
+    if (vendedor && vendedor !== 'all' && !isVendedor) params.set('vendedor', vendedor)
     if (cidade !== 'all') params.set('cidade', cidade)
     if (uf !== 'all') params.set('uf', uf)
     if (debouncedSearch) params.set('search', debouncedSearch)
     if (sortBy && !CLIENT_SORT_KEYS.has(sortBy)) { params.set('sort_by', sortBy); params.set('sort_order', sortOrder) }
     if (carteiraFilter && carteiraFilter !== 'all') params.set('carteira', carteiraFilter)
+    if (tipoFilter && tipoFilter !== 'all') params.set('tipo', tipoFilter)
     return params
-  }, [situacaoCadastral, vendedor, cidade, uf, debouncedSearch, sortBy, sortOrder, carteiraFilter])
+  }, [situacaoCadastral, vendedor, cidade, uf, debouncedSearch, sortBy, sortOrder, carteiraFilter, tipoFilter])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -420,22 +473,37 @@ function Home() {
 
   // Client-side sort for computed fields
   const sortedData = useMemo(() => {
-    if (!sortBy || !CLIENT_SORT_KEYS.has(sortBy)) return filteredData
-    return [...filteredData].sort((a, b) => {
-      if (sortBy === 'dias_sem_venda') {
-        const aVal = calcDiasSemVenda(a.parsed.ultima_venda)
-        const bVal = calcDiasSemVenda(b.parsed.ultima_venda)
-        if (aVal === null && bVal === null) return 0
-        if (aVal === null) return 1
-        if (bVal === null) return -1
-        return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
-      }
-      return 0
-    })
-  }, [filteredData, sortBy, sortOrder])
+    let result = filteredData
+    // Client-side sort for computed fields
+    if (sortBy && CLIENT_SORT_KEYS.has(sortBy)) {
+      result = [...result].sort((a, b) => {
+        if (sortBy === 'dias_sem_venda') {
+          const aVal = calcDiasSemVenda(a.parsed.ultima_venda)
+          const bVal = calcDiasSemVenda(b.parsed.ultima_venda)
+          if (aVal === null && bVal === null) return 0
+          if (aVal === null) return 1
+          if (bVal === null) return -1
+          return sortOrder === 'asc' ? aVal - bVal : bVal - aVal
+        }
+        return 0
+      })
+    }
+    // Bring favorites to top (respecting their order)
+    if (favoritos.length > 0) {
+      const favSet = new Set(favoritos)
+      const favOrder = new Map(favoritos.map((c, i) => [c, i]))
+      const favs = result.filter(r => favSet.has(r.parsed.codigo))
+      const rest = result.filter(r => !favSet.has(r.parsed.codigo))
+      // Sort favorites by their favoritos order
+      favs.sort((a, b) => (favOrder.get(a.parsed.codigo) ?? 0) - (favOrder.get(b.parsed.codigo) ?? 0))
+      result = [...favs, ...rest]
+    }
+    return result
+  }, [filteredData, sortBy, sortOrder, favoritos])
 
   // Use server-side dsvStats
   const dsvStats = data?.stats.dias_sem_venda ?? { verde: 0, amarelo: 0, laranja: 0, vermelho: 0 }
+  const isVendedor = (session?.user as any)?.role === 'VENDEDOR'
 
   const handleSort = (key: string) => {
     if (sortBy === key) {
@@ -471,6 +539,7 @@ function Home() {
 
   // Client detail modal
   const openDetail = (r: ClienteRecord) => {
+    setShowNewClient(false)
     setDetailClient(r)
     setDetailTab('contato')
     setDetailObs(r.editable.observacoes)
@@ -518,7 +587,7 @@ function Home() {
   }
 
   // Clear filters
-  const hasActiveFilters = search !== '' || situacaoCadastral !== 'all' || vendedor !== 'all' || cidade !== 'all' || uf !== 'all' || diasSemVendaFilter !== 'all' || carteiraFilter !== 'all'
+  const hasActiveFilters = search !== '' || situacaoCadastral !== 'all' || vendedor !== 'all' || cidade !== 'all' || uf !== 'all' || diasSemVendaFilter !== 'all' || carteiraFilter !== 'all' || tipoFilter !== 'all'
 
   const clearFilters = () => {
     setSearch('')
@@ -528,6 +597,7 @@ function Home() {
     setUf('all')
     setDiasSemVendaFilter('all')
     setCarteiraFilter('all')
+    setTipoFilter('all')
     setSortBy('')
     setSortOrder('asc')
     setPage(1)
@@ -605,37 +675,106 @@ function Home() {
     finally { setSavingNew(false) }
   }
 
-  const openNewClient = () => { setForm(EMPTY_FORM); setConsultError(''); setConsultWarning(''); setShowNewClient(true) }
+  const openNewClient = () => { setForm(EMPTY_FORM); setConsultError(''); setConsultWarning(''); setNewClientTab('empresa'); setShowNewClient(true) }
   const updateForm = (field: keyof NewClientForm, value: string) => setForm((f) => ({ ...f, [field]: value }))
 
-  // Keyboard navigation
+  // Keyboard navigation (Excel-style: arrow keys move cell, Enter opens detail)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!sortedData.length) return
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return
+
+      const maxRow = sortedData.length - 1
+      const maxCol = columns.length - 1
+
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setFocusedRow(prev => Math.min(prev + 1, sortedData.length - 1))
+        const newRow = focusedRow < 0 ? 0 : Math.min(focusedRow + 1, maxRow)
+        setFocusedRow(newRow)
+        if (focusedCol < 0) setFocusedCol(0)
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        setFocusedRow(prev => Math.max(prev - 1, 0))
+        const newRow = focusedRow <= 0 ? 0 : focusedRow - 1
+        setFocusedRow(newRow)
+        if (focusedCol < 0) setFocusedCol(0)
+        if (focusedRow <= 0 && focusedCol < 0) setFocusedCol(0)
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault()
+        const newCol = focusedCol < 0 ? 0 : Math.min(focusedCol + 1, maxCol)
+        setFocusedCol(newCol)
+        if (focusedRow < 0) setFocusedRow(0)
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault()
+        const newCol = focusedCol <= 0 ? 0 : focusedCol - 1
+        setFocusedCol(newCol)
+        if (focusedRow < 0) setFocusedRow(0)
       } else if (e.key === 'Enter' && focusedRow >= 0 && focusedRow < sortedData.length) {
         e.preventDefault()
+        // If focused on an editable cell, start editing
+        if (focusedCol >= 0 && focusedCol < columns.length) {
+          const col = columns[focusedCol]
+          const editableKey = toEditableKey(col.key)
+          if (col.editable && editableKey) {
+            // Trigger edit on the editable cell
+            const cell = document.querySelector(`[data-cell="${focusedRow}-${focusedCol}"]`) as HTMLElement
+            if (cell) { cell.click(); return }
+          }
+        }
         openDetail(sortedData[focusedRow])
       } else if (e.key === 'Escape') {
         setFocusedRow(-1)
-        clearFilters()
+        setFocusedCol(-1)
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [sortedData, focusedRow])
+  }, [sortedData, focusedRow, focusedCol, columns])
+
+  // Auto-scroll focused cell into view (considering sticky columns)
+  useEffect(() => {
+    if (focusedRow < 0 || focusedCol < 0) return
+    const cell = document.querySelector(`[data-cell="${focusedRow}-${focusedCol}"]`) as HTMLElement | null
+    const container = tableContainerRef.current
+    if (!cell || !container) return
+
+    const cellRect = cell.getBoundingClientRect()
+    const containerRect = container.getBoundingClientRect()
+
+    // Calculate sticky width (frozen left columns)
+    const stickyWidth = columns.filter(c => c.sticky === 'left').reduce((sum, c) => sum + (parseInt(c.minWidth || '0')), 0)
+
+    // Horizontal scroll adjustment
+    const cellLeft = cellRect.left - containerRect.left
+    const cellRight = cellRect.right - containerRect.left
+    const visibleLeft = stickyWidth + 4 // 4px padding
+    const visibleRight = containerRect.width - container.clientWidth + container.scrollWidth - container.scrollLeft
+
+    if (cellLeft < visibleLeft) {
+      // Cell is behind sticky columns — scroll left to reveal it
+      container.scrollLeft += cellLeft - visibleLeft - 8
+    } else if (cellRight > containerRect.width - 4) {
+      // Cell is past right edge — scroll right
+      container.scrollLeft += cellRight - containerRect.width + 8
+    }
+
+    // Vertical scroll adjustment
+    const cellTop = cellRect.top - containerRect.top
+    const cellBottom = cellRect.bottom - containerRect.top
+    if (cellTop < 0) {
+      container.scrollTop += cellTop - 2
+    } else if (cellBottom > containerRect.height) {
+      container.scrollTop += cellBottom - containerRect.height + 2
+    }
+  }, [focusedRow, focusedCol, columns])
 
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
   const showingAll = limit === 'all'
   const nowBrasilia = getNowBrasilia()
-  const todayStr = nowBrasilia.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  // For client-side display, always use America/Sao_Paulo timezone explicitly
+  const brasiliaOpts: Intl.DateTimeFormatOptions = { timeZone: 'America/Sao_Paulo' }
+  const todayStr = new Date().toLocaleDateString('pt-BR', { ...brasiliaOpts, day: '2-digit', month: '2-digit', year: 'numeric' })
+  const timeStr = new Date().toLocaleTimeString('pt-BR', { ...brasiliaOpts, hour: '2-digit', minute: '2-digit' })
 
   const handlePageJump = () => {
     const num = parseInt(pageJump)
@@ -645,8 +784,8 @@ function Home() {
     }
   }
 
-  // Reset focusedRow when data changes
-  useEffect(() => { setFocusedRow(-1) }, [data?.data])
+  // Reset focused cell when data changes
+  useEffect(() => { setFocusedRow(-1); setFocusedCol(-1) }, [data?.data])
 
   // Show loading while checking session
   if (sessionStatus === 'loading') {
@@ -666,7 +805,7 @@ function Home() {
       if (!res.ok) throw new Error(data.error)
       toast({
         title: '✓ Bolsão atualizado',
-        description: `${data.movedToBolsao} clientes movidos para o Bolsão, ${data.movedToCarteiraFria} para Carteira Fria`,
+        description: `${data.movedToBolsao} clientes movidos para o Bolsão`,
       })
       fetchData()
     } catch (e: any) {
@@ -683,17 +822,17 @@ function Home() {
               <div className="flex items-center justify-center size-10 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-md"><Building2 className="size-5" /></div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">Cadastro de Clientes</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Mtech Geral — {todayStr} (UTC-3)</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">M-Tech Distribuidora de Informática Ltda — {todayStr} {timeStr}</p>
               </div>
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
               <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"><UserPlus className="size-4 mr-1.5" />Novo Cliente</Button>
-              <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}</Button>
+              {!isVendedor && <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}</Button>}
               <Button variant="outline" size="sm" onClick={() => { setColumnOrder(DEFAULT_COLUMNS.map(c => c.key)); localStorage.removeItem('columnOrder') }} className="text-slate-600 dark:text-slate-400"><RotateCcw className="size-4 mr-1.5" />Restaurar Colunas</Button>
-              <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>
+              {!isVendedor && <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>}
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
               {session && (session.user as any).role !== 'VENDEDOR' && (
-                <Button variant="outline" size="sm" onClick={() => setShowVendedorManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Briefcase className="size-4 mr-1.5" />Vendedores</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowVendedorManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Briefcase className="size-4 mr-1.5" />Usuários</Button>
               )}
               {session && (session.user as any).role !== 'VENDEDOR' && (
                 <Button variant="outline" size="sm" onClick={handleBolsaoCheck} className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"><AlertCircle className="size-4 mr-1.5" />Verificar Bolsão</Button>
@@ -708,147 +847,140 @@ function Home() {
       </header>
 
       <main className="flex-1 max-w-[1900px] mx-auto w-full px-4 sm:px-6 py-4">
-        {/* Stats Row 1 — Mobile: list format */}
-        <div className="md:hidden bg-white dark:bg-slate-800 rounded-lg shadow-sm p-3 mb-3">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-slate-600 dark:text-slate-400 flex items-center gap-2"><Users className="size-4 text-slate-500" />Total</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2"><AlertTriangle className="size-4" />Irregular</span>
-              <div className="text-right text-xs">
-                <span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} baixadas</span>
-                <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
-                <span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} inaptas</span>
-                <span className="mx-1 text-slate-300 dark:text-slate-600">·</span>
-                <span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} suspensas</span>
+        {/* Compact Stats Bar */}
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm px-4 py-2 mb-3 overflow-hidden">
+          {isVendedor ? (
+            <>
+              {/* VENDEDOR VIEW: Own stats only */}
+              {/* Row 1: Key stats — clicáveis como filtros */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'all' && carteiraFilter === 'all' ? 'bg-slate-200 dark:bg-slate-700 ring-1 ring-slate-400 dark:ring-slate-500' : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'}`} onClick={() => { setTipoFilter('all'); setCarteiraFilter('all'); setPage(1) }} title="Mostrar todos">
+                  <Users className="size-3.5 text-slate-500 dark:text-slate-400" /><span className="text-slate-700 dark:text-slate-300">Total</span> <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</span>
+                </button>
+                <span className="text-slate-300 dark:text-slate-600">│</span>
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tipos</span>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'CORPORATIVO' && carteiraFilter === 'COM_VENDEDOR' ? 'bg-purple-100 dark:bg-purple-900/40 ring-1 ring-purple-400' : 'hover:bg-purple-50 dark:hover:bg-purple-950/20'}`} onClick={() => { if (tipoFilter === 'CORPORATIVO' && carteiraFilter === 'COM_VENDEDOR') { setTipoFilter('all'); setCarteiraFilter('all') } else { setTipoFilter('CORPORATIVO'); setCarteiraFilter('COM_VENDEDOR') }; setPage(1) }} title="Meus Clientes Corporativos">
+                  <Building2 className="size-3 text-purple-500 dark:text-purple-400" /><span className="text-purple-700 dark:text-purple-400">Corp.</span> <span className="font-bold text-purple-700 dark:text-purple-400">{(data?.stats.tipo?.corporativo ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'REVENDA' && carteiraFilter === 'COM_VENDEDOR' ? 'bg-teal-100 dark:bg-teal-900/40 ring-1 ring-teal-400' : 'hover:bg-teal-50 dark:hover:bg-teal-950/20'}`} onClick={() => { if (tipoFilter === 'REVENDA' && carteiraFilter === 'COM_VENDEDOR') { setTipoFilter('all'); setCarteiraFilter('all') } else { setTipoFilter('REVENDA'); setCarteiraFilter('COM_VENDEDOR') }; setPage(1) }} title="Meus Clientes Revenda">
+                  <Briefcase className="size-3 text-teal-500 dark:text-teal-400" /><span className="text-teal-700 dark:text-teal-400">Rev.</span> <span className="font-bold text-teal-700 dark:text-teal-400">{(data?.stats.tipo?.revendas ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <span className="text-slate-300 dark:text-slate-600">│</span>
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Carteiras</span>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${carteiraFilter === 'BOLSAO' ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { if (carteiraFilter === 'BOLSAO') { setCarteiraFilter('all'); setTipoFilter('all') } else { setCarteiraFilter('BOLSAO'); setTipoFilter('all') }; setPage(1) }} title="Clientes do Bolsão">
+                  <Package className="size-3 text-amber-500 dark:text-amber-400" /><span className="text-amber-700 dark:text-amber-400">BOLSÃO</span> <span className="font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
               </div>
-            </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-teal-700 dark:text-teal-400 flex items-center gap-2"><Briefcase className="size-4" />Revendas</span>
-              <span className="text-sm font-bold text-teal-700 dark:text-teal-400">{(data?.stats.carteira?.carteira_revendas ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-100 dark:border-slate-700">
-              <span className="text-sm text-purple-700 dark:text-purple-400 flex items-center gap-2"><Building2 className="size-4" />Corporativo</span>
-              <span className="text-sm font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5">
-              <span className="text-sm text-slate-500 dark:text-slate-400 flex items-center gap-2"><Users className="size-4" />Carteira Fria</span>
-              <span className="text-sm font-bold text-slate-500 dark:text-slate-400">{(data?.stats.carteira?.carteira_fria ?? 0).toLocaleString('pt-BR')}</span>
-            </div>
-          </div>
-        </div>
+              {/* Row 2: Clientes (DSV) com labels explícitos + Bolsão */}
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700/60 text-xs">
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider shrink-0">Clientes</span>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '0-45' ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-1 ring-emerald-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }} title="1–45 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-emerald-500" /><span className="text-emerald-700 dark:text-emerald-400 font-bold">{dsvStats.verde.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">1-45 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '46-90' ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }} title="46–90 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-amber-500" /><span className="text-amber-600 dark:text-amber-400 font-bold">{dsvStats.amarelo.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">46-90 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '91-150' ? 'bg-orange-100 dark:bg-orange-900/40 ring-1 ring-orange-400' : 'hover:bg-orange-50 dark:hover:bg-orange-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }} title="91–150 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-orange-500" /><span className="text-orange-600 dark:text-orange-400 font-bold">{dsvStats.laranja.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">91-150 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '151+' ? 'bg-red-100 dark:bg-red-900/40 ring-1 ring-red-400' : 'hover:bg-red-50 dark:hover:bg-red-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '151+' ? 'all' : '151+'); setPage(1) }} title="151+ dias sem venda">
+                  <span className="size-2.5 rounded-full bg-red-500" /><span className="text-red-600 dark:text-red-400 font-bold">{dsvStats.vermelho.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">151+ dias</span>
+                </button>
 
-        {/* Stats Row 1 — Desktop: card grid */}
-        <div className="hidden md:grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-2"><div className="flex items-center justify-center size-9 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"><Users className="size-4" /></div><div><p className="text-xs text-slate-500 dark:text-slate-400">Total</p><p className="text-lg font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</p></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800"><CardContent className="p-3 flex items-center gap-3"><div className="flex items-center justify-center size-9 rounded-lg bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 shrink-0"><AlertTriangle className="size-4" /></div><div className="min-w-0"><p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Irregular</p><div className="flex flex-col gap-0.5 text-xs"><span className="text-red-600 dark:text-red-400 font-semibold">{(scStats['BAIXADA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-red-400 dark:text-red-500">baixadas</span></span><span className="text-amber-600 dark:text-amber-400 font-semibold">{(scStats['INAPTA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-amber-400 dark:text-amber-500">inaptas</span></span><span className="text-orange-600 dark:text-orange-400 font-semibold">{(scStats['SUSPENSA'] ?? 0).toLocaleString('pt-BR')} <span className="font-normal text-orange-400 dark:text-orange-500">suspensas</span></span></div></div></CardContent></Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800">
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400 shrink-0">
-                <Briefcase className="size-4" />
               </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Revendas</p>
-                <p className="text-lg font-bold text-teal-700 dark:text-teal-400">{(data?.stats.carteira?.carteira_revendas ?? 0).toLocaleString('pt-BR')}</p>
+            </>
+          ) : (
+            <>
+              {/* ADMIN / DIRETOR / GERENTE VIEW: Company-wide stats */}
+              {/* Row 1: Key stats — clicáveis como filtros */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'all' && carteiraFilter === 'all' ? 'bg-slate-200 dark:bg-slate-700 ring-1 ring-slate-400 dark:ring-slate-500' : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'}`} onClick={() => { setTipoFilter('all'); setCarteiraFilter('all'); setPage(1) }} title="Mostrar todos">
+                  <Users className="size-3.5 text-slate-500 dark:text-slate-400" /><span className="text-slate-700 dark:text-slate-300">Total</span> <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{data?.stats.total.toLocaleString('pt-BR') ?? '—'}</span>
+                </button>
+                <span className="text-slate-300 dark:text-slate-600">│</span>
+                <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />Irreg. <span className="font-bold">{((scStats['BAIXADA'] ?? 0) + (scStats['INAPTA'] ?? 0) + (scStats['SUSPENSA'] ?? 0)).toLocaleString('pt-BR')}</span></span>
+                <span className="text-slate-300 dark:text-slate-600">│</span>
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tipos</span>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'CORPORATIVO' ? 'bg-purple-100 dark:bg-purple-900/40 ring-1 ring-purple-400' : 'hover:bg-purple-50 dark:hover:bg-purple-950/20'}`} onClick={() => { setTipoFilter(tipoFilter === 'CORPORATIVO' ? 'all' : 'CORPORATIVO'); setPage(1) }} title="Filtrar Corporativo">
+                  <Building2 className="size-3 text-purple-500 dark:text-purple-400" /><span className="text-purple-700 dark:text-purple-400">Corp.</span> <span className="font-bold text-purple-700 dark:text-purple-400">{(data?.stats.tipo?.corporativo ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'REVENDA' ? 'bg-teal-100 dark:bg-teal-900/40 ring-1 ring-teal-400' : 'hover:bg-teal-50 dark:hover:bg-teal-950/20'}`} onClick={() => { setTipoFilter(tipoFilter === 'REVENDA' ? 'all' : 'REVENDA'); setPage(1) }} title="Filtrar Revenda">
+                  <Briefcase className="size-3 text-teal-500 dark:text-teal-400" /><span className="text-teal-700 dark:text-teal-400">Rev.</span> <span className="font-bold text-teal-700 dark:text-teal-400">{(data?.stats.tipo?.revendas ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <span className="text-slate-300 dark:text-slate-600">│</span>
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Carteiras</span>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${carteiraFilter === 'COM_VENDEDOR' ? 'bg-teal-100 dark:bg-teal-900/40 ring-1 ring-teal-400' : 'hover:bg-teal-50 dark:hover:bg-teal-950/20'}`} onClick={() => { setCarteiraFilter(carteiraFilter === 'COM_VENDEDOR' ? 'all' : 'COM_VENDEDOR'); setPage(1) }} title="Filtrar Com Vendedor">
+                  <User className="size-3 text-teal-500 dark:text-teal-400" /><span className="text-teal-700 dark:text-teal-400">c/ Vended.</span> <span className="font-bold text-teal-700 dark:text-teal-400">{(data?.stats.carteira?.com_vendedor ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${carteiraFilter === 'BOLSAO' ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setCarteiraFilter(carteiraFilter === 'BOLSAO' ? 'all' : 'BOLSAO'); setPage(1) }} title="Filtrar Bolsão">
+                  <Package className="size-3 text-amber-500 dark:text-amber-400" /><span className="text-amber-700 dark:text-amber-400">BOLSÃO</span> <span className="font-bold text-amber-700 dark:text-amber-400">{(data?.stats.carteira?.bolsao ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${carteiraFilter === 'LISTA_FRIA' ? 'bg-slate-200 dark:bg-slate-700 ring-1 ring-slate-400' : 'hover:bg-slate-100 dark:hover:bg-slate-700/50'}`} onClick={() => { setCarteiraFilter(carteiraFilter === 'LISTA_FRIA' ? 'all' : 'LISTA_FRIA'); setPage(1) }} title="Filtrar Lista Fria">
+                  <Users className="size-3 text-slate-500 dark:text-slate-400" /><span className="text-slate-600 dark:text-slate-400">LISTA FRIA</span> <span className="font-bold text-slate-600 dark:text-slate-400">{(data?.stats.carteira?.lista_fria ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${carteiraFilter === 'FORNECEDOR' ? 'bg-orange-100 dark:bg-orange-900/40 ring-1 ring-orange-400' : 'hover:bg-orange-50 dark:hover:bg-orange-950/20'}`} onClick={() => { setCarteiraFilter(carteiraFilter === 'FORNECEDOR' ? 'all' : 'FORNECEDOR'); setPage(1) }} title="Filtrar Fornecedores">
+                  <Package className="size-3 text-orange-500 dark:text-orange-400" /><span className="text-orange-700 dark:text-orange-400">FORNEC.</span> <span className="font-bold text-orange-700 dark:text-orange-400">{(data?.stats.carteira?.fornecedores ?? 0).toLocaleString('pt-BR')}</span>
+                </button>
               </div>
-            </CardContent>
-          </Card>
-          <Card className="border-0 shadow-sm dark:bg-slate-800">
-            <CardContent className="p-3 flex items-center gap-2">
-              <div className="flex items-center justify-center size-9 rounded-lg bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 shrink-0">
-                <Building2 className="size-4" />
+              {/* Row 2: DSV filter buttons */}
+              <div className="flex flex-wrap items-center gap-2 mt-1.5 pt-1.5 border-t border-slate-100 dark:border-slate-700/60 text-xs">
+                <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider shrink-0">Clientes</span>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '0-45' ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-1 ring-emerald-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }} title="1–45 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-emerald-500" /><span className="text-emerald-700 dark:text-emerald-400 font-bold">{dsvStats.verde.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">1-45 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '46-90' ? 'bg-amber-100 dark:bg-amber-900/40 ring-1 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }} title="46–90 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-amber-500" /><span className="text-amber-600 dark:text-amber-400 font-bold">{dsvStats.amarelo.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">46-90 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '91-150' ? 'bg-orange-100 dark:bg-orange-900/40 ring-1 ring-orange-400' : 'hover:bg-orange-50 dark:hover:bg-orange-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }} title="91–150 dias sem venda">
+                  <span className="size-2.5 rounded-full bg-orange-500" /><span className="text-orange-600 dark:text-orange-400 font-bold">{dsvStats.laranja.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">91-150 dias</span>
+                </button>
+                <button className={`flex items-center gap-1.5 rounded px-2 py-1 transition-all ${diasSemVendaFilter === '151+' ? 'bg-red-100 dark:bg-red-900/40 ring-1 ring-red-400' : 'hover:bg-red-50 dark:hover:bg-red-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '151+' ? 'all' : '151+'); setPage(1) }} title="151+ dias sem venda">
+                  <span className="size-2.5 rounded-full bg-red-500" /><span className="text-red-600 dark:text-red-400 font-bold">{dsvStats.vermelho.toLocaleString('pt-BR')}</span><span className="text-slate-500 dark:text-slate-400">151+ dias</span>
+                </button>
               </div>
-              <div>
-                <p className="text-xs text-slate-500 dark:text-slate-400">Corporativo</p>
-                <p className="text-lg font-bold text-purple-700 dark:text-purple-400">{(data?.stats.carteira?.carteira_corporativo ?? 0).toLocaleString('pt-BR')}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Stats Row 2: Dias Sem Venda — Mobile: list format */}
-        <div className="md:hidden bg-white dark:bg-slate-800 rounded-lg shadow-sm p-3 mb-4">
-          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2 uppercase tracking-wider">Dias Sem Venda</p>
-          <div className="space-y-1.5">
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '0-45' ? 'bg-emerald-100 dark:bg-emerald-900/40 ring-2 ring-emerald-400' : 'hover:bg-emerald-50 dark:hover:bg-emerald-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-emerald-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">0–45 dias</span></span>
-              <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">{dsvStats.verde.toLocaleString('pt-BR')}</span>
-            </button>
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '46-90' ? 'bg-amber-100 dark:bg-amber-900/40 ring-2 ring-amber-400' : 'hover:bg-amber-50 dark:hover:bg-amber-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-amber-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">46–90 dias</span></span>
-              <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{dsvStats.amarelo.toLocaleString('pt-BR')}</span>
-            </button>
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '91-150' ? 'bg-orange-100 dark:bg-orange-900/40 ring-2 ring-orange-400' : 'hover:bg-orange-50 dark:hover:bg-orange-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-orange-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">91–150 dias</span></span>
-              <span className="text-sm font-bold text-orange-600 dark:text-orange-400">{dsvStats.laranja.toLocaleString('pt-BR')}</span>
-            </button>
-            <button className={`w-full flex items-center justify-between py-2 px-3 rounded-lg transition-all ${diasSemVendaFilter === '151+' ? 'bg-red-100 dark:bg-red-900/40 ring-2 ring-red-400' : 'hover:bg-red-50 dark:hover:bg-red-950/20'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '151+' ? 'all' : '151+'); setPage(1) }}>
-              <span className="flex items-center gap-2"><span className="size-3 rounded-full bg-red-500" /> <span className="text-sm text-slate-700 dark:text-slate-300">151+ dias (Bolsão)</span></span>
-              <span className="text-sm font-bold text-red-600 dark:text-red-400">{dsvStats.vermelho.toLocaleString('pt-BR')}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Stats Row 2: Dias Sem Venda — Desktop: colored cards */}
-        <div className="hidden md:grid grid-cols-4 gap-3 mb-4">
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '0-45' ? 'ring-2 ring-emerald-500' : 'hover:ring-2 hover:ring-emerald-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '0-45' ? 'all' : '0-45'); setPage(1) }}>
-            <CardContent className="p-4 flex items-center gap-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-emerald-500 text-white shrink-0"><Clock className="size-5" /></div>
-              <div><p className="text-xs text-emerald-600 dark:text-emerald-400">0–45 dias</p><p className="text-xl font-bold text-emerald-700 dark:text-emerald-300">{dsvStats.verde.toLocaleString('pt-BR')}</p></div>
-            </CardContent>
-          </Card>
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '46-90' ? 'ring-2 ring-amber-500' : 'hover:ring-2 hover:ring-amber-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '46-90' ? 'all' : '46-90'); setPage(1) }}>
-            <CardContent className="p-4 flex items-center gap-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-amber-500 text-white shrink-0"><Clock className="size-5" /></div>
-              <div><p className="text-xs text-amber-600 dark:text-amber-400">46–90 dias</p><p className="text-xl font-bold text-amber-700 dark:text-amber-300">{dsvStats.amarelo.toLocaleString('pt-BR')}</p></div>
-            </CardContent>
-          </Card>
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '91-150' ? 'ring-2 ring-orange-500' : 'hover:ring-2 hover:ring-orange-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '91-150' ? 'all' : '91-150'); setPage(1) }}>
-            <CardContent className="p-4 flex items-center gap-3 bg-orange-50 dark:bg-orange-950/30 rounded-lg">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-orange-500 text-white shrink-0"><Clock className="size-5" /></div>
-              <div><p className="text-xs text-orange-600 dark:text-orange-400">91–150 dias</p><p className="text-xl font-bold text-orange-700 dark:text-orange-300">{dsvStats.laranja.toLocaleString('pt-BR')}</p></div>
-            </CardContent>
-          </Card>
-          <Card className={`border-0 shadow-sm cursor-pointer transition-all ${diasSemVendaFilter === '151+' ? 'ring-2 ring-red-500' : 'hover:ring-2 hover:ring-red-300'}`} onClick={() => { setDiasSemVendaFilter(diasSemVendaFilter === '151+' ? 'all' : '151+'); setPage(1) }}>
-            <CardContent className="p-4 flex items-center gap-3 bg-red-50 dark:bg-red-950/30 rounded-lg">
-              <div className="flex items-center justify-center size-10 rounded-lg bg-red-600 text-white shrink-0"><AlertCircle className="size-5" /></div>
-              <div><p className="text-xs text-red-600 dark:text-red-400">151+ dias (Bolsão)</p><p className="text-xl font-bold text-red-700 dark:text-red-300">{dsvStats.vermelho.toLocaleString('pt-BR')}</p></div>
-            </CardContent>
-          </Card>
+            </>
+          )}
         </div>
 
         {/* Hint */}
         <div className="flex items-center gap-2 mb-3 text-xs text-slate-500 dark:text-slate-400">
           <Pencil className="size-3" />
-          <span>Clique nos campos com <Pencil className="size-2.5 inline text-teal-500 dark:text-teal-400" /> para editar · Arraste <GripVertical className="size-3 inline" /> para reordenar colunas · Clique na linha para ver ficha · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">↑↓</kbd> navegar · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">Enter</kbd> abrir · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">Esc</kbd> limpar</span>
+          <span>Clique nos campos com <Pencil className="size-2.5 inline text-teal-500 dark:text-teal-400" /> para editar · Arraste <GripVertical className="size-3 inline" /> para reordenar colunas · Clique na linha para ver ficha · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">↑↓←→</kbd> navegar · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">Enter</kbd> abrir/editar · <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px]">Esc</kbd> sair</span>
         </div>
 
         {/* Filters */}
-        <Card className="border-0 shadow-sm mb-4 dark:bg-slate-800">
-          <CardContent className="p-4">
-            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-              <div className="relative flex-1 min-w-[200px]">
+        <div className="bg-white dark:bg-slate-800 rounded-lg shadow-sm px-4 py-2 mb-3">
+            <div className="flex flex-col sm:flex-row gap-2 flex-wrap items-center">              <div className="relative flex-1 min-w-[200px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400 dark:text-slate-500" />
-                <Input placeholder="Buscar por razão social, CNPJ, código, cidade, vendedor..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
+                <Input placeholder="Buscar por razão social, CNPJ, código, cidade..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
               </div>
               <Select value={situacaoCadastral} onValueChange={(val) => { setSituacaoCadastral(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Situação Cadastral" /></SelectTrigger><SelectContent><SelectItem value="all">Situação Cadastral</SelectItem>{data?.filters.situacao_cadastral.map((s) => (<SelectItem key={s} value={s}>{s}</SelectItem>))}</SelectContent></Select>
-              <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
+              {isVendedor ? (
+                <div className="flex items-center gap-2 px-3 h-9 rounded-md border bg-teal-50 dark:bg-teal-950/30 border-teal-200 dark:border-teal-800 min-w-[140px]">
+                  <User className="size-3.5 text-teal-600 dark:text-teal-400 shrink-0" />
+                  <span className="text-sm font-semibold text-teal-800 dark:text-teal-300 truncate">{session?.user?.name || 'Vendedor'}</span>
+                </div>
+              ) : (
+                <Select value={vendedor} onValueChange={(val) => { setVendedor(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Vendedor" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Vendedores</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select>
+              )}
               <div className="flex gap-1.5 w-full sm:w-auto">
                 <Select value={uf} onValueChange={(val) => { setUf(val); setCidade('all'); setPage(1) }}><SelectTrigger className="w-full sm:w-[120px]"><SelectValue placeholder="Estado" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Estados</SelectItem>{data?.filters.ufs.map((u) => (<SelectItem key={u} value={u}>{u}</SelectItem>))}</SelectContent></Select>
                 <Select value={cidade} onValueChange={(val) => { setCidade(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[180px]"><SelectValue placeholder="Cidade" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Cidades</SelectItem>{(uf === 'all' ? (data?.filters.cidades || []) : (data?.filters.cidadesPorUf?.[uf] || [])).map((c) => (<SelectItem key={c} value={c}>{c}</SelectItem>))}</SelectContent></Select>
               </div>
-              <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem><SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem><SelectItem value="BOLSAO">Bolsão (151+ dias)</SelectItem><SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem></SelectContent></Select>
-              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-45">0–45 dias 🟢</SelectItem><SelectItem value="46-90">46–90 dias 🟡</SelectItem><SelectItem value="91-150">91–150 dias 🟠</SelectItem><SelectItem value="151+">151+ dias 🔴</SelectItem></SelectContent></Select>
+              {isVendedor ? (
+                <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem><SelectItem value="COM_VENDEDOR">Meus Clientes</SelectItem><SelectItem value="BOLSAO">BOLSÃO</SelectItem></SelectContent></Select>
+              ) : (
+                <Select value={carteiraFilter} onValueChange={(val) => { setCarteiraFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Carteira" /></SelectTrigger><SelectContent><SelectItem value="all">Todas Carteiras</SelectItem>{data?.filters.carteiras?.includes('COM_VENDEDOR') && <SelectItem value="COM_VENDEDOR">COM VENDEDOR</SelectItem>}{data?.filters.carteiras?.includes('BOLSAO') && <SelectItem value="BOLSAO">BOLSÃO</SelectItem>}{data?.filters.carteiras?.includes('LISTA_FRIA') && <SelectItem value="LISTA_FRIA">LISTA FRIA</SelectItem>}{data?.filters.carteiras?.includes('FORNECEDOR') && <SelectItem value="FORNECEDOR">FORNECEDOR</SelectItem>}</SelectContent></Select>
+              )}
+              <Select value={tipoFilter} onValueChange={(val) => { setTipoFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Tipo" /></SelectTrigger><SelectContent><SelectItem value="all">Todos Tipos</SelectItem><SelectItem value="REVENDA">Revenda</SelectItem><SelectItem value="CORPORATIVO">Corporativo</SelectItem></SelectContent></Select>
+              <Select value={diasSemVendaFilter} onValueChange={(val) => { setDiasSemVendaFilter(val); setPage(1) }}><SelectTrigger className="w-full sm:w-[160px]"><SelectValue placeholder="Dias S/ Venda" /></SelectTrigger><SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="0-45">🟢 1–45 dias</SelectItem><SelectItem value="46-90">🟡 46–90 dias</SelectItem><SelectItem value="91-150">🟠 91–150 dias</SelectItem><SelectItem value="151+">🔴 151+ dias</SelectItem></SelectContent></Select>
               {hasActiveFilters && (
                 <Button variant="outline" size="sm" onClick={clearFilters} className="shrink-0 text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400">
                   <XCircle className="size-4 mr-1.5" />Limpar Filtros
                 </Button>
               )}
             </div>
-          </CardContent>
-        </Card>
+        </div>
 
         {/* Data Table */}
         <Card className="border-0 shadow-sm dark:bg-slate-800">
@@ -857,6 +989,10 @@ function Home() {
               <table className="border-separate border-spacing-0 w-full">
                 <thead>
                   <tr className="hover:bg-transparent">
+                    {/* Favorite header */}
+                    <th className="font-semibold text-xs bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center px-1 py-2.5 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[7] left-0" style={{ minWidth: '36px' }}>
+                      <Star className="size-3.5 mx-auto text-amber-500 dark:text-amber-400" />
+                    </th>
                     {columns.map((col) => (
                       <DraggableColumnHeader
                         key={col.key}
@@ -880,45 +1016,61 @@ function Home() {
                     sortedData.map((r, idx) => {
                       const isEven = idx % 2 === 0
                       const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'
-                      const isFocused = focusedRow === idx
                       const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
 
                       return (
-                        <tr key={idx} className={`${rowBg} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer ${isFocused ? 'ring-2 ring-inset ring-teal-400 bg-teal-50/60 dark:bg-teal-900/40' : ''}`} onClick={() => openDetail(r)}>
-                          {columns.map((col) => {
+                        <tr key={idx} className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`} onClick={() => openDetail(r)}>
+                          {/* Favorite star cell */}
+                          <td className="whitespace-nowrap px-1 py-2 text-center sticky left-0 z-[4]" style={{ background: 'inherit' }} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
+                            <button className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" title={favoritos.includes(r.parsed.codigo) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>
+                              <Star className={`size-4 ${favoritos.includes(r.parsed.codigo) ? 'fill-amber-400 text-amber-500 dark:fill-amber-400 dark:text-amber-400' : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 dark:hover:text-amber-400'} transition-colors`} />
+                            </button>
+                          </td>
+                          {columns.map((col, colIdx) => {
                             const isSticky = col.sticky === 'left'
                             const editableKey = toEditableKey(col.key)
+                            const isCellFocused = focusedRow === idx && focusedCol === colIdx
+                            const cellFocus = isCellFocused ? 'ring-2 ring-inset ring-teal-500 dark:ring-teal-400 bg-teal-50/80 dark:bg-teal-900/50' : ''
 
                             if (col.key === 'dias_sem_venda') {
-                              return <td key={col.key} className={`whitespace-nowrap px-3 py-2 ${col.centered ? 'text-center' : ''}`} onClick={(e) => e.stopPropagation()}><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></td>
+                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${col.centered ? 'text-center' : ''} ${cellFocus}`} onClick={(e) => e.stopPropagation()}><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></td>
                             }
 
                             const val = getRecordValue(r, col.key)
 
-                            if (col.key === 'situacao_cadastral') return <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></td>
+                            if (col.key === 'situacao_cadastral') return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></td>
                             if (col.key === 'carteira') {
-                              const carteiraValue = (r as any).carteira || 'CARTEIRA_REVENDAS'
+                              const carteiraValue = r.carteira || 'COM_VENDEDOR'
                               const label = CARTEIRA_LABELS[carteiraValue] || carteiraValue
                               const colorClass = CARTEIRA_COLORS[carteiraValue] || ''
                               return (
-                                <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
                                   <Badge variant="outline" className={`text-[11px] ${colorClass}`}>
                                     {label}
                                   </Badge>
                                 </td>
                               )
                             }
-                            if (col.key === 'reg_simples') return <td key={col.key} className="whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</td>
+                            if (col.key === 'tipo') {
+                              return (
+                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
+                                  <Badge className={`${r.tipo === 'CORPORATIVO' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' : 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300'} text-xs border`}>
+                                    {r.tipo === 'CORPORATIVO' ? 'Corporativo' : 'Revenda'}
+                                  </Badge>
+                                </td>
+                              )
+                            }
+                            if (col.key === 'reg_simples') return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</td>
 
                             if (col.editable && editableKey) {
                               const isPhone = PHONE_FIELDS.has(col.key)
                               const isObs = col.key === 'observacoes'
-                              return <td key={col.key} className="bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2" onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isObservacoes={isObs} /></td>
+                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isObservacoes={isObs} /></td>
                             }
 
                             if (isSticky) {
                               return (
-                                <td key={col.key} className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 dark:text-teal-400 text-xs' : 'text-xs max-w-[220px] truncate dark:text-slate-200'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent ${isEven ? 'after:to-white dark:after:to-slate-900' : 'after:to-slate-100 dark:after:to-slate-800'} px-3 py-2 relative`} style={{ left: col.stickyOffset, minWidth: col.minWidth }} title={col.key === 'razao_social' ? val : undefined}>
+                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 dark:text-teal-400 text-xs' : 'text-xs max-w-[220px] truncate dark:text-slate-200'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent ${isEven ? 'after:to-white dark:after:to-slate-900' : 'after:to-slate-100 dark:after:to-slate-800'} px-3 py-2 relative ${cellFocus}`} style={{ left: col.stickyOffset, minWidth: col.minWidth }} title={col.key === 'razao_social' ? val : undefined}>
                                   {val || '—'}
                                 </td>
                               )
@@ -933,7 +1085,7 @@ function Home() {
                             else if (col.key === 'cep' && val) displayVal = formatCep(val)
 
                             return (
-                              <td key={col.key} className={`text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''} ${col.centered ? 'text-center' : ''} dark:text-slate-300`} title={isTruncate ? val : undefined}>
+                              <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''} ${col.centered ? 'text-center' : ''} dark:text-slate-300 ${cellFocus}`} title={isTruncate ? val : undefined}>
                                 {col.key === 'vendedor' ? <span className="font-medium">{displayVal}</span> : displayVal}
                               </td>
                             )
@@ -962,7 +1114,7 @@ function Home() {
                 {diasSemVendaFilter !== 'all' && <span className="ml-2 text-xs text-teal-600 dark:text-teal-400 font-medium">Filtro: Dias S/ Venda ({diasSemVendaFilter})</span>}
               </p>
               <Select value={limit} onValueChange={handleLimitChange}><SelectTrigger className="w-[110px] h-7 text-xs"><SelectValue placeholder="Por página" /></SelectTrigger><SelectContent>{PAGE_SIZE_OPTIONS.map((n) => (<SelectItem key={String(n)} value={String(n)}>{n}/pág</SelectItem>))}<SelectItem value="all">Todos</SelectItem></SelectContent></Select>
-              <p className="text-xs text-slate-400 dark:text-slate-500">Mtech Geral © {new Date().getFullYear()}</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500">{isVendedor ? `${session?.user?.name || 'Vendedor'}` : 'M-Tech Distribuidora'} © {new Date().getFullYear()}</p>
             </div>
             {!showingAll && (
               <div className="flex items-center gap-1">
@@ -985,114 +1137,72 @@ function Home() {
         </div>
       </footer>
 
-      {/* New Client Modal */}
-      <Dialog open={showNewClient} onOpenChange={setShowNewClient}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-          <DialogHeader className="px-6 pt-6 pb-2">
-            <DialogTitle className="flex items-center gap-2 text-lg"><UserPlus className="size-5 text-teal-600 dark:text-teal-400" />Novo Cliente</DialogTitle>
-          </DialogHeader>
-          <ScrollArea className="max-h-[65vh] px-6">
-            <div className="space-y-5 pb-4">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700 dark:text-slate-300">CNPJ <span className="text-red-500">*</span></label>
-                <div className="flex gap-2">
-                  <Input placeholder="00.000.000/0000-00" value={form.cnpj} onChange={(e) => { updateForm('cnpj', maskCnpj(e.target.value)); setConsultError(''); setConsultWarning('') }} className="flex-1 font-mono" maxLength={18} />
-                  <Button type="button" onClick={() => consultReceita(form.cnpj)} disabled={consulting || form.cnpj.replace(/\D/g, '').length !== 14} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
-                    {consulting ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Consultando...</> : 'Consultar Receita'}
-                  </Button>
-                </div>
-                {consultError && <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg"><AlertCircle className="size-4 text-red-500 shrink-0" /><p className="text-xs text-red-700 dark:text-red-400">{consultError}</p></div>}
-                {consultWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg"><AlertCircle className="size-4 text-amber-500 shrink-0" /><p className="text-xs text-amber-800 dark:text-amber-400 font-medium">{consultWarning}</p></div>}
-                {!consultError && !consultWarning && <p className="text-xs text-slate-400 dark:text-slate-500">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente</p>}
-              </div>
-              <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2">Dados da Empresa</legend>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2"><label className="text-xs text-slate-500 dark:text-slate-400">Razão Social</label><Input value={form.razaoSocial} onChange={(e) => updateForm('razaoSocial', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Nome Fantasia</label><Input value={form.nomeFantasia} onChange={(e) => updateForm('nomeFantasia', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">IE/RG</label><Input value={form.ieRg} onChange={(e) => updateForm('ieRg', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Situação Cadastral</label><Input value={form.situacaoCadastral} onChange={(e) => updateForm('situacaoCadastral', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Data Abertura</label><Input value={form.dataAbertura} onChange={(e) => updateForm('dataAbertura', e.target.value)} placeholder="dd/mm/aaaa" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">CNAE Principal</label><Input value={form.cnaePrincipal} onChange={(e) => updateForm('cnaePrincipal', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Natureza Jurídica</label><Input value={form.naturezaJuridica} onChange={(e) => updateForm('naturezaJuridica', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Porte</label><Input value={form.porte} onChange={(e) => updateForm('porte', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Reg. Simples</label><Select value={form.regSimples || '_empty'} onValueChange={(v) => updateForm('regSimples', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem><SelectItem value="SIMPLES">SIMPLES</SelectItem><SelectItem value="NÃO">NÃO</SelectItem></SelectContent></Select></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Vendedor</label><Select value={form.vendedor || '_empty'} onValueChange={(v) => updateForm('vendedor', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select></div>
-                </div>
-              </fieldset>
-              <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2">Endereço</legend>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2"><label className="text-xs text-slate-500 dark:text-slate-400">Endereço</label><Input value={form.endereco} onChange={(e) => updateForm('endereco', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Número</label><Input value={form.numero} onChange={(e) => updateForm('numero', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Complemento</label><Input value={form.complemento} onChange={(e) => updateForm('complemento', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Bairro</label><Input value={form.bairro} onChange={(e) => updateForm('bairro', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Cidade</label><Input value={form.cidade} onChange={(e) => updateForm('cidade', e.target.value)} /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">CEP</label><Input value={form.cep} onChange={(e) => updateForm('cep', e.target.value)} placeholder="00000-000" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Estado</label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} maxLength={2} className="uppercase" /></div>
-                </div>
-              </fieldset>
-              <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2">Contato</legend>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 1</label><Input value={form.telefone1} onChange={(e) => updateForm('telefone1', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 2</label><Input value={form.telefone2} onChange={(e) => updateForm('telefone2', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 3</label><Input value={form.telefone3} onChange={(e) => updateForm('telefone3', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 4</label><Input value={form.telefone4} onChange={(e) => updateForm('telefone4', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value)} type="email" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value)} type="email" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value)} type="email" /></div>
-                  <div><label className="text-xs text-slate-500 dark:text-slate-400">Pessoa de Contato</label><Input value={form.pessoaContato} onChange={(e) => updateForm('pessoaContato', e.target.value)} /></div>
-                </div>
-              </fieldset>
-            </div>
-          </ScrollArea>
-          <DialogFooter className="px-6 py-4 border-t bg-slate-50 dark:bg-slate-800 dark:border-slate-700 gap-2">
-            <Button variant="outline" onClick={() => setShowNewClient(false)} disabled={savingNew}>Cancelar</Button>
-            <Button onClick={handleSaveNewClient} disabled={savingNew || !form.cnpj.replace(/\D/g, '')} className="bg-teal-600 hover:bg-teal-700 text-white">
-              {savingNew ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Salvando...</> : 'Salvar Cliente'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Client Detail Modal (Ficha do Cliente) — 6 Tabs */}
-      <Dialog open={!!detailClient} onOpenChange={(open) => { if (!open) setDetailClient(null) }}>
-        <DialogContent className="max-w-4xl max-h-[90vh] p-0">
-          {detailClient && (() => {
+      {/* Unified Client Dialog — New or Existing */}
+      <Dialog open={showNewClient || !!detailClient} onOpenChange={(open) => { if (!open) { setShowNewClient(false); setDetailClient(null) } }}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] gap-0 p-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+          {(() => {
+            const isNew = showNewClient && !detailClient
             const r = detailClient
-            const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
+            const diasSemVenda = r ? calcDiasSemVenda(r.parsed.ultima_venda) : null
+            const activeTab = isNew ? newClientTab : detailTab
+
+            const UNIFIED_TABS = isNew
+              ? [
+                  { key: 'empresa', label: 'Empresa', icon: Building2 },
+                  { key: 'endereco', label: 'Endereço', icon: MapPin },
+                  { key: 'contato', label: 'Contato', icon: Phone },
+                ]
+              : [
+                  { key: 'empresa', label: 'Empresa', icon: Building2 },
+                  { key: 'contato', label: 'Contato', icon: Phone },
+                  { key: 'endereco', label: 'Endereço', icon: MapPin },
+                  { key: 'comercial', label: 'Comercial', icon: Briefcase },
+                  { key: 'obs', label: 'Observações', icon: StickyNote },
+                  { key: 'historico', label: 'Histórico', icon: Clock },
+                ]
+
             return (
               <>
+                {/* Header */}
                 <DialogHeader className="px-6 pt-6 pb-2">
-                  <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="size-5 text-teal-600 dark:text-teal-400 shrink-0" />
-                      <span className="text-base sm:text-lg truncate max-w-[400px]">{r.razao_social || '—'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} />
-                      <SituacaoCadastralBadge value={r.situacao_cadastral} />
-                    </div>
-                  </DialogTitle>
-                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                    {r.nome_fantasia && <span className="font-medium">{r.nome_fantasia}</span>}
-                    {r.nome_fantasia && ' · '}
-                    Código: <span className="font-mono font-medium text-teal-700 dark:text-teal-400">{r.parsed.codigo}</span>
-                    {r.cnpj && <> · CNPJ: <span className="font-mono">{formatCnpj(r.cnpj)}</span></>}
-                  </p>
+                  {isNew ? (
+                    <>
+                      <DialogTitle className="flex items-center gap-2 text-lg"><UserPlus className="size-5 text-teal-600 dark:text-teal-400" />Novo Cliente</DialogTitle>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">Preencha os dados do cliente para cadastrá-lo no sistema</p>
+                    </>
+                  ) : r && (
+                    <>
+                      <DialogTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Building2 className="size-5 text-teal-600 dark:text-teal-400 shrink-0" />
+                          <span className="text-base sm:text-lg break-words">{r.razao_social || '—'}</span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">DSV</span>
+                          <DiasSemVendaBadge dias={diasSemVenda!} ultimaVenda={r.parsed.ultima_venda} />
+                          <SituacaoCadastralBadge value={r.situacao_cadastral} />
+                        </div>
+                      </DialogTitle>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        {r.nome_fantasia && <span className="font-medium">{r.nome_fantasia}</span>}
+                        {r.nome_fantasia && ' · '}
+                        Código: <span className="font-mono font-medium text-teal-700 dark:text-teal-400">{r.parsed.codigo}</span>
+                        {r.cnpj && <> · CNPJ: <span className="font-mono">{formatCnpj(r.cnpj)}</span></>}
+                      </p>
+                    </>
+                  )}
                 </DialogHeader>
 
                 {/* Tabs */}
                 <div className="px-6 border-b dark:border-slate-700">
                   <div className="flex gap-1 overflow-x-auto">
-                    {DETAIL_TABS.map(tab => {
+                    {UNIFIED_TABS.map(tab => {
                       const Icon = tab.icon
-                      const isActive = detailTab === tab.key
+                      const isActive = activeTab === tab.key
                       return (
                         <button
                           key={tab.key}
-                          onClick={() => setDetailTab(tab.key)}
+                          onClick={() => isNew ? setNewClientTab(tab.key as any) : setDetailTab(tab.key as DetailTab)}
                           className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap border-b-2 transition-colors ${isActive ? 'border-teal-500 text-teal-700 dark:text-teal-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:border-slate-300'}`}
                         >
                           <Icon className="size-3.5" />
@@ -1103,46 +1213,193 @@ function Home() {
                   </div>
                 </div>
 
+                {/* Content */}
                 <ScrollArea className="max-h-[55vh] px-6">
-                  <div className="py-4 pb-4">
-                    {/* Contato Tab */}
-                    {detailTab === 'contato' && (
-                      <div className="space-y-4">
-                        <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                          <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Phone className="size-3.5" />Telefones</legend>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                            {r.telefone1 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Tel. 1</span><span className="font-mono text-slate-800 dark:text-slate-200">{formatPhone(r.telefone1)}</span></div>}
-                            {r.telefone2 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Tel. 2</span><span className="font-mono text-slate-800 dark:text-slate-200">{formatPhone(r.telefone2)}</span></div>}
-                            {r.telefone3 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Tel. 3</span><span className="font-mono text-slate-800 dark:text-slate-200">{formatPhone(r.telefone3)}</span></div>}
-                            {r.telefone4 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Tel. 4</span><span className="font-mono text-slate-800 dark:text-slate-200">{formatPhone(r.telefone4)}</span></div>}
-                            {!r.telefone1 && !r.telefone2 && !r.telefone3 && !r.telefone4 && <span className="text-slate-400 dark:text-slate-500">Nenhum telefone cadastrado</span>}
-                          </div>
-                        </fieldset>
-                        <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                          <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Mail className="size-3.5" />Emails</legend>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                            {r.email1 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Email 1</span><span className="text-slate-800 dark:text-slate-200">{r.email1}</span></div>}
-                            {r.email2 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Email 2</span><span className="text-slate-800 dark:text-slate-200">{r.email2}</span></div>}
-                            {r.email3 && <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Email 3</span><span className="text-slate-800 dark:text-slate-200">{r.email3}</span></div>}
-                            {!r.email1 && !r.email2 && !r.email3 && <span className="text-slate-400 dark:text-slate-500">Nenhum email cadastrado</span>}
-                          </div>
-                        </fieldset>
-                        <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                          <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><User className="size-3.5" />Pessoa de Contato</legend>
-                          <div className="text-sm">
-                            {r.pessoa_contato ? <span className="text-slate-800 dark:text-slate-200 font-medium">{r.pessoa_contato}</span> : <span className="text-slate-400 dark:text-slate-500">Não informado</span>}
-                          </div>
-                        </fieldset>
-                      </div>
+                  <div className="py-4">
+
+                    {/* ═══ EMPRESA TAB ═══ */}
+                    {activeTab === 'empresa' && (
+                      isNew ? (
+                        <div className="space-y-4">
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Building2 className="size-3.5" />Identificação</legend>
+                            <div className="space-y-2">
+                              <label className="text-xs text-slate-500 dark:text-slate-400">CNPJ <span className="text-red-500">*</span></label>
+                              <div className="flex gap-2">
+                                <Input placeholder="00.000.000/0000-00" value={form.cnpj} onChange={(e) => { updateForm('cnpj', maskCnpj(e.target.value)); setConsultError(''); setConsultWarning('') }} className="flex-1 font-mono" maxLength={18} />
+                                <Button type="button" onClick={() => consultReceita(form.cnpj)} disabled={consulting || form.cnpj.replace(/\D/g, '').length !== 14} className="bg-teal-600 hover:bg-teal-700 text-white shrink-0">
+                                  {consulting ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Consultando...</> : 'Consultar Receita'}
+                                </Button>
+                              </div>
+                              {consultError && <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg"><AlertCircle className="size-4 text-red-500 shrink-0" /><p className="text-xs text-red-700 dark:text-red-400">{consultError}</p></div>}
+                              {consultWarning && <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-lg"><AlertCircle className="size-4 text-amber-500 shrink-0" /><p className="text-xs text-amber-800 dark:text-amber-400 font-medium">{consultWarning}</p></div>}
+                              {!consultError && !consultWarning && <p className="text-xs text-slate-400 dark:text-slate-500">Digite o CNPJ e clique em &quot;Consultar Receita&quot; para preencher automaticamente</p>}
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="sm:col-span-2"><label className="text-xs text-slate-500 dark:text-slate-400">Razão Social</label><Input value={form.razaoSocial} onChange={(e) => updateForm('razaoSocial', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Nome Fantasia</label><Input value={form.nomeFantasia} onChange={(e) => updateForm('nomeFantasia', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">IE/RG</label><Input value={form.ieRg} onChange={(e) => updateForm('ieRg', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Situação Cadastral</label><Input value={form.situacaoCadastral} onChange={(e) => updateForm('situacaoCadastral', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Data Abertura</label><Input value={form.dataAbertura} onChange={(e) => updateForm('dataAbertura', e.target.value)} placeholder="dd/mm/aaaa" /></div>
+                            </div>
+                          </fieldset>
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Briefcase className="size-3.5" />Comercial</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">CNAE Principal</label><Input value={form.cnaePrincipal} onChange={(e) => updateForm('cnaePrincipal', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Natureza Jurídica</label><Input value={form.naturezaJuridica} onChange={(e) => updateForm('naturezaJuridica', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Porte</label><Input value={form.porte} onChange={(e) => updateForm('porte', e.target.value)} /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Reg. Simples</label><Select value={form.regSimples || '_empty'} onValueChange={(v) => updateForm('regSimples', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem><SelectItem value="SIMPLES">SIMPLES</SelectItem><SelectItem value="NÃO">NÃO</SelectItem></SelectContent></Select></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Vendedor</label><Select value={form.vendedor || '_empty'} onValueChange={(v) => updateForm('vendedor', v === '_empty' ? '' : v)}><SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger><SelectContent><SelectItem value="_empty">—</SelectItem>{data?.filters.vendedores.map((v) => (<SelectItem key={v} value={v}>{v}</SelectItem>))}</SelectContent></Select></div>
+                            </div>
+                          </fieldset>
+                        </div>
+                      ) : r && (
+                        <div className="space-y-4">
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Building2 className="size-3.5" />Identificação</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CNPJ</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cnpj ? formatCnpj(r.cnpj) : '—'}</span></div>
+                              <div className="sm:col-span-2"><span className="text-xs text-slate-500 dark:text-slate-400 block">Razão Social</span><span className="text-slate-800 dark:text-slate-200 font-medium">{r.razao_social || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Nome Fantasia</span><span className="text-slate-800 dark:text-slate-200">{r.nome_fantasia || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">IE/RG</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.parsed.ie_rg || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Situação Cadastral</span><SituacaoCadastralBadge value={r.situacao_cadastral} /></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Data Abertura</span><span className="text-slate-800 dark:text-slate-200">{r.data_abertura || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Data Situação</span><span className="text-slate-800 dark:text-slate-200">{r.data_situacao || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CNAE Principal</span><span className="text-slate-800 dark:text-slate-200">{r.cnae_principal || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Natureza Jurídica</span><span className="text-slate-800 dark:text-slate-200">{r.natureza_juridica || '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Porte</span><span className="text-slate-800 dark:text-slate-200">{r.porte || '—'}</span></div>
+                            </div>
+                          </fieldset>
+                        </div>
+                      )
                     )}
 
-                    {/* Comercial Tab */}
-                    {detailTab === 'comercial' && (
+                    {/* ═══ CONTATO TAB (editable for existing) ═══ */}
+                    {activeTab === 'contato' && (
+                      isNew ? (
+                        <div className="space-y-4">
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Phone className="size-3.5" />Telefones</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 1</label><Input value={form.telefone1} onChange={(e) => updateForm('telefone1', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 2</label><Input value={form.telefone2} onChange={(e) => updateForm('telefone2', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 3</label><Input value={form.telefone3} onChange={(e) => updateForm('telefone3', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 4</label><Input value={form.telefone4} onChange={(e) => updateForm('telefone4', e.target.value)} placeholder="(XX) XXXXX-XXXX" /></div>
+                            </div>
+                          </fieldset>
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Mail className="size-3.5" />Emails</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={form.email1} onChange={(e) => updateForm('email1', e.target.value)} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={form.email2} onChange={(e) => updateForm('email2', e.target.value)} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={form.email3} onChange={(e) => updateForm('email3', e.target.value)} type="email" /></div>
+                            </div>
+                          </fieldset>
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><User className="size-3.5" />Pessoa de Contato</legend>
+                            <div><Input value={form.pessoaContato} onChange={(e) => updateForm('pessoaContato', e.target.value)} placeholder="Nome da pessoa de contato" /></div>
+                          </fieldset>
+                        </div>
+                      ) : r && (
+                        <div className="space-y-4">
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Phone className="size-3.5" />Telefones</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="flex items-end gap-2"><div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 1</label><Input value={r.editable.telefone1} onChange={(e) => handleSave(r.parsed.codigo, 'telefone1', e.target.value)} onBlur={() => {}} className="font-mono" placeholder="(XX) XXXXX-XXXX" /></div>{r.editable.telefone1 && <a href={`https://wa.me/55${r.editable.telefone1.replace(/\D/g, '').replace(/^0+/, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 dark:text-green-400 mb-0.5 shrink-0" title="WhatsApp"><MessageCircle className="size-4" /></a>}</div>
+                              <div className="flex items-end gap-2"><div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 2</label><Input value={r.editable.telefone2} onChange={(e) => handleSave(r.parsed.codigo, 'telefone2', e.target.value)} className="font-mono" placeholder="(XX) XXXXX-XXXX" /></div>{r.editable.telefone2 && <a href={`https://wa.me/55${r.editable.telefone2.replace(/\D/g, '').replace(/^0+/, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 dark:text-green-400 mb-0.5 shrink-0" title="WhatsApp"><MessageCircle className="size-4" /></a>}</div>
+                              <div className="flex items-end gap-2"><div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 3</label><Input value={r.editable.telefone3} onChange={(e) => handleSave(r.parsed.codigo, 'telefone3', e.target.value)} className="font-mono" placeholder="(XX) XXXXX-XXXX" /></div>{r.editable.telefone3 && <a href={`https://wa.me/55${r.editable.telefone3.replace(/\D/g, '').replace(/^0+/, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 dark:text-green-400 mb-0.5 shrink-0" title="WhatsApp"><MessageCircle className="size-4" /></a>}</div>
+                              <div className="flex items-end gap-2"><div className="flex-1"><label className="text-xs text-slate-500 dark:text-slate-400">Telefone 4</label><Input value={r.editable.telefone4} onChange={(e) => handleSave(r.parsed.codigo, 'telefone4', e.target.value)} className="font-mono" placeholder="(XX) XXXXX-XXXX" /></div>{r.editable.telefone4 && <a href={`https://wa.me/55${r.editable.telefone4.replace(/\D/g, '').replace(/^0+/, '')}`} target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-700 dark:text-green-400 mb-0.5 shrink-0" title="WhatsApp"><MessageCircle className="size-4" /></a>}</div>
+                            </div>
+                          </fieldset>
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Mail className="size-3.5" />Emails</legend>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 1</label><Input value={r.editable.email1} onChange={(e) => handleSave(r.parsed.codigo, 'email1', e.target.value)} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 2</label><Input value={r.editable.email2} onChange={(e) => handleSave(r.parsed.codigo, 'email2', e.target.value)} type="email" /></div>
+                              <div><label className="text-xs text-slate-500 dark:text-slate-400">Email 3</label><Input value={r.editable.email3} onChange={(e) => handleSave(r.parsed.codigo, 'email3', e.target.value)} type="email" /></div>
+                            </div>
+                          </fieldset>
+                          <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                            <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><User className="size-3.5" />Pessoa de Contato</legend>
+                            <div><Input value={r.editable.pessoaContato} onChange={(e) => handleSave(r.parsed.codigo, 'pessoaContato', e.target.value)} placeholder="Nome da pessoa de contato" /></div>
+                          </fieldset>
+                        </div>
+                      )
+                    )}
+
+                    {/* ═══ ENDEREÇO TAB (editable for existing) ═══ */}
+                    {activeTab === 'endereco' && (
+                      isNew ? (
+                        <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                          <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><MapPin className="size-3.5" />Endereço</legend>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2"><label className="text-xs text-slate-500 dark:text-slate-400">Endereço</label><Input value={form.endereco} onChange={(e) => updateForm('endereco', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Número</label><Input value={form.numero} onChange={(e) => updateForm('numero', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Complemento</label><Input value={form.complemento} onChange={(e) => updateForm('complemento', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Bairro</label><Input value={form.bairro} onChange={(e) => updateForm('bairro', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Cidade</label><Input value={form.cidade} onChange={(e) => updateForm('cidade', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">CEP</label><Input value={form.cep} onChange={(e) => updateForm('cep', e.target.value)} placeholder="00000-000" /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Estado</label><Input value={form.uf} onChange={(e) => updateForm('uf', e.target.value)} maxLength={2} className="uppercase" /></div>
+                          </div>
+                        </fieldset>
+                      ) : r && (
+                        <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                          <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><MapPin className="size-3.5" />Endereço</legend>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="sm:col-span-2"><label className="text-xs text-slate-500 dark:text-slate-400">Endereço</label><Input value={r.endereco || ''} onChange={(e) => handleSave(r.parsed.codigo, 'endereco', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Número</label><Input value={r.numero || ''} onChange={(e) => handleSave(r.parsed.codigo, 'numero', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Complemento</label><Input value={r.complemento || ''} onChange={(e) => handleSave(r.parsed.codigo, 'complemento', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Bairro</label><Input value={r.bairro || ''} onChange={(e) => handleSave(r.parsed.codigo, 'bairro', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Cidade</label><Input value={r.cidade || ''} onChange={(e) => handleSave(r.parsed.codigo, 'cidade', e.target.value)} /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">CEP</label><Input value={r.cep || ''} onChange={(e) => handleSave(r.parsed.codigo, 'cep', e.target.value)} placeholder="00000-000" /></div>
+                            <div><label className="text-xs text-slate-500 dark:text-slate-400">Estado</label><Input value={r.uf || ''} onChange={(e) => handleSave(r.parsed.codigo, 'uf', e.target.value)} maxLength={2} className="uppercase" /></div>
+                          </div>
+                        </fieldset>
+                      )
+                    )}
+
+                    {/* ═══ COMERCIAL TAB (existing only, read-only) ═══ */}
+                    {activeTab === 'comercial' && r && (
                       <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                         <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Briefcase className="size-3.5" />Comercial</legend>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+                          {/* Tipo: Revenda / Corporativo */}
                           <div>
-                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Vendedor</span>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Tipo</span>
+                            {(session?.user as any)?.role !== 'VENDEDOR' ? (
+                              <Select
+                                value={r.tipo || 'REVENDA'}
+                                onValueChange={async (val) => {
+                                  try {
+                                    const res = await fetch('/api/clientes', {
+                                      method: 'PATCH',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ codigo: r.parsed.codigo, tipo: val }),
+                                    })
+                                    if (!res.ok) throw new Error('Erro ao alterar tipo')
+                                    toast({ title: '✓ Tipo atualizado', description: `Cliente alterado para ${val === 'CORPORATIVO' ? 'Corporativo' : 'Revenda'}` })
+                                    fetchData()
+                                  } catch (e) {
+                                    toast({ title: '✗ Erro', description: 'Não foi possível alterar o tipo', variant: 'destructive' })
+                                  }
+                                }}
+                              >
+                                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="REVENDA">Revenda</SelectItem>
+                                  <SelectItem value="CORPORATIVO">Corporativo</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Badge className={`${r.tipo === 'CORPORATIVO' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' : 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300'} text-xs border`}>
+                                {r.tipo === 'CORPORATIVO' ? 'Corporativo' : 'Revenda'}
+                              </Badge>
+                            )}
+                          </div>
+                          {/* Vendedor / Carteira */}
+                          <div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Vendedor / Carteira</span>
                             {(session?.user as any)?.role !== 'VENDEDOR' && data?.filters.vendedorUsers ? (
                               <Select
                                 value={r.vendedor_id || '_none'}
@@ -1151,13 +1408,12 @@ function Home() {
                                     const res = await fetch('/api/vendedores/assign', {
                                       method: 'PATCH',
                                       headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        clienteCodigo: r.parsed.codigo,
-                                        vendedorId: val === '_none' ? null : val,
-                                      }),
+                                      body: JSON.stringify({ clienteCodigo: r.parsed.codigo, vendedorId: val === '_none' ? null : val }),
                                     })
                                     if (!res.ok) throw new Error('Erro ao atribuir')
-                                    toast({ title: '✓ Vendedor atualizado', description: val === '_none' ? 'Vendedor removido' : 'Cliente atribuído com sucesso' })
+                                    const selectedUser = data.filters.vendedorUsers.find(v => v.id === val)
+                                    const label = val === '_none' ? 'Sem vendedor' : (selectedUser?.name || 'Vendedor')
+                                    toast({ title: '✓ Atualizado', description: `Cliente movido para: ${label}` })
                                     fetchData()
                                   } catch (e) {
                                     toast({ title: '✗ Erro', description: 'Não foi possível atribuir vendedor', variant: 'destructive' })
@@ -1166,89 +1422,41 @@ function Home() {
                               >
                                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Sem vendedor" /></SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="_none">— Sem vendedor —</SelectItem>
-                                  {data.filters.vendedorUsers.map((v) => (
-                                    <SelectItem key={v.id} value={v.id}>{v.name}</SelectItem>
-                                  ))}
+                                  <SelectItem value="_none">— Sem Usuário —</SelectItem>
+                                  {(() => {
+                                    const systemUsers = data.filters.vendedorUsers.filter((v: any) => v.isSystemUser)
+                                    const regularUsers = data.filters.vendedorUsers.filter((v: any) => !v.isSystemUser)
+                                    return (
+                                      <>
+                                        {systemUsers.length > 0 && (
+                                          <>{systemUsers.map((v: any) => (
+                                            <SelectItem key={v.id} value={v.id}>📍 {v.name.toUpperCase()}</SelectItem>
+                                          ))}<SelectItem value="_divider_system" disabled>──────────────</SelectItem></>
+                                        )}
+                                        {regularUsers.map((v: any) => (
+                                          <SelectItem key={v.id} value={v.id}>👤 {v.name}</SelectItem>
+                                        ))}
+                                      </>
+                                    )
+                                  })()}
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || '—'}</span>
+                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || session?.user?.name || '—'}</span>
                             )}
                           </div>
+                          {/* Carteira badge (read-only, computed) */}
+                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Carteira</span><Badge variant="outline" className={`text-[11px] ${CARTEIRA_COLORS[r.carteira || 'COM_VENDEDOR'] || ''}`}>{CARTEIRA_LABELS[r.carteira || 'COM_VENDEDOR']}</Badge></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Reg. Simples</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Dias Sem Venda</span><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></div>
+                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Dias Sem Venda</span><DiasSemVendaBadge dias={diasSemVenda!} ultimaVenda={r.parsed.ultima_venda} /></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Última Venda</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.ultima_venda || '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Cadastro</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.cadastro || '—'}</span></div>
-                          <div>
-                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Carteira</span>
-                            {(session?.user as any)?.role !== 'VENDEDOR' ? (
-                              <Select
-                                value={r.carteira || 'CARTEIRA_REVENDAS'}
-                                onValueChange={async (val) => {
-                                  try {
-                                    await fetch('/api/clientes', {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ codigo: r.parsed.codigo, carteira: val }),
-                                    })
-                                    toast({ title: '✓ Carteira atualizada', description: 'Cliente movido com sucesso' })
-                                    fetchData()
-                                  } catch (e) {
-                                    toast({ title: '✗ Erro', description: 'Não foi possível mover carteira', variant: 'destructive' })
-                                  }
-                                }}
-                              >
-                                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="CARTEIRA_REVENDAS">Carteira Revendas</SelectItem>
-                                  <SelectItem value="CARTEIRA_CORPORATIVO">Carteira Corporativo</SelectItem>
-                                  <SelectItem value="BOLSAO">Bolsão</SelectItem>
-                                  <SelectItem value="CARTEIRA_FRIA">Carteira Fria</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Badge variant="outline" className={`text-[11px] ${CARTEIRA_COLORS[r.carteira || 'CARTEIRA_REVENDAS'] || ''}`}>{CARTEIRA_LABELS[r.carteira || 'CARTEIRA_REVENDAS']}</Badge>
-                            )}
-                          </div>
                         </div>
                       </fieldset>
                     )}
 
-                    {/* Endereço Tab */}
-                    {detailTab === 'endereco' && (
-                      <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                        <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><MapPin className="size-3.5" />Endereço</legend>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                          <div className="sm:col-span-2"><span className="text-xs text-slate-500 dark:text-slate-400 block">Endereço</span><span className="text-slate-800 dark:text-slate-200">{r.endereco || '—'}{r.numero ? `, ${r.numero}` : ''}{r.complemento ? ` - ${r.complemento}` : ''}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Bairro</span><span className="text-slate-800 dark:text-slate-200">{r.bairro || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Cidade</span><span className="text-slate-800 dark:text-slate-200">{r.cidade || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CEP</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cep ? formatCep(r.cep) : '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Estado</span><span className="text-slate-800 dark:text-slate-200">{r.uf || '—'}</span></div>
-                        </div>
-                      </fieldset>
-                    )}
-
-                    {/* Fiscal Tab */}
-                    {detailTab === 'fiscal' && (
-                      <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
-                        <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Building2 className="size-3.5" />Dados Fiscais</legend>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CNPJ</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cnpj ? formatCnpj(r.cnpj) : '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">IE/RG</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.parsed.ie_rg || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Situação Cadastral</span><span><SituacaoCadastralBadge value={r.situacao_cadastral} /></span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Data Situação</span><span className="text-slate-800 dark:text-slate-200">{r.data_situacao || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Data Abertura</span><span className="text-slate-800 dark:text-slate-200">{r.data_abertura || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CNAE Principal</span><span className="text-slate-800 dark:text-slate-200">{r.cnae_principal || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Natureza Jurídica</span><span className="text-slate-800 dark:text-slate-200">{r.natureza_juridica || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Porte</span><span className="text-slate-800 dark:text-slate-200">{r.porte || '—'}</span></div>
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Reg. Simples</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}</span></div>
-                        </div>
-                      </fieldset>
-                    )}
-
-                    {/* Observações Tab */}
-                    {detailTab === 'obs' && (
+                    {/* ═══ OBSERVAÇÕES TAB (existing only, editable) ═══ */}
+                    {activeTab === 'obs' && r && (
                       <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                         <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><StickyNote className="size-3.5" />Observações</legend>
                         <textarea
@@ -1260,8 +1468,8 @@ function Home() {
                       </fieldset>
                     )}
 
-                    {/* Histórico Tab */}
-                    {detailTab === 'historico' && (
+                    {/* ═══ HISTÓRICO TAB (existing only, read-only) ═══ */}
+                    {activeTab === 'historico' && r && (
                       <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                         <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Clock className="size-3.5" />Histórico de Alterações</legend>
                         {loadingAudit ? (
@@ -1289,9 +1497,16 @@ function Home() {
                     )}
                   </div>
                 </ScrollArea>
+
+                {/* Footer */}
                 <DialogFooter className="px-6 py-4 border-t bg-slate-50 dark:bg-slate-800 dark:border-slate-700 gap-2">
-                  <Button variant="outline" onClick={() => setDetailClient(null)}>Fechar</Button>
-                  {detailTab === 'obs' && (
+                  <Button variant="outline" onClick={() => { setShowNewClient(false); setDetailClient(null) }}>{isNew ? 'Cancelar' : 'Fechar'}</Button>
+                  {isNew && (
+                    <Button onClick={handleSaveNewClient} disabled={savingNew || !form.cnpj.replace(/\D/g, '')} className="bg-teal-600 hover:bg-teal-700 text-white">
+                      {savingNew ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Salvando...</> : 'Salvar Cliente'}
+                    </Button>
+                  )}
+                  {!isNew && detailTab === 'obs' && (
                     <Button onClick={handleSaveObs} disabled={savingObs} className="bg-teal-600 hover:bg-teal-700 text-white">
                       {savingObs ? <><Loader2 className="size-4 mr-1.5 animate-spin" />Salvando...</> : 'Salvar Observações'}
                     </Button>

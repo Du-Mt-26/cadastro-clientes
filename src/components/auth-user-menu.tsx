@@ -103,7 +103,7 @@ export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenVendedorMa
           {canManageVendedores && (
             <DropdownMenuItem onClick={onOpenVendedorManagement} className="cursor-pointer">
               <Briefcase className="size-4" />
-              <span>Cadastro de Vendedores</span>
+              <span>Cadastro de Usuários</span>
             </DropdownMenuItem>
           )}
         </DropdownMenuGroup>

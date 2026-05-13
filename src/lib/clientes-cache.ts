@@ -10,6 +10,11 @@
  * 3. Cliente (source='manual') — new clients created in the UI
  *
  * This module is server-only (uses db).
+ *
+ * NOTE: carteira is no longer stored in the DB — it is computed
+ * from vendedorId + tipo using computeCarteira(). The dbToRecord
+ * function sets carteira to an empty string placeholder; the API
+ * route must call computeCarteira() to fill in the correct value.
  */
 
 import { db } from '@/lib/db'
@@ -17,6 +22,7 @@ import type { ClienteRecord, EditableFields } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Convert a DB Cliente record to ClienteRecord format
+// NOTE: carteira is set to '' — the caller must compute it via computeCarteira()
 // ---------------------------------------------------------------------------
 
 export function dbToRecord(c: {
@@ -52,9 +58,20 @@ export function dbToRecord(c: {
   regSimples: string
   vendedor: string
   observacoes?: string
-  carteira?: string
+  tipo?: string
   vendedorId?: string | null
+  fornecedor?: boolean
+  dataAtribuicaoVendedor?: Date | null
 }): ClienteRecord {
+  // Format dataAtribuicaoVendedor as dd/mm/yyyy
+  let dataAtribuicaoStr = ''
+  if (c.dataAtribuicaoVendedor) {
+    const d = new Date(c.dataAtribuicaoVendedor)
+    if (!isNaN(d.getTime())) {
+      dataAtribuicaoStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+    }
+  }
+
   return {
     razao_social: c.razaoSocial,
     nome_fantasia: c.nomeFantasia,
@@ -80,7 +97,9 @@ export function dbToRecord(c: {
     cnae_principal: c.cnaePrincipal,
     natureza_juridica: c.naturezaJuridica,
     porte: c.porte,
-    carteira: c.carteira || 'CARTEIRA_REVENDAS',
+    tipo: c.tipo || 'REVENDA',
+    fornecedor: c.fornecedor || false,
+    carteira: '',  // Placeholder — must be computed by caller using computeCarteira()
     vendedor_id: c.vendedorId || '',
     parsed: {
       codigo: c.codigo,
@@ -91,6 +110,7 @@ export function dbToRecord(c: {
       ultima_venda: c.ultimaVenda,
       reg_simples: c.regSimples,
       vendedor: c.vendedor,
+      data_atribuicao_vendedor: dataAtribuicaoStr,
     },
     editable: {
       telefone1: c.telefone1,
@@ -102,6 +122,13 @@ export function dbToRecord(c: {
       email3: c.email3,
       pessoaContato: c.pessoaContato,
       observacoes: c.observacoes || '',
+      endereco: c.endereco,
+      numero: c.numero,
+      complemento: c.complemento,
+      bairro: c.bairro,
+      cidade: c.cidade,
+      cep: c.cep,
+      uf: c.uf,
     },
   }
 }
@@ -120,6 +147,8 @@ const CACHE_TTL = 60_000 // 1 minute — helps with serverless cold starts
  *
  * Uses a short-lived in-memory cache to avoid hitting the DB
  * on every request within the same serverless function invocation.
+ *
+ * NOTE: carteira is set to '' — the caller must compute it.
  */
 export async function getRecords(): Promise<ClienteRecord[]> {
   const now = Date.now()
@@ -128,7 +157,7 @@ export async function getRecords(): Promise<ClienteRecord[]> {
   }
 
   const clientes = await db.cliente.findMany({
-    orderBy: { codigo: 'asc' },
+    orderBy: { codigo: 'desc' },
   })
 
   cachedRecords = clientes.map(dbToRecord)

@@ -1,11 +1,7 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 //
-// ╔══════════════════════════════════════════════════════════════╗
-// ║  PRODUCTION: PostgreSQL (Neon)                              ║
-// ║  LOCAL DEV:  Run `./switch-db.sh sqlite` to use SQLite      ║
-// ║  DEPLOY:     Run `./switch-db.sh postgres` before deploy    ║
-// ╚══════════════════════════════════════════════════════════════╝
+// Database: PostgreSQL (Neon) — production and local dev use the same Neon database
 
 generator client {
   provider = "prisma-client-js"
@@ -56,20 +52,25 @@ model Cliente {
   source            String  @default("manual")   // "xlsx" | "sheets" | "manual"
   sheetsRow         Int     @default(0)           // Row number in Google Sheets (for sync)
 
-  // ─── Carteira ──────────────────────────────────
-  // carteira: "CARTEIRA_REVENDAS" | "CARTEIRA_CORPORATIVO" | "BOLSAO" | "CARTEIRA_FRIA"
-  // After 151 days without purchase → BOLSAO (available to all vendors)
-  // After all vendors tried and no sale → CARTEIRA_FRIA (out of focus)
-  carteira                   String   @default("CARTEIRA_REVENDAS")
+  // ─── Tipo ─────────────────────────────────────
+  // tipo: "REVENDA" | "CORPORATIVO"
+  tipo                       String   @default("REVENDA")
+
+  // ─── Fornecedor ───────────────────────────────
+  fornecedor                 Boolean  @default(false)
+
+  // ─── Carteira (computed from vendedorId + tipo) ──
+  // carteira is no longer stored — it is computed
   vendedorId                 String?  // FK → User.id (system-assigned vendor)
+  dataAtribuicaoVendedor     DateTime?  // When current vendedor was assigned
   dataEntradaBolsao          DateTime?
-  dataEntradaCarteiraFria    DateTime?
   vendedoresQueAbordaram     String   @default("")  @db.Text  // comma-separated User IDs who approached
 
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 
   vendedorUser User? @relation("VendedorClientes", fields: [vendedorId], references: [id], onDelete: SetNull)
+  favorites   Favorite[]
 
   @@index([cnpj])
   @@index([cidade])
@@ -77,7 +78,7 @@ model Cliente {
   @@index([vendedor])
   @@index([situacaoCadastral])
   @@index([source])
-  @@index([carteira])
+  @@index([tipo])
   @@index([vendedorId])
 }
 
@@ -93,13 +94,16 @@ model User {
   twoFactorSecret  String?                          // TOTP secret (base32), null = 2FA not set up
   twoFactorEnabled Boolean  @default(false)
   imagem           String?  @default("")            // avatar URL or base64
+  isSystemUser     Boolean  @default(false)         // Marks system users: BOLSÃO, LISTA FRIA, FORNECEDOR
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  clientes Cliente[] @relation("VendedorClientes")
+  clientes  Cliente[]  @relation("VendedorClientes")
+  favorites  Favorite[]
 
   @@index([email])
   @@index([role])
+  @@index([isSystemUser])
 }
 
 // ─── Google Sheets Sync Config ─────────────────────
@@ -138,4 +142,22 @@ model AuditLog {
 
   @@index([codigo])
   @@index([createdAt])
+}
+
+// ─── Favorites ────────────────────────────────────
+// Each user can favorite up to 50 clients
+
+model Favorite {
+  id        String   @id @default(cuid())
+  userId    String
+  codigo    String
+  ordem     Int      @default(0)    // Order within favorites (0 = first)
+  createdAt DateTime @default(now())
+
+  user  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cliente Cliente @relation(fields: [codigo], references: [codigo], onDelete: Cascade)
+
+  @@unique([userId, codigo])
+  @@index([userId])
+  @@index([userId, ordem])
 }

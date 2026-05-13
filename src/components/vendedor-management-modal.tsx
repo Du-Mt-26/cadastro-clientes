@@ -49,10 +49,12 @@ interface VendedorInfo {
   role: Role
   active: boolean
   twoFactorEnabled: boolean
+  isSystemUser: boolean
   clientCount: number
   carteiraRevendas: number
   carteiraCorporativo: number
-  carteiraFria: number
+  listaFria: number
+  fornecedores: number
   bolsao: number
 }
 
@@ -244,12 +246,12 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Users className="size-5 text-teal-600" />
-            Cadastro de Vendedores
+            Cadastro de Usuários
           </DialogTitle>
           <DialogDescription>
-            Gerencie vendedores, carteiras e acessos.{' '}
+            Gerencie usuários, carteiras e acessos.{' '}
             <span className="font-medium text-foreground">
-              {vendedores.length} vendedor{vendedores.length !== 1 ? 'es' : ''} • {activeCount} ativo{activeCount !== 1 ? 's' : ''} • {totalClients} clientes
+              {vendedores.length} usuário{vendedores.length !== 1 ? 's' : ''} • {activeCount} ativo{activeCount !== 1 ? 's' : ''} • {totalClients} clientes
             </span>
           </DialogDescription>
         </DialogHeader>
@@ -275,7 +277,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
             className="bg-teal-600 hover:bg-teal-700 text-white"
           >
             <UserPlus className="size-4 mr-1" />
-            Novo Vendedor
+            Novo Usuário
           </Button>
         </div>
 
@@ -284,7 +286,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
           <div className="rounded-lg border border-teal-200 dark:border-teal-800 bg-teal-50/50 dark:bg-teal-950/20 p-4 space-y-3 transition-all">
             <p className="text-sm font-semibold text-teal-700 dark:text-teal-300 flex items-center gap-2">
               <UserPlus className="size-4" />
-              Novo Vendedor
+              Novo Usuário
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input
@@ -342,7 +344,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                 className="bg-teal-600 hover:bg-teal-700 text-white"
               >
                 {creating && <Loader2 className="size-4 mr-1 animate-spin" />}
-                Criar Vendedor
+                Criar Usuário
               </Button>
             </div>
           </div>
@@ -367,21 +369,24 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
           ) : vendedores.length === 0 ? (
             <div className="py-12 text-center text-muted-foreground text-sm">
               <Users className="size-10 mx-auto mb-2 opacity-30" />
-              Nenhum vendedor encontrado.
+              Nenhum usuário encontrado.
             </div>
           ) : (
             vendedores.map((vendedor) => {
               const isEditing = editingId === vendedor.id
               const isResetting = resettingId === vendedor.id
               const isInactive = !vendedor.active
+              const isSystem = vendedor.isSystemUser
 
               return (
                 <Card
                   key={vendedor.id}
                   className={`p-4 transition-all duration-200 ${
-                    isInactive
-                      ? 'bg-muted/60 dark:bg-muted/30 border-dashed opacity-75'
-                      : 'bg-white dark:bg-card'
+                    isSystem
+                      ? 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                      : isInactive
+                        ? 'bg-muted/60 dark:bg-muted/30 border-dashed opacity-75'
+                        : 'bg-white dark:bg-card'
                   } ${isEditing ? 'ring-2 ring-teal-500/50 border-teal-300 dark:border-teal-700' : ''}`}
                 >
                   <div className="flex flex-col gap-3">
@@ -390,7 +395,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           {/* Name */}
-                          {isEditing ? (
+                          {isEditing && !isSystem ? (
                             <Input
                               className="h-8 text-sm max-w-[200px]"
                               value={editData.name ?? ''}
@@ -404,9 +409,14 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                               {vendedor.name}
                             </span>
                           )}
+                          {isSystem && !isEditing && (
+                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600">
+                              Sistema
+                            </Badge>
+                          )}
 
                           {/* Role Badge */}
-                          {isEditing ? (
+                          {isEditing && !isSystem ? (
                             <Select
                               value={editData.role ?? vendedor.role}
                               onValueChange={(v) =>
@@ -451,7 +461,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                         </div>
 
                         {/* Email */}
-                        {isEditing ? (
+                        {isEditing && !isSystem ? (
                           <Input
                             className="h-8 text-sm mt-1.5 max-w-[280px]"
                             type="email"
@@ -479,7 +489,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                             onCheckedChange={() =>
                               handleToggleActive(vendedor.id, vendedor.active, vendedor.name)
                             }
-                            disabled={isEditing}
+                            disabled={isEditing || isSystem}
                           />
                         </div>
 
@@ -513,15 +523,17 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                           </div>
                         ) : (
                           <div className="flex items-center gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="size-8"
-                              onClick={() => startEdit(vendedor)}
-                              title="Editar"
-                            >
-                              <Pencil className="size-3.5" />
-                            </Button>
+                            {!isSystem && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="size-8"
+                                onClick={() => startEdit(vendedor)}
+                                title="Editar"
+                              >
+                                <Pencil className="size-3.5" />
+                              </Button>
+                            )}
                             <Button
                               size="icon"
                               variant="ghost"
@@ -554,9 +566,14 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
                             Corporativo {vendedor.carteiraCorporativo}
                           </Badge>
                         )}
-                        {vendedor.carteiraFria > 0 && (
+                        {vendedor.listaFria > 0 && (
                           <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800/50 dark:text-slate-400 dark:border-slate-700">
-                            Fria {vendedor.carteiraFria}
+                            Lista Fria {vendedor.listaFria}
+                          </Badge>
+                        )}
+                        {vendedor.fornecedores > 0 && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-800">
+                            Fornecedores {vendedor.fornecedores}
                           </Badge>
                         )}
                         {vendedor.bolsao > 0 && (

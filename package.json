@@ -10,9 +10,7 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset",
-    "db:neon": "cp prisma/schema.neon.prisma prisma/schema.prisma && prisma generate",
-    "db:sqlite": "cp prisma/schema.sqlite.prisma prisma/schema.prisma && prisma generate"
+    "db:reset": "prisma migrate reset"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.1",
@@ -49,6 +47,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "docx": "^9.6.1",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.2",
     "googleapis": "^171.4.0",

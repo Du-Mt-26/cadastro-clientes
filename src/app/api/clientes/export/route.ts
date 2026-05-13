@@ -3,9 +3,20 @@ import * as XLSX from "xlsx";
 import { formatPhone } from "@/lib/clientes";
 import type { ClienteRecord } from "@/lib/types";
 import { getRecords } from "@/lib/clientes-cache";
+import { getServerSession } from "next-auth";
+import { authOptions, getSystemUserIds, computeCarteira, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    // ── Auth check ──
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
+    }
+    const role = (session.user as any).role as Role;
+    const userId = (session.user as any).id;
+    const userEmail = session.user.email || "";
+
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
@@ -13,10 +24,31 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
+    // Get system user IDs for carteira computation
+    const systemUserIds = await getSystemUserIds();
+
     const allCachedRecords = await getRecords();
 
+    // ── Compute carteira for each record ──
+    for (const r of allCachedRecords) {
+      r.carteira = computeCarteira(r.vendedor_id, r.tipo, systemUserIds);
+    }
+
+    // ── Role-based visibility (same as main GET /api/clientes) ──
+    let visibleRecords = allCachedRecords;
+    if (role === "VENDEDOR") {
+      visibleRecords = allCachedRecords.filter(r => {
+        if (r.fornecedor && r.carteira !== "FORNECEDOR") return false;
+        if (r.vendedor_id === userId) return true;
+        if (r.carteira === "BOLSAO") return true;
+        if (r.carteira === "LISTA_FRIA" && canSeeListaFria(role)) return true;
+        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role, userEmail)) return true;
+        return false;
+      });
+    }
+
     // Convert to export-friendly column names
-    const allRecords = allCachedRecords.map((r) => ({
+    const allRecords = visibleRecords.map((r) => ({
       "Código": r.parsed.codigo,
       "IE/RG": r.parsed.ie_rg,
       "Razão Social": r.razao_social,
@@ -47,6 +79,8 @@ export async function GET(request: NextRequest) {
       "Última Venda": r.parsed.ultima_venda,
       "Reg. Simples": r.parsed.reg_simples,
       "Vendedor": r.parsed.vendedor,
+      "Tipo": r.tipo,
+      "Carteira": CARTEIRA_LABELS[r.carteira] || r.carteira,
     }));
 
     // Apply filters
@@ -111,6 +145,8 @@ export async function GET(request: NextRequest) {
         ultima_venda: "Última Venda",
         reg_simples: "Reg. Simples",
         vendedor: "Vendedor",
+        tipo: "Tipo",
+        carteira: "Carteira",
       };
       const colName = columnMap[sortBy] || "";
       if (colName) {

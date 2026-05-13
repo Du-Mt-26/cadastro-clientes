@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, canSeeAllClients, type Role } from '@/lib/auth'
+import { authOptions, canSeeAllClients, getSystemUserIds, SYSTEM_USER_EMAILS, type Role } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { invalidateCache } from '@/lib/clientes-cache'
 
@@ -40,20 +40,23 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
+    const systemUserIds = await getSystemUserIds()
+
     if (vendedorId === null || vendedorId === undefined || vendedorId === '') {
-      // Clear assignment
+      // Clear assignment — set vendedorId to null
       await db.cliente.update({
         where: { codigo: clienteCodigo },
         data: {
           vendedorId: null,
           vendedor: '',
+          dataAtribuicaoVendedor: null,
         },
       })
     } else {
       // Find the vendor user to get their name
       const vendedor = await db.user.findUnique({
         where: { id: vendedorId },
-        select: { id: true, name: true, role: true },
+        select: { id: true, name: true, role: true, isSystemUser: true, email: true },
       })
 
       if (!vendedor) {
@@ -63,13 +66,45 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
-      await db.cliente.update({
-        where: { codigo: clienteCodigo },
-        data: {
-          vendedorId: vendedorId,
-          vendedor: vendedor.name,
-        },
-      })
+      // Validate: only admin/diretor/gerente can assign to LISTA_FRIA or FORNECEDOR
+      if (vendedor.isSystemUser) {
+        const isListaFria = vendedor.email === SYSTEM_USER_EMAILS.LISTA_FRIA
+        const isFornecedor = vendedor.email === SYSTEM_USER_EMAILS.FORNECEDOR
+        const isBolsao = vendedor.email === SYSTEM_USER_EMAILS.BOLSAO
+
+        if (isListaFria || isFornecedor) {
+          // Only admin/diretor/gerente can assign to these
+          // (already checked canSeeAllClients above)
+        }
+
+        // When assigning to a system user, don't set dataAtribuicaoVendedor
+        await db.cliente.update({
+          where: { codigo: clienteCodigo },
+          data: {
+            vendedorId: vendedorId,
+            vendedor: vendedor.name,
+            dataAtribuicaoVendedor: null,
+            // If moving to FORNECEDOR, also set fornecedor flag
+            ...(isFornecedor ? { fornecedor: true } : {}),
+            // If moving away from FORNECEDOR, clear fornecedor flag
+            ...(!isFornecedor && cliente.fornecedor ? { fornecedor: false } : {}),
+          },
+        })
+      } else {
+        // Regular vendedor assignment
+        await db.cliente.update({
+          where: { codigo: clienteCodigo },
+          data: {
+            vendedorId: vendedorId,
+            vendedor: vendedor.name,
+            dataAtribuicaoVendedor: new Date(),
+            // Clear Bolsão timestamp if was in Bolsão
+            dataEntradaBolsao: null,
+            // If was a fornecedor and now assigned to regular vendedor, clear flag
+            ...(cliente.fornecedor ? { fornecedor: false } : {}),
+          },
+        })
+      }
     }
 
     // Invalidate the clientes cache after assignment
