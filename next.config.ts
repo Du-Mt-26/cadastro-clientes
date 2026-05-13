@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Expose app version to client-side via process.env.NEXT_PUBLIC_APP_VERSION
+  env: {
+    NEXT_PUBLIC_APP_VERSION: process.env.npm_package_version || '0.0.0',
+  },
   // Performance optimizations
   experimental: {
     optimizePackageImports: [
