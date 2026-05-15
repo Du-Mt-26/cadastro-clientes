@@ -1,5 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build"
+  "buildCommand": "npx prisma generate && npx prisma db push --accept-data-loss && next build",
+  "crons": [
+    {
+      "path": "/api/sync/linvix-auto",
+      "schedule": "*/15 * * * *"
+    }
+  ]
 }
