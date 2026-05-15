@@ -294,14 +294,6 @@ export default function HomeClient() {
   const focusedRowRef = useRef(-1)
   const focusedColRef = useRef(-1)
 
-  // Row virtualizer — only renders visible rows for massive DOM savings
-  const ROW_HEIGHT = 44
-  const rowVirtualizer = useVirtualizer({
-    count: sortedData.length,
-    getScrollElement: () => tableContainerRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
-  })
   const [focusedCell, setFocusedCell] = useState({ row: -1, col: -1 })
   const [pageJump, setPageJump] = useState('')
 
@@ -536,6 +528,15 @@ export default function HomeClient() {
     }
     return result
   }, [filteredData, sortBy, sortOrder, favoritos])
+
+  // Row virtualizer — only renders visible rows for massive DOM savings
+  const ROW_HEIGHT = 44
+  const rowVirtualizer = useVirtualizer({
+    count: sortedData.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  })
 
   // Use server-side dsvStats
   const dsvStats = data?.stats.dias_sem_venda ?? { verde: 0, amarelo: 0, laranja: 0, vermelho: 0 }
