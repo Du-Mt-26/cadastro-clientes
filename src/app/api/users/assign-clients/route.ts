@@ -4,8 +4,15 @@ import { authOptions, canSeeAllClients, type Role } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { invalidateCache } from '@/lib/clientes-cache'
 
-// ─── PATCH /api/vendedores/assign — Assign a client to a vendor ─────────────
-
+/**
+ * PATCH /api/users/assign-clients — Assign/remove a client to/from a user
+ *
+ * Body:
+ *  - clienteCodigo: string (required)
+ *  - vendedorId: string | null
+ *    - If provided: set carteira='COM_VENDEDOR', vendedorId, vendedor name
+ *    - If null: set carteira='SEM_VENDEDOR', vendedorId=null, vendedor=''
+ */
 export async function PATCH(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -19,7 +26,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { clienteCodigo, vendedorId, carteira: targetCarteira } = body
+    const { clienteCodigo, vendedorId } = body
 
     if (!clienteCodigo) {
       return NextResponse.json(
@@ -40,55 +47,8 @@ export async function PATCH(request: NextRequest) {
       )
     }
 
-    // Handle direct carteira moves (LISTA_FRIA, FORNECEDOR)
-    if (targetCarteira === 'LISTA_FRIA') {
-      await db.cliente.update({
-        where: { codigo: clienteCodigo },
-        data: {
-          carteira: 'LISTA_FRIA',
-          vendedorId: null,
-          vendedor: 'LISTA FRIA',
-          dataAtribuicaoVendedor: null,
-          dataEntradaBolsao: null,
-        },
-      })
-      invalidateCache()
-      return NextResponse.json({ success: true, carteira: 'LISTA_FRIA' })
-    }
-
-    if (targetCarteira === 'FORNECEDOR') {
-      await db.cliente.update({
-        where: { codigo: clienteCodigo },
-        data: {
-          carteira: 'FORNECEDOR',
-          vendedorId: null,
-          vendedor: 'FORNECEDOR',
-          fornecedor: true,
-          dataAtribuicaoVendedor: null,
-          dataEntradaBolsao: null,
-        },
-      })
-      invalidateCache()
-      return NextResponse.json({ success: true, carteira: 'FORNECEDOR' })
-    }
-
-    if (targetCarteira === 'BOLSAO') {
-      await db.cliente.update({
-        where: { codigo: clienteCodigo },
-        data: {
-          carteira: 'BOLSAO',
-          vendedorId: null,
-          vendedor: 'BOLSÃO',
-          dataAtribuicaoVendedor: null,
-          dataEntradaBolsao: new Date(),
-        },
-      })
-      invalidateCache()
-      return NextResponse.json({ success: true, carteira: 'BOLSAO' })
-    }
-
     if (vendedorId === null || vendedorId === undefined || vendedorId === '') {
-      // Clear assignment — set carteira to SEM_VENDEDOR
+      // Remove assignment — set carteira to SEM_VENDEDOR
       await db.cliente.update({
         where: { codigo: clienteCodigo },
         data: {
@@ -114,7 +74,7 @@ export async function PATCH(request: NextRequest) {
         )
       }
 
-      // Assign to real vendedor — set carteira to COM_VENDEDOR
+      // Assign to vendedor — set carteira to COM_VENDEDOR
       await db.cliente.update({
         where: { codigo: clienteCodigo },
         data: {
@@ -135,9 +95,9 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error assigning vendedor:', error)
+    console.error('Error assigning client:', error)
     return NextResponse.json(
-      { error: 'Erro ao atribuir vendedor' },
+      { error: 'Erro ao atribuir cliente' },
       { status: 500 }
     )
   }

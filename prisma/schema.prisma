@@ -12,6 +12,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Carteira enum ─────────────────────────────────
+// Explicit carteira stored on each Cliente record.
+// No longer computed from vendedorId + system users.
+
+enum Carteira {
+  SEM_VENDEDOR
+  BOLSAO
+  LISTA_FRIA
+  FORNECEDOR
+  COM_VENDEDOR
+}
+
 // ─── Unified Cliente table ─────────────────────────
 // All client data lives here, regardless of source (XLSX import, Google Sheets, manual)
 // The `source` field tracks origin: "xlsx" | "sheets" | "manual"
@@ -59,9 +71,12 @@ model Cliente {
   // ─── Fornecedor ───────────────────────────────
   fornecedor                 Boolean  @default(false)
 
-  // ─── Carteira (computed from vendedorId + tipo) ──
-  // carteira is no longer stored — it is computed
-  vendedorId                 String?  // FK → User.id (system-assigned vendor)
+  // ─── Carteira (explicit field, no longer computed) ──
+  carteira                   Carteira @default(SEM_VENDEDOR)
+
+  // ─── Vendedor assignment ──────────────────────
+  // vendedorId is only set when carteira = COM_VENDEDOR (real vendor assigned)
+  vendedorId                 String?  // FK → User.id (real vendor only, not system user)
   dataAtribuicaoVendedor     DateTime?  // When current vendedor was assigned
   dataEntradaBolsao          DateTime?
   vendedoresQueAbordaram     String   @default("")  @db.Text  // comma-separated User IDs who approached
@@ -80,6 +95,7 @@ model Cliente {
   @@index([source])
   @@index([tipo])
   @@index([vendedorId])
+  @@index([carteira])
 }
 
 // ─── User / Authentication ────────────────────────
@@ -94,7 +110,6 @@ model User {
   twoFactorSecret  String?                          // TOTP secret (base32), null = 2FA not set up
   twoFactorEnabled Boolean  @default(false)
   imagem           String?  @default("")            // avatar URL or base64
-  isSystemUser     Boolean  @default(false)         // Marks system users: BOLSÃO, LISTA FRIA, FORNECEDOR
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -103,7 +118,6 @@ model User {
 
   @@index([email])
   @@index([role])
-  @@index([isSystemUser])
 }
 
 // ─── Google Sheets Sync Config ─────────────────────
@@ -160,4 +174,34 @@ model Favorite {
   @@unique([userId, codigo])
   @@index([userId])
   @@index([userId, ordem])
+}
+
+// ─── Permissions ──────────────────────────────────
+// Dynamic permission system with DB-backed overrides per role
+
+model Permission {
+  id          String  @id @default(cuid())
+  key         String  @unique           // e.g. "clients.export"
+  description String  @default("")      // Human-readable description
+  category    String  @default("geral") // Grouping: "clientes" | "bolsao" | "users" | "sheets" | "geral"
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+
+  @@index([category])
+}
+
+model RolePermission {
+  id             String   @id @default(cuid())
+  role           String                       // ADMIN | DIRETOR_COMERCIAL | GERENTE_COMERCIAL | VENDEDOR
+  permissionKey  String                       // FK → Permission.key
+  allowed        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@unique([role, permissionKey])
+  @@index([role])
 }

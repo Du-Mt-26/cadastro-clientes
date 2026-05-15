@@ -69,7 +69,7 @@ import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import { useSession } from 'next-auth/react'
 import { AuthUserMenu } from '@/components/auth-user-menu'
 import { UserManagementModal } from '@/components/user-management-modal'
-import { VendedorManagementModal } from '@/components/vendedor-management-modal'
+import { PermissionManagementModal } from '@/components/permission-management-modal'
 import { TwoFactorSetupModal } from '@/components/two-factor-setup-modal'
 import { CARTEIRA_LABELS, CARTEIRA_COLORS } from '@/lib/auth'
 import type {
@@ -323,7 +323,7 @@ export default function HomeClient() {
 
   // Auth modals
   const [showUserManagement, setShowUserManagement] = useState(false)
-  const [showVendedorManagement, setShowVendedorManagement] = useState(false)
+  const [showPermissions, setShowPermissions] = useState(false)
   const [show2FASetup, setShow2FASetup] = useState(false)
 
   // Load sheets connection status
@@ -849,7 +849,10 @@ export default function HomeClient() {
               {!isVendedor && <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>}
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
               {session && (session.user as any).role !== 'VENDEDOR' && (
-                <Button variant="outline" size="sm" onClick={() => setShowVendedorManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Briefcase className="size-4 mr-1.5" />Usuários</Button>
+                <Button variant="outline" size="sm" onClick={() => setShowUserManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Users className="size-4 mr-1.5" />Usuários</Button>
+              )}
+              {session && (session.user as any).role === 'ADMIN' && (
+                <Button variant="outline" size="sm" onClick={() => setShowPermissions(true)} className="text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/30"><Shield className="size-4 mr-1.5" />Permissões</Button>
               )}
               {session && (session.user as any).role !== 'VENDEDOR' && (
                 <Button variant="outline" size="sm" onClick={handleBolsaoCheck} className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"><AlertCircle className="size-4 mr-1.5" />Verificar Bolsão</Button>
@@ -857,7 +860,7 @@ export default function HomeClient() {
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
               </Button>
-              <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} onOpenVendedorManagement={() => setShowVendedorManagement(true)} />
+              <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} onOpenPermissions={() => setShowPermissions(true)} />
             </div>
           </div>
         </div>
@@ -1442,16 +1445,9 @@ export default function HomeClient() {
                                 <SelectContent>
                                   <SelectItem value="_none">— Sem Usuário —</SelectItem>
                                   {(() => {
-                                    const systemUsers = data.filters.vendedorUsers.filter((v: any) => v.isSystemUser)
-                                    const regularUsers = data.filters.vendedorUsers.filter((v: any) => !v.isSystemUser)
                                     return (
                                       <>
-                                        {systemUsers.length > 0 && (
-                                          <>{systemUsers.map((v: any) => (
-                                            <SelectItem key={v.id} value={v.id}>📍 {v.name.toUpperCase()}</SelectItem>
-                                          ))}<SelectItem value="_divider_system" disabled>──────────────</SelectItem></>
-                                        )}
-                                        {regularUsers.map((v: any) => (
+                                        {data.filters.vendedorUsers.map((v) => (
                                           <SelectItem key={v.id} value={v.id}>👤 {v.name}</SelectItem>
                                         ))}
                                       </>
@@ -1544,7 +1540,7 @@ export default function HomeClient() {
       />
 
       <UserManagementModal open={showUserManagement} onOpenChange={setShowUserManagement} />
-      <VendedorManagementModal open={showVendedorManagement} onOpenChange={setShowVendedorManagement} />
+      <PermissionManagementModal open={showPermissions} onOpenChange={setShowPermissions} />
       <TwoFactorSetupModal open={show2FASetup} onOpenChange={setShow2FASetup} />
     </div>
   )

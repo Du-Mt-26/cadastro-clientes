@@ -4,7 +4,7 @@ import { formatPhone } from "@/lib/clientes";
 import type { ClienteRecord } from "@/lib/types";
 import { getRecords } from "@/lib/clientes-cache";
 import { getServerSession } from "next-auth";
-import { authOptions, getSystemUserIds, computeCarteira, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
+import { authOptions, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,15 +24,8 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
-    // Get system user IDs for carteira computation
-    const systemUserIds = await getSystemUserIds();
-
+    // Get all cached records — carteira is now read directly from DB field
     const allCachedRecords = await getRecords();
-
-    // ── Compute carteira for each record ──
-    for (const r of allCachedRecords) {
-      r.carteira = computeCarteira(r.vendedor_id, r.tipo, systemUserIds);
-    }
 
     // ── Role-based visibility (same as main GET /api/clientes) ──
     let visibleRecords = allCachedRecords;

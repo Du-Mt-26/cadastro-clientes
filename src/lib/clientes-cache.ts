@@ -11,10 +11,8 @@
  *
  * This module is server-only (uses db).
  *
- * NOTE: carteira is no longer stored in the DB — it is computed
- * from vendedorId + tipo using computeCarteira(). The dbToRecord
- * function sets carteira to an empty string placeholder; the API
- * route must call computeCarteira() to fill in the correct value.
+ * Carteira is now an explicit enum field on the Cliente model.
+ * The dbToRecord function reads carteira directly from the DB record.
  */
 
 import { db } from '@/lib/db'
@@ -22,7 +20,7 @@ import type { ClienteRecord, EditableFields } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // Convert a DB Cliente record to ClienteRecord format
-// NOTE: carteira is set to '' — the caller must compute it via computeCarteira()
+// Carteira is now read directly from the DB carteira field.
 // ---------------------------------------------------------------------------
 
 export function dbToRecord(c: {
@@ -61,6 +59,7 @@ export function dbToRecord(c: {
   tipo?: string
   vendedorId?: string | null
   fornecedor?: boolean
+  carteira?: string
   dataAtribuicaoVendedor?: Date | null
 }): ClienteRecord {
   // Format dataAtribuicaoVendedor as dd/mm/yyyy
@@ -99,7 +98,7 @@ export function dbToRecord(c: {
     porte: c.porte,
     tipo: c.tipo || 'REVENDA',
     fornecedor: c.fornecedor || false,
-    carteira: '',  // Placeholder — must be computed by caller using computeCarteira()
+    carteira: c.carteira || 'SEM_VENDEDOR',  // Read directly from DB field
     vendedor_id: c.vendedorId || '',
     parsed: {
       codigo: c.codigo,
@@ -147,8 +146,6 @@ const CACHE_TTL = 60_000 // 1 minute — helps with serverless cold starts
  *
  * Uses a short-lived in-memory cache to avoid hitting the DB
  * on every request within the same serverless function invocation.
- *
- * NOTE: carteira is set to '' — the caller must compute it.
  */
 export async function getRecords(): Promise<ClienteRecord[]> {
   const now = Date.now()
