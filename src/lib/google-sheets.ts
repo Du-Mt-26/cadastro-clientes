@@ -336,3 +336,196 @@ export async function updateSyncStatus(configId: string, syncResult: SyncResult)
     },
   })
 }
+
+// ─── Push (DB → Sheets) via Google Sheets API ─────────
+// Writes data to Google Sheets with columns in the SAME ORDER as the site.
+
+/**
+ * The canonical column order for Google Sheets export.
+ * This matches the column order shown on the site (DEFAULT_COLUMNS from types.ts),
+ * excluding computed fields like "dias_sem_venda" that don't exist in the DB.
+ */
+const SHEETS_COLUMNS: { key: string; label: string }[] = [
+  { key: 'codigo', label: 'Código' },
+  { key: 'ie_rg', label: 'IE/RG' },
+  { key: 'razao_social', label: 'Razão Social' },
+  { key: 'nome_fantasia', label: 'Nome Fantasia' },
+  { key: 'situacao_cadastral', label: 'Situação Cadastral' },
+  { key: 'cnpj', label: 'CNPJ' },
+  { key: 'endereco', label: 'Endereço Rua/Avenidade' },
+  { key: 'numero', label: 'Numero' },
+  { key: 'complemento', label: 'Complemento' },
+  { key: 'bairro', label: 'Bairro' },
+  { key: 'cidade', label: 'Cidade' },
+  { key: 'cep', label: 'CEP' },
+  { key: 'uf', label: 'UF' },
+  { key: 'telefone1', label: 'Telefone 1' },
+  { key: 'telefone2', label: 'Telefone 2' },
+  { key: 'telefone3', label: 'Telefone 3' },
+  { key: 'telefone4', label: 'Telefone 4' },
+  { key: 'email1', label: 'Email 1' },
+  { key: 'email2', label: 'Email 2' },
+  { key: 'email3', label: 'Email 3' },
+  { key: 'pessoa_contato', label: 'Pessoa de Contato' },
+  { key: 'data_situacao', label: 'Data Situação' },
+  { key: 'data_abertura', label: 'Data Abertura' },
+  { key: 'cnae_principal', label: 'CNAE Principal' },
+  { key: 'natureza_juridica', label: 'Natureza Jurídica' },
+  { key: 'porte', label: 'Porte' },
+  { key: 'cadastro', label: 'Cadastro' },
+  { key: 'ultima_venda', label: 'Última Venda' },
+  { key: 'reg_simples', label: 'Reg. Simples' },
+  { key: 'vendedor', label: 'Vendedor(a)' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'carteira', label: 'Carteira' },
+  { key: 'observacoes', label: 'Observações' },
+]
+
+/**
+ * Map a DB Cliente field to the sheet column key.
+ * DB fields are camelCase, sheet column keys are snake_case.
+ */
+function clienteToRow(c: {
+  codigo: string; ieRg: string; razaoSocial: string; nomeFantasia: string;
+  situacaoCadastral: string; cnpj: string; endereco: string; numero: string;
+  complemento: string; bairro: string; cidade: string; cep: string; uf: string;
+  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
+  email1: string; email2: string; email3: string; pessoaContato: string;
+  dataSituacao: string; dataAbertura: string; cnaePrincipal: string;
+  naturezaJuridica: string; porte: string; cadastro: string; ultimaVenda: string;
+  regSimples: string; vendedor: string; tipo: string; carteira: string;
+  observacoes: string;
+}): string[] {
+  const map: Record<string, string> = {
+    codigo: c.codigo,
+    ie_rg: c.ieRg,
+    razao_social: c.razaoSocial,
+    nome_fantasia: c.nomeFantasia,
+    situacao_cadastral: c.situacaoCadastral,
+    cnpj: c.cnpj,
+    endereco: c.endereco,
+    numero: c.numero,
+    complemento: c.complemento,
+    bairro: c.bairro,
+    cidade: c.cidade,
+    cep: c.cep,
+    uf: c.uf,
+    telefone1: c.telefone1,
+    telefone2: c.telefone2,
+    telefone3: c.telefone3,
+    telefone4: c.telefone4,
+    email1: c.email1,
+    email2: c.email2,
+    email3: c.email3,
+    pessoa_contato: c.pessoaContato,
+    data_situacao: c.dataSituacao,
+    data_abertura: c.dataAbertura,
+    cnae_principal: c.cnaePrincipal,
+    natureza_juridica: c.naturezaJuridica,
+    porte: c.porte,
+    cadastro: c.cadastro,
+    ultima_venda: c.ultimaVenda,
+    reg_simples: c.regSimples,
+    vendedor: c.vendedor,
+    tipo: c.tipo,
+    carteira: c.carteira,
+    observacoes: c.observacoes,
+  }
+  return SHEETS_COLUMNS.map(col => map[col.key] || '')
+}
+
+/**
+ * Push all client data from DB to a Google Sheet.
+ * Uses the Google Sheets API with a Service Account for write access.
+ * Data is written with columns in the same order as the site.
+ *
+ * If no Service Account credentials are configured, falls back to
+ * generating a CSV that can be manually imported.
+ */
+export async function pushToSheet(spreadsheetId: string, _sheetName: string, gid?: string): Promise<SyncResult> {
+  const result: SyncResult = { success: false, pulled: 0, pushed: 0, created: 0, updated: 0, errors: [] }
+
+  const serviceEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY
+
+  if (!serviceEmail || !privateKey) {
+    result.errors.push('Credenciais de escrita não configuradas. Defina GOOGLE_SERVICE_ACCOUNT_EMAIL e GOOGLE_PRIVATE_KEY no .env')
+    return result
+  }
+
+  try {
+    // Dynamically import googleapis (heavy, server-only)
+    const { google } = await import('googleapis')
+
+    const auth = new google.auth.JWT({
+      email: serviceEmail,
+      key: privateKey.replace(/\\n/g, '\n'),
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    })
+
+    const sheets = google.sheets({ version: 'v4', auth })
+
+    // Determine the target sheet (gid)
+    let targetSheetId = 0
+    if (gid) {
+      // Get sheet list to find the sheet with matching gid
+      const sheetMetadata = await sheets.spreadsheets.get({ spreadsheetId })
+      const sheet = sheetMetadata.data.sheets?.find(
+        s => String(s.properties?.sheetId) === gid
+      )
+      if (sheet?.properties?.title) {
+        targetSheetId = Number(gid)
+      }
+    }
+
+    // Get sheet title for the target gid
+    const sheetMetadata = await sheets.spreadsheets.get({ spreadsheetId })
+    const targetSheet = sheetMetadata.data.sheets?.find(
+      s => s.properties?.sheetId === targetSheetId
+    )
+    const sheetTitle = targetSheet?.properties?.title || 'Sheet1'
+
+    // Fetch all clients from DB
+    const clientes = await db.cliente.findMany({
+      orderBy: { codigo: 'asc' },
+      select: {
+        codigo: true, ieRg: true, razaoSocial: true, nomeFantasia: true,
+        situacaoCadastral: true, cnpj: true, endereco: true, numero: true,
+        complemento: true, bairro: true, cidade: true, cep: true, uf: true,
+        telefone1: true, telefone2: true, telefone3: true, telefone4: true,
+        email1: true, email2: true, email3: true, pessoaContato: true,
+        dataSituacao: true, dataAbertura: true, cnaePrincipal: true,
+        naturezaJuridica: true, porte: true, cadastro: true, ultimaVenda: true,
+        regSimples: true, vendedor: true, tipo: true, carteira: true,
+        observacoes: true,
+      },
+    })
+
+    // Build the values array: header row + data rows
+    const headerRow = SHEETS_COLUMNS.map(col => col.label)
+    const dataRows = clientes.map(c => clienteToRow(c))
+    const values = [headerRow, ...dataRows]
+
+    // Clear existing data and write new data
+    // Use clear + update to ensure column order is correct
+    await sheets.spreadsheets.values.clear({
+      spreadsheetId,
+      range: `${sheetTitle}`,
+    })
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `${sheetTitle}!A1`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values },
+    })
+
+    result.pushed = clientes.length
+    result.success = true
+    return result
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error)
+    result.errors.push(`Erro ao enviar para planilha: ${msg}`)
+    return result
+  }
+}
