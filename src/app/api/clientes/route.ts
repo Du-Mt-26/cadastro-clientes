@@ -16,6 +16,12 @@ import {
   handleComputedSort,
 } from "@/lib/clientes-api-helpers";
 
+// ─── In-memory cache for filters & stats (per user) ───────────────
+interface CacheEntry<T> { data: T; timestamp: number }
+const filtersCache = new Map<string, CacheEntry<unknown>>()
+const statsCache = new Map<string, CacheEntry<unknown>>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 export async function GET(request: NextRequest) {
   try {
     // ── Auth check ──
@@ -61,9 +67,12 @@ export async function GET(request: NextRequest) {
     const isComputedSort = Boolean(sortBy) && COMPUTED_SORT_FIELDS.has(sortBy);
     const prismaSortField = sortBy && SORT_FIELD_MAP[sortBy] ? SORT_FIELD_MAP[sortBy] : null;
 
-    // ── Execute data + filters + stats in parallel ──
+    // ── Execute data query + cached filters/stats in parallel ──
+    const cacheKey = `${role}:${userId}`
+    const now = Date.now()
+
     const [dataResult, filtersData, statsData] = await Promise.all([
-      // Data query (with pagination)
+      // Data query (with pagination) — always fresh
       (async (): Promise<{ records: ClienteRecord[]; total: number }> => {
         if (isComputedSort) {
           return handleComputedSort({
@@ -100,11 +109,23 @@ export async function GET(request: NextRequest) {
         };
       })(),
 
-      // Filter options (visibility-only where, no search/filter)
-      fetchFilterOptions(visibilityWhere, role, userEmail),
+      // Filter options — cached for 5 minutes per user
+      (async () => {
+        const cached = filtersCache.get(cacheKey)
+        if (cached && (now - cached.timestamp) < CACHE_TTL) return cached.data
+        const data = await fetchFilterOptions(visibilityWhere, role, userEmail)
+        filtersCache.set(cacheKey, { data, timestamp: now })
+        return data
+      })(),
 
-      // Stats (visibility-only where, no search/filter)
-      fetchStats(role, userId),
+      // Stats — cached for 5 minutes per user
+      (async () => {
+        const cached = statsCache.get(cacheKey)
+        if (cached && (now - cached.timestamp) < CACHE_TTL) return cached.data
+        const data = await fetchStats(role, userId)
+        statsCache.set(cacheKey, { data, timestamp: now })
+        return data
+      })(),
     ]);
 
     // ── Pagination info ──
@@ -212,6 +233,8 @@ export async function POST(request: NextRequest) {
 
     // Invalidate cache
     invalidateCache();
+    filtersCache.clear();
+    statsCache.clear();
 
     const record = dbToRecord(novo);
     record.carteira = novo.carteira;
