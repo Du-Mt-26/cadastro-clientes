@@ -205,3 +205,25 @@ model RolePermission {
   @@unique([role, permissionKey])
   @@index([role])
 }
+
+// ─── Linvix Sync Log ────────────────────────────────
+// Tracks each Linvix → M-Tech sync execution
+
+model LinvixSyncLog {
+  id              String   @id @default(cuid())
+  status          String   @default("running")    // "running" | "success" | "error" | "partial"
+  startedAt       DateTime @default(now())
+  finishedAt      DateTime?
+  totalClients    Int      @default(0)            // Total clients found in Linvix
+  createdCount    Int      @default(0)            // New clients created in M-Tech
+  updatedCount    Int      @default(0)            // Existing clients updated in M-Tech
+  skippedCount    Int      @default(0)            // Clients skipped (no changes)
+  errorCount      Int      @default(0)            // Errors during sync
+  errorMessage    String   @default("")  @db.Text
+  pagesScraped    Int      @default(0)            // Number of Linvix pages scraped
+  detailsScraped  Int      @default(0)            // Number of detail pages visited
+  durationMs      Int      @default(0)            // Total sync duration in ms
+
+  @@index([startedAt])
+  @@index([status])
+}
