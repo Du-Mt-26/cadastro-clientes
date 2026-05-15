@@ -9,6 +9,7 @@ export async function middleware(request: NextRequest) {
   if (
     pathname.startsWith('/api/auth') ||  // NextAuth routes
     pathname.startsWith('/api/sync/linvix') ||  // Linvix sync (API key auth)
+    pathname.startsWith('/api/sync/linvix-auto') ||  // Linvix auto-sync (cron/HTTP)
     pathname.startsWith('/login') ||       // Login page
     pathname.startsWith('/_next') ||       // Next.js internals
     pathname.includes('favicon') ||        // Favicon
