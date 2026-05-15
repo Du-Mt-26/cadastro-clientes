@@ -1157,7 +1157,7 @@ export default function HomeClient() {
 
       {/* Unified Client Dialog — New or Existing */}
       <Dialog open={showNewClient || !!detailClient} onOpenChange={(open) => { if (!open) { setShowNewClient(false); setDetailClient(null) } }}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] gap-0 p-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+        <DialogContent className="gap-0 p-0 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
           {(() => {
             const isNew = showNewClient && !detailClient
             const r = detailClient

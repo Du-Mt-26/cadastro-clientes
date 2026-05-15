@@ -242,7 +242,7 @@ export function VendedorManagementModal({ open, onOpenChange }: VendedorManageme
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col p-4 sm:p-6">
+      <DialogContent className="flex flex-col p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-lg">
             <Users className="size-5 text-teal-600" />

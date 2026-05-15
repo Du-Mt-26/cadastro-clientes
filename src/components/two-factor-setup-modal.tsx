@@ -151,7 +151,7 @@ export function TwoFactorSetupModal({ open, onOpenChange }: TwoFactorSetupModalP
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="size-5" />
