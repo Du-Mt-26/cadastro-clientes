@@ -218,52 +218,6 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isEmail, isObserv
   )
 }
 
-// ─── Draggable Column Header ───────────────────────
-
-function DraggableColumnHeader({ col, isActive, sortOrder, onSort, onDragStart, onDragOver, onDrop, isDragging, isDragOver }: {
-  col: ColumnDef; isActive: boolean; sortOrder: 'asc' | 'desc';
-  onSort: (key: string) => void;
-  onDragStart: (e: React.DragEvent, key: string) => void;
-  onDragOver: (e: React.DragEvent, key: string) => void;
-  onDrop: (e: React.DragEvent, key: string) => void;
-  isDragging: boolean; isDragOver: boolean
-}) {
-  const isSticky = col.sticky === 'left'
-  const isEditable = col.editable
-  let headerBg = 'bg-slate-50 dark:bg-slate-800'
-  let headerText = 'text-slate-700 dark:text-slate-200'
-  if (isEditable) { headerBg = 'bg-teal-50 dark:bg-teal-900'; headerText = 'text-teal-800 dark:text-teal-200' }
-  if (isSticky) headerBg = 'bg-slate-100 dark:bg-slate-800'
-  if (isDragging) { headerBg = 'bg-teal-100 dark:bg-teal-900'; headerText = 'text-teal-900 dark:text-teal-200' }
-  if (isDragOver) headerBg = 'bg-amber-100 dark:bg-amber-900'
-
-  return (
-    <th
-      key={col.key}
-      className={`font-semibold ${headerText} text-xs ${headerBg} cursor-pointer select-none transition-colors whitespace-nowrap sticky top-0 ${isSticky ? 'z-[7]' : 'z-[5]'} ${isDragging ? 'opacity-60' : ''} ${col.centered ? 'text-center' : ''} px-3 py-2.5 border-b border-slate-200 dark:border-slate-700`}
-      style={isSticky ? { left: col.stickyOffset, minWidth: col.minWidth } : { minWidth: col.minWidth }}
-      onClick={() => onSort(col.key)}
-      draggable={!isSticky}
-      onDragStart={(e) => !isSticky && onDragStart(e, col.key)}
-      onDragOver={(e) => { e.preventDefault(); if (!isSticky) onDragOver(e, col.key) }}
-      onDrop={(e) => !isSticky && onDrop(e, col.key)}
-    >
-      <span className="flex items-center gap-1">
-        {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
-        {col.label}
-        {isEditable && <Pencil className="size-2.5 text-teal-600 dark:text-teal-300 shrink-0" />}
-        {isActive ? (
-          col.numericSort ? (
-            sortOrder === 'asc' ? <ArrowUpNarrowWide className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownWideNarrow className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
-          ) : (
-            sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
-          )
-        ) : <ArrowUpDown className="size-3 text-slate-400 dark:text-slate-500 shrink-0" />}
-      </span>
-    </th>
-  )
-}
-
 // ─── Main Component ────────────────────────────────
 
 export default function HomeClient() {
@@ -412,6 +366,11 @@ export default function HomeClient() {
     const missing = DEFAULT_COLUMNS.filter(c => !allKeys.includes(c.key)).map(c => c.key)
     return [...allKeys, ...missing].map(k => colMap.get(k)!).filter(Boolean)
   }, [columnOrder])
+
+  // Grid template for CSS Grid — ensures perfect column alignment like Excel
+  const gridTemplate = useMemo(() => {
+    return `36px ${columns.map(c => c.minWidth || '100px').join(' ')}`
+  }, [columns])
 
   // Save column order to localStorage
   useEffect(() => {
@@ -792,7 +751,7 @@ export default function HomeClient() {
     const containerRect = container.getBoundingClientRect()
 
     // Calculate sticky width (frozen left columns)
-    const stickyWidth = columns.filter(c => c.sticky === 'left').reduce((sum, c) => sum + (parseInt(c.minWidth || '0')), 0)
+    const stickyWidth = 36 + columns.filter(c => c.sticky === 'left').reduce((sum, c) => sum + (parseInt(c.minWidth || '0')), 0)
 
     // Horizontal scroll adjustment
     const cellLeft = cellRect.left - containerRect.left
@@ -1039,138 +998,169 @@ export default function HomeClient() {
             </div>
         </div>
 
-        {/* Data Table */}
+        {/* Data Table — CSS Grid for perfect column alignment with virtualization */}
         <Card className="border-0 shadow-sm dark:bg-slate-800">
           <CardContent className="p-0">
             <div ref={tableContainerRef} className="overflow-auto custom-scrollbar" style={{ maxHeight: showingAll ? '80vh' : '60vh', minHeight: '200px' }}>
-              <table className="border-separate border-spacing-0 w-full" style={{ height: loading ? undefined : `${rowVirtualizer.getTotalSize()}px` }}>
-                <thead>
-                  <tr className="hover:bg-transparent">
-                    {/* Favorite header */}
-                    <th className="font-semibold text-xs bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-center px-1 py-2.5 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-[7] left-0" style={{ minWidth: '36px' }}>
-                      <Star className="size-3.5 mx-auto text-amber-500 dark:text-amber-400" />
-                    </th>
-                    {columns.map((col) => (
-                      <DraggableColumnHeader
-                        key={col.key}
-                        col={col}
-                        isActive={sortBy === col.key}
-                        sortOrder={sortOrder}
-                        onSort={handleSort}
-                        onDragStart={handleDragStart}
-                        onDragOver={handleDragOver}
-                        onDrop={handleDrop}
-                        isDragging={dragKey === col.key}
-                        isDragOver={dragOverKey === col.key}
-                      />
-                    ))}
-                  </tr>
-                </thead>
-                <tbody style={{ position: 'relative' }}>
-                  {loading ? (
-                    Array.from({ length: 10 }).map((_, i) => (<tr key={i}>{columns.map((col) => (<td key={col.key} className="px-3 py-2"><div className="h-3 bg-slate-100 dark:bg-slate-700 rounded animate-pulse w-16" /></td>))}</tr>))
-                  ) : sortedData.length > 0 ? (
-                    rowVirtualizer.getVirtualItems().map((virtualRow) => {
-                      const idx = virtualRow.index
-                      const r = sortedData[idx]
-                      const isEven = idx % 2 === 0
-                      const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'
-                      const diasSemVenda = r._diasSemVenda
+              {/* Header row — sticky at top */}
+              <div
+                className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700"
+                style={{ display: 'grid', gridTemplateColumns: gridTemplate, minWidth: 'max-content' }}
+              >
+                {/* Favorite header */}
+                <div className="flex items-center justify-center px-1 py-2.5 text-slate-500 dark:text-slate-400">
+                  <Star className="size-3.5 text-amber-500 dark:text-amber-400" />
+                </div>
+                {columns.map((col) => {
+                  const isSticky = col.sticky === 'left'
+                  const isEditable = col.editable
+                  let headerBg = 'bg-slate-50 dark:bg-slate-800'
+                  let headerText = 'text-slate-700 dark:text-slate-200'
+                  if (isEditable) { headerBg = 'bg-teal-50 dark:bg-teal-900'; headerText = 'text-teal-800 dark:text-teal-200' }
+                  if (isSticky) headerBg = 'bg-slate-100 dark:bg-slate-800'
+                  const isDragging = dragKey === col.key
+                  const isDragOver = dragOverKey === col.key
+                  if (isDragging) { headerBg = 'bg-teal-100 dark:bg-teal-900'; headerText = 'text-teal-900 dark:text-teal-200' }
+                  if (isDragOver) headerBg = 'bg-amber-100 dark:bg-amber-900'
 
-                      return (
-                        <tr
-                          key={idx}
-                          data-index={idx}
-                          className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`}
-                          onClick={() => openDetail(r)}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            height: `${virtualRow.size}px`,
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          {/* Favorite star cell */}
-                          <td className={`whitespace-nowrap px-1 py-2 text-center sticky left-0 z-[4] ${isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'}`} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
-                            <button className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" title={favoritos.includes(r.parsed.codigo) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>
-                              <Star className={`size-4 ${favoritos.includes(r.parsed.codigo) ? 'fill-amber-400 text-amber-500 dark:fill-amber-400 dark:text-amber-400' : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 dark:hover:text-amber-400'} transition-colors`} />
-                            </button>
-                          </td>
-                          {columns.map((col, colIdx) => {
-                            const isSticky = col.sticky === 'left'
-                            const editableKey = toEditableKey(col.key)
-                            const isCellFocused = focusedCell.row === idx && focusedCell.col === colIdx
-                            const cellFocus = isCellFocused ? 'ring-2 ring-inset ring-teal-500 dark:ring-teal-400 bg-teal-50/80 dark:bg-teal-900/50' : ''
+                  return (
+                    <div
+                      key={col.key}
+                      className={`font-semibold ${headerText} text-xs ${headerBg} cursor-pointer select-none transition-colors flex items-center gap-1 px-3 py-2.5 ${isDragging ? 'opacity-60' : ''} ${col.centered ? 'justify-center' : ''} ${isSticky ? 'sticky z-[7]' : ''}`}
+                      style={isSticky ? { left: col.stickyOffset } : undefined}
+                      onClick={() => handleSort(col.key)}
+                      draggable={!isSticky}
+                      onDragStart={(e) => !isSticky && handleDragStart(e, col.key)}
+                      onDragOver={(e) => { e.preventDefault(); if (!isSticky) handleDragOver(e, col.key) }}
+                      onDrop={(e) => !isSticky && handleDrop(e, col.key)}
+                    >
+                      {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
+                      {col.label}
+                      {isEditable && <Pencil className="size-2.5 text-teal-600 dark:text-teal-300 shrink-0" />}
+                      {sortBy === col.key ? (
+                        col.numericSort ? (
+                          sortOrder === 'asc' ? <ArrowUpNarrowWide className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownWideNarrow className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
+                        ) : (
+                          sortOrder === 'asc' ? <ArrowUpAZ className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" /> : <ArrowDownZA className="size-3.5 text-teal-700 dark:text-teal-300 shrink-0" />
+                        )
+                      ) : <ArrowUpDown className="size-3 text-slate-400 dark:text-slate-500 shrink-0" />}
+                    </div>
+                  )
+                })}
+              </div>
 
-                            if (col.key === 'dias_sem_venda') {
-                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${col.centered ? 'text-center' : ''} ${cellFocus}`} onClick={(e) => e.stopPropagation()}><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></td>
-                            }
+              {/* Body rows — virtualized with CSS Grid */}
+              <div style={{ position: 'relative', height: loading ? undefined : `${rowVirtualizer.getTotalSize()}px` }}>
+                {loading ? (
+                  Array.from({ length: 10 }).map((_, i) => (
+                    <div key={i} style={{ display: 'grid', gridTemplateColumns: gridTemplate, minWidth: 'max-content' }}>
+                      <div className="px-1 py-2 flex items-center justify-center"><div className="h-3 w-4 bg-slate-100 dark:bg-slate-700 rounded animate-pulse" /></div>
+                      {columns.map((col) => (<div key={col.key} className="px-3 py-2"><div className="h-3 bg-slate-100 dark:bg-slate-700 rounded animate-pulse w-16" /></div>))}
+                    </div>
+                  ))
+                ) : sortedData.length > 0 ? (
+                  rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const idx = virtualRow.index
+                    const r = sortedData[idx]
+                    const isEven = idx % 2 === 0
+                    const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'
+                    const diasSemVenda = r._diasSemVenda
 
-                            const val = getRecordValue(r, col.key)
+                    return (
+                      <div
+                        key={idx}
+                        data-index={idx}
+                        className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`}
+                        onClick={() => openDetail(r)}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: `${virtualRow.size}px`,
+                          transform: `translateY(${virtualRow.start}px)`,
+                          display: 'grid',
+                          gridTemplateColumns: gridTemplate,
+                          minWidth: 'max-content',
+                        }}
+                      >
+                        {/* Favorite star cell */}
+                        <div className={`flex items-center justify-center px-1 sticky left-0 z-[5] ${isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'}`} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
+                          <button className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" title={favoritos.includes(r.parsed.codigo) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>
+                            <Star className={`size-4 ${favoritos.includes(r.parsed.codigo) ? 'fill-amber-400 text-amber-500 dark:fill-amber-400 dark:text-amber-400' : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 dark:hover:text-amber-400'} transition-colors`} />
+                          </button>
+                        </div>
+                        {columns.map((col, colIdx) => {
+                          const isSticky = col.sticky === 'left'
+                          const editableKey = toEditableKey(col.key)
+                          const isCellFocused = focusedCell.row === idx && focusedCell.col === colIdx
+                          const cellFocus = isCellFocused ? 'ring-2 ring-inset ring-teal-500 dark:ring-teal-400 bg-teal-50/80 dark:bg-teal-900/50' : ''
 
-                            if (col.key === 'situacao_cadastral') return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></td>
-                            if (col.key === 'carteira') {
-                              const carteiraValue = r.carteira || 'COM_VENDEDOR'
-                              const label = CARTEIRA_LABELS[carteiraValue] || carteiraValue
-                              const colorClass = CARTEIRA_COLORS[carteiraValue] || ''
-                              return (
-                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
-                                  <Badge variant="outline" className={`text-[11px] ${colorClass}`}>
-                                    {label}
-                                  </Badge>
-                                </td>
-                              )
-                            }
-                            if (col.key === 'tipo') {
-                              return (
-                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
-                                  <Badge className={`${r.tipo === 'CORPORATIVO' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' : 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300'} text-xs border`}>
-                                    {r.tipo === 'CORPORATIVO' ? 'Corporativo' : 'Revenda'}
-                                  </Badge>
-                                </td>
-                              )
-                            }
-                            if (col.key === 'reg_simples') return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : '—'}</td>
+                          if (col.key === 'dias_sem_venda') {
+                            return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${col.centered ? 'justify-center' : ''} ${cellFocus}`} onClick={(e) => e.stopPropagation()}><DiasSemVendaBadge dias={diasSemVenda} ultimaVenda={r.parsed.ultima_venda} /></div>
+                          }
 
-                            if (col.editable && editableKey) {
-                              const isPhone = PHONE_FIELDS.has(col.key)
-                              const isEmailCell = EMAIL_FIELDS.has(col.key)
-                              const isObs = col.key === 'observacoes'
-                              return <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></td>
-                            }
+                          const val = getRecordValue(r, col.key)
 
-                            if (isSticky) {
-                              return (
-                                <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 dark:text-teal-400 text-xs' : 'text-xs max-w-[220px] truncate dark:text-slate-200'} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent ${isEven ? 'after:to-white dark:after:to-slate-900' : 'after:to-slate-100 dark:after:to-slate-800'} px-3 py-2 relative ${cellFocus}`} style={{ left: col.stickyOffset, minWidth: col.minWidth }} title={col.key === 'razao_social' ? val : undefined}>
-                                  {val || '—'}
-                                </td>
-                              )
-                            }
-
-                            const isMono = ['ie_rg', 'cep'].includes(col.key)
-                            const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
-                            const truncateMax: Record<string, string> = { nome_fantasia: 'max-w-[160px]', endereco: 'max-w-[180px]', complemento: 'max-w-[110px]', bairro: 'max-w-[130px]', cnae_principal: 'max-w-[200px]', natureza_juridica: 'max-w-[160px]' }
-
-                            let displayVal = val || '—'
-                            if (col.key === 'cnpj' && val) displayVal = formatCnpj(val)
-                            else if (col.key === 'cep' && val) displayVal = formatCep(val)
-
+                          if (col.key === 'situacao_cadastral') return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><SituacaoCadastralBadge value={val} /></div>
+                          if (col.key === 'carteira') {
+                            const carteiraValue = r.carteira || 'COM_VENDEDOR'
+                            const label = CARTEIRA_LABELS[carteiraValue] || carteiraValue
+                            const colorClass = CARTEIRA_COLORS[carteiraValue] || ''
                             return (
-                              <td key={col.key} data-cell={`${idx}-${colIdx}`} className={`text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? truncateMax[col.key] + ' truncate' : ''} ${col.centered ? 'text-center' : ''} dark:text-slate-300 ${cellFocus}`} title={isTruncate ? val : undefined}>
-                                {col.key === 'vendedor' ? <span className="font-medium">{displayVal}</span> : displayVal}
-                              </td>
+                              <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
+                                <Badge variant="outline" className={`text-[11px] ${colorClass}`}>
+                                  {label}
+                                </Badge>
+                              </div>
                             )
-                          })}
-                        </tr>
-                      )
-                    })
-                  ) : (
-                    <tr><td colSpan={columns.length} className="h-24 text-center text-slate-500 dark:text-slate-400 px-3 py-2">Nenhum registro encontrado.</td></tr>
-                  )}
-                </tbody>
-              </table>
+                          }
+                          if (col.key === 'tipo') {
+                            return (
+                              <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
+                                <Badge className={`${r.tipo === 'CORPORATIVO' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300' : 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300'} text-xs border`}>
+                                  {r.tipo === 'CORPORATIVO' ? 'Corporativo' : 'Revenda'}
+                                </Badge>
+                              </div>
+                            )
+                          }
+                          if (col.key === 'reg_simples') return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : <span className="text-xs text-slate-400">—</span>}</div>
+
+                          if (col.editable && editableKey) {
+                            const isPhone = PHONE_FIELDS.has(col.key)
+                            const isEmailCell = EMAIL_FIELDS.has(col.key)
+                            const isObs = col.key === 'observacoes'
+                            return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></div>
+                          }
+
+                          if (isSticky) {
+                            return (
+                              <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap sticky z-[4] ${rowBg} ${col.key === 'codigo' ? 'font-mono font-medium text-teal-700 dark:text-teal-400 text-xs' : 'text-xs truncate dark:text-slate-200'} px-3 py-2 relative ${cellFocus} after:absolute after:top-0 after:right-0 after:bottom-0 after:w-3 after:bg-gradient-to-r after:from-transparent ${isEven ? 'after:to-white dark:after:to-slate-900' : 'after:to-slate-100 dark:after:to-slate-800'}`} style={isSticky ? { left: col.stickyOffset } : undefined} title={col.key === 'razao_social' ? val : undefined}>
+                                {val || '—'}
+                              </div>
+                            )
+                          }
+
+                          const isMono = ['ie_rg', 'cep'].includes(col.key)
+                          const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
+
+                          let displayVal = val || '—'
+                          if (col.key === 'cnpj' && val) displayVal = formatCnpj(val)
+                          else if (col.key === 'cep' && val) displayVal = formatCep(val)
+
+                          return (
+                            <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? 'truncate' : ''} ${col.centered ? 'justify-center' : ''} dark:text-slate-300 ${cellFocus}`} title={isTruncate ? val : undefined}>
+                              {col.key === 'vendedor' ? <span className="font-medium">{displayVal}</span> : displayVal}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="flex items-center justify-center h-24 text-slate-500 dark:text-slate-400 text-sm">Nenhum registro encontrado.</div>
+                )}
+              </div>
             </div>
 
           </CardContent>
