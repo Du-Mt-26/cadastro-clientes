@@ -293,6 +293,15 @@ export default function HomeClient() {
   const tableContainerRef = useRef<HTMLDivElement>(null)
   const focusedRowRef = useRef(-1)
   const focusedColRef = useRef(-1)
+
+  // Row virtualizer — only renders visible rows for massive DOM savings
+  const ROW_HEIGHT = 40
+  const rowVirtualizer = useVirtualizer({
+    count: sortedData.length,
+    getScrollElement: () => tableContainerRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  })
   const [focusedCell, setFocusedCell] = useState({ row: -1, col: -1 })
   const [pageJump, setPageJump] = useState('')
 
@@ -763,11 +772,13 @@ export default function HomeClient() {
         focusedRowRef.current = row
         focusedColRef.current = col
         setFocusedCell({ row, col })
+        // Scroll virtualized row into view if not currently visible
+        rowVirtualizer.scrollToIndex(row, { align: 'auto' })
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [sortedData, columns])
+  }, [sortedData, columns, rowVirtualizer])
 
   // Auto-scroll focused cell into view (considering sticky columns)
   useEffect(() => {
@@ -1031,7 +1042,7 @@ export default function HomeClient() {
         <Card className="border-0 shadow-sm dark:bg-slate-800">
           <CardContent className="p-0">
             <div ref={tableContainerRef} className="overflow-auto custom-scrollbar" style={{ maxHeight: showingAll ? '80vh' : '60vh', minHeight: '200px' }}>
-              <table className="border-separate border-spacing-0 w-full">
+              <table className="border-separate border-spacing-0 w-full" style={{ height: loading ? undefined : `${rowVirtualizer.getTotalSize()}px` }}>
                 <thead>
                   <tr className="hover:bg-transparent">
                     {/* Favorite header */}
@@ -1054,17 +1065,32 @@ export default function HomeClient() {
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody style={{ position: 'relative' }}>
                   {loading ? (
                     Array.from({ length: 10 }).map((_, i) => (<tr key={i}>{columns.map((col) => (<td key={col.key} className="px-3 py-2"><div className="h-3 bg-slate-100 dark:bg-slate-700 rounded animate-pulse w-16" /></td>))}</tr>))
                   ) : sortedData.length > 0 ? (
-                    sortedData.map((r, idx) => {
+                    rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const idx = virtualRow.index
+                      const r = sortedData[idx]
                       const isEven = idx % 2 === 0
                       const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'
                       const diasSemVenda = r._diasSemVenda
 
                       return (
-                        <tr key={idx} className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`} onClick={() => openDetail(r)}>
+                        <tr
+                          key={idx}
+                          data-index={idx}
+                          className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`}
+                          onClick={() => openDetail(r)}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            height: `${virtualRow.size}px`,
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                        >
                           {/* Favorite star cell */}
                           <td className="whitespace-nowrap px-1 py-2 text-center sticky left-0 z-[4]" style={{ background: 'inherit' }} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
                             <button className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" title={favoritos.includes(r.parsed.codigo) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>
