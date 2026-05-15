@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
     }
     const role = (session.user as any).role as Role;
     const userId = (session.user as any).id;
-    const userEmail = session.user.email || "";
 
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search") || "";
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest) {
         if (r.vendedor_id === userId) return true;
         if (r.carteira === "BOLSAO") return true;
         if (r.carteira === "LISTA_FRIA" && canSeeListaFria(role)) return true;
-        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role, userEmail)) return true;
+        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role)) return true;
         return false;
       });
     }

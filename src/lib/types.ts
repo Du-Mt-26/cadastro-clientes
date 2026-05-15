@@ -73,7 +73,7 @@ export interface ClienteRecord {
   porte: string
   tipo: string              // "REVENDA" | "CORPORATIVO"
   fornecedor: boolean       // true = fornecedor (não é cliente real, vendedores não veem)
-  carteira: string          // computed: "COM_VENDEDOR" | "BOLSAO" | "LISTA_FRIA" | "FORNECEDOR" | "SEM_VENDEDOR"
+  carteira: string          // explicit DB field: "COM_VENDEDOR" | "BOLSAO" | "LISTA_FRIA" | "FORNECEDOR" | "SEM_VENDEDOR"
   vendedor_id: string       // system-assigned vendor user ID
   parsed: ParsedFields
   editable: EditableFields

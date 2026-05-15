@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { Carteira } from '@prisma/client'
 
 // Bulk import clients — ADMIN only
 // Accepts an array of client objects and upserts them into the database
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
             sheetsRow: Number(clientData.sheetsRow || 0),
             tipo: String(clientData.tipo || 'REVENDA'),
             fornecedor: Boolean(clientData.fornecedor || false),
+            carteira: (String(clientData.carteira || 'SEM_VENDEDOR')) as Carteira,
             vendedorId: clientData.vendedorId || null,
             dataAtribuicaoVendedor: clientData.dataAtribuicaoVendedor
               ? new Date(clientData.dataAtribuicaoVendedor)

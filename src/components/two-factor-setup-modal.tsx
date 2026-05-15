@@ -31,11 +31,13 @@ type SetupStep = 'idle' | 'setup' | 'verify' | 'disable'
 export function TwoFactorSetupModal({ open, onOpenChange }: TwoFactorSetupModalProps) {
   const { data: session, update: updateSession } = useSession()
 
-  const user = session?.user as typeof session.user & {
+  const user = (session?.user as any) as {
     id: string
     role: string
     twoFactorEnabled: boolean
-  }
+    name?: string
+    email?: string
+  } | null
 
   const twoFactorEnabled = user?.twoFactorEnabled ?? false
 
