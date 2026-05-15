@@ -8,12 +8,13 @@ const MAX_FAVORITES = 50;
 // GET /api/clientes/favoritos — list user's favorites
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = (session?.user as any)?.id as string | undefined
+  if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
   const favorites = await db.favorite.findMany({
-    where: { userId: session.user.id },
+    where: { userId },
     orderBy: { ordem: 'asc' },
     select: { codigo: true, ordem: true },
   });
@@ -24,7 +25,8 @@ export async function GET() {
 // POST /api/clientes/favoritos — toggle favorite
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.id) {
+  const userId = (session?.user as any)?.id as string | undefined
+  if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
   }
 
@@ -37,11 +39,11 @@ export async function POST(req: NextRequest) {
 
   if (action === 'remove') {
     await db.favorite.deleteMany({
-      where: { userId: session.user.id, codigo },
+      where: { userId, codigo },
     });
     // Re-order remaining favorites
     const remaining = await db.favorite.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       orderBy: { ordem: 'asc' },
     });
     for (let i = 0; i < remaining.length; i++) {
@@ -55,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   // action === 'add'
   const existing = await db.favorite.findUnique({
-    where: { userId_codigo: { userId: session.user.id, codigo } },
+    where: { userId_codigo: { userId, codigo } },
   });
 
   if (existing) {
@@ -63,7 +65,7 @@ export async function POST(req: NextRequest) {
     await db.favorite.delete({ where: { id: existing.id } });
     // Re-order remaining
     const remaining = await db.favorite.findMany({
-      where: { userId: session.user.id },
+      where: { userId },
       orderBy: { ordem: 'asc' },
     });
     for (let i = 0; i < remaining.length; i++) {
@@ -77,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   // Check limit
   const count = await db.favorite.count({
-    where: { userId: session.user.id },
+    where: { userId },
   });
 
   if (count >= MAX_FAVORITES) {
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
   // Add favorite
   await db.favorite.create({
     data: {
-      userId: session.user.id,
+      userId,
       codigo,
       ordem: count, // Add at the end
     },

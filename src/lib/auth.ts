@@ -169,7 +169,7 @@ let _permissionCacheExpiry = 0
 const PERMISSION_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
 // Hardcoded fallback (used when DB permissions are not available)
-const FALLBACK_PERMISSIONS: Record<string, Record<string, boolean>> = {
+export const FALLBACK_PERMISSIONS: Record<string, Record<string, boolean>> = {
   ADMIN: {
     'clients.view_all': true, 'clients.edit_all_fields': true, 'clients.edit_contact': true,
     'clients.export': true, 'clients.receita': true, 'clients.audit': true,
@@ -327,7 +327,7 @@ export function canSeeListaFria(role: Role): boolean {
   return canDoSync(role, 'bolsao.move')
 }
 
-export function canSeeFornecedor(role: Role, _userEmail?: string): boolean {
+export function canSeeFornecedor(role: Role): boolean {
   return canDoSync(role, 'bolsao.move')
 }
 

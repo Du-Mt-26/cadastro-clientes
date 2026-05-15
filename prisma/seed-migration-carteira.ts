@@ -1,16 +1,27 @@
 /**
- * Migration seed: 
+ * Migration seed:
  * 1. Migrates existing carteira from computed (vendedorId-based) to explicit Carteira enum
  * 2. Seeds default permissions for all roles
- * 3. Removes system users (isSystemUser=true)
- * 
- * Run: npx prisma db seed (or manually with npx tsx prisma/seed-migration-carteira.ts)
+ * 3. Removes system users (found by their known email addresses)
+ *
+ * IMPORTANT: Run `prisma db push` BEFORE running this script.
+ *   - `prisma db push` creates the Carteira enum + carteira column (default SEM_VENDEDOR)
+ *   - Then this script populates carteira based on existing vendedorId assignments
+ *   - Then deletes system users
+ *
+ * Run: npx tsx prisma/seed-migration-carteira.ts
  */
 
-import { PrismaClient, Carteira } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
+
+// ─── Known system user emails ────────────────────────
+const SYSTEM_USER_EMAILS = [
+  'bolsao@sistema.mtech',
+  'lista-fria@sistema.mtech',
+  'fornecedor@sistema.mtech',
+]
 
 // ─── Default permissions ──────────────────────────────
 
@@ -133,76 +144,98 @@ const DEFAULT_ROLE_PERMISSIONS: Record<string, Record<string, boolean>> = {
 async function main() {
   console.log('🚀 Starting migration: carteira + permissions...')
 
-  // ─── Step 1: Find system users ──────────────────────
+  // ─── Step 1: Find system users by their known emails ──
+  // Using raw SQL because isSystemUser column may or may not exist
+  console.log('🔍 Finding system users by email...')
+
   const systemUsers = await prisma.user.findMany({
-    where: { isSystemUser: true },
+    where: { email: { in: SYSTEM_USER_EMAILS } },
     select: { id: true, email: true, name: true },
   })
 
-  const systemUserMap = new Map(systemUsers.map(u => [u.id, u.email]))
   const bolsaoId = systemUsers.find(u => u.email === 'bolsao@sistema.mtech')?.id
   const listaFriaId = systemUsers.find(u => u.email === 'lista-fria@sistema.mtech')?.id
   const fornecedorId = systemUsers.find(u => u.email === 'fornecedor@sistema.mtech')?.id
 
-  console.log(`Found ${systemUsers.length} system users:`, systemUsers.map(u => u.email))
+  console.log(`Found ${systemUsers.length} system users:`, systemUsers.map(u => `${u.name} (${u.email})`))
+  if (bolsaoId) console.log(`  BOLSÃO ID: ${bolsaoId}`)
+  if (listaFriaId) console.log(`  LISTA FRIA ID: ${listaFriaId}`)
+  if (fornecedorId) console.log(`  FORNECEDOR ID: ${fornecedorId}`)
 
-  // ─── Step 2: Migrate carteira ───────────────────────
+  // ─── Step 2: Migrate carteira field ───────────────────
+  // Update carteira from default SEM_VENDEDOR to the correct value
+  // based on vendedorId pointing to system users or real vendors
   console.log('📊 Migrating carteira field...')
 
-  const allClientes = await prisma.cliente.findMany({
-    select: { id: true, vendedorId: true, fornecedor: true },
-  })
-
-  let migrated = 0
-  for (const c of allClientes) {
-    let carteira: Carteira
-
-    if (!c.vendedorId) {
-      carteira = Carteira.SEM_VENDEDOR
-    } else if (c.vendedorId === bolsaoId) {
-      carteira = Carteira.BOLSAO
-    } else if (c.vendedorId === listaFriaId) {
-      carteira = Carteira.LISTA_FRIA
-    } else if (c.vendedorId === fornecedorId) {
-      carteira = Carteira.FORNECEDOR
-    } else {
-      carteira = Carteira.COM_VENDEDOR
-    }
-
-    // For system user assignments, clear vendedorId since we now use carteira field
-    const isSystemAssignment = c.vendedorId && systemUserMap.has(c.vendedorId)
-
-    await prisma.cliente.update({
-      where: { id: c.id },
-      data: {
-        carteira,
-        // Clear vendedorId if it was pointing to a system user
-        ...(isSystemAssignment ? { vendedorId: null, vendedor: '' } : {}),
-      },
+  // Clients with vendedorId pointing to BOLSÃO
+  if (bolsaoId) {
+    const result = await prisma.cliente.updateMany({
+      where: { vendedorId: bolsaoId },
+      data: { carteira: 'BOLSAO', vendedorId: null, vendedor: '' },
     })
-    migrated++
+    console.log(`  BOLSÃO: updated ${result.count} clients`)
   }
 
-  console.log(`✅ Migrated ${migrated} clients with carteira field`)
+  // Clients with vendedorId pointing to LISTA FRIA
+  if (listaFriaId) {
+    const result = await prisma.cliente.updateMany({
+      where: { vendedorId: listaFriaId },
+      data: { carteira: 'LISTA_FRIA', vendedorId: null, vendedor: '' },
+    })
+    console.log(`  LISTA FRIA: updated ${result.count} clients`)
+  }
+
+  // Clients with vendedorId pointing to FORNECEDOR
+  if (fornecedorId) {
+    const result = await prisma.cliente.updateMany({
+      where: { vendedorId: fornecedorId },
+      data: { carteira: 'FORNECEDOR', vendedorId: null, vendedor: '' },
+    })
+    console.log(`  FORNECEDOR: updated ${result.count} clients`)
+  }
+
+  // Clients with fornecedor=true but not yet FORNECEDOR carteira
+  const fornecedorClientes = await prisma.cliente.updateMany({
+    where: { fornecedor: true, carteira: 'SEM_VENDEDOR' },
+    data: { carteira: 'FORNECEDOR' },
+  })
+  console.log(`  FORNECEDOR (fornecedor=true): updated ${fornecedorClientes.count} clients`)
+
+  // Clients with a real vendedorId (not system user) → COM_VENDEDOR
+  const systemUserIds = systemUsers.map(u => u.id)
+  const comVendedor = await prisma.cliente.updateMany({
+    where: {
+      vendedorId: { not: null },
+      NOT: { vendedorId: { in: systemUserIds } },
+      carteira: 'SEM_VENDEDOR',
+    },
+    data: { carteira: 'COM_VENDEDOR' },
+  })
+  console.log(`  COM_VENDEDOR: updated ${comVendedor.count} clients`)
+
+  // Remaining clients with null vendedorId and fornecedor=false stay as SEM_VENDEDOR (default)
+  const semVendedor = await prisma.cliente.count({
+    where: { carteira: 'SEM_VENDEDOR', vendedorId: null, fornecedor: false },
+  })
+  console.log(`  SEM_VENDEDOR: ${semVendedor} clients (already set by default)`)
 
   // ─── Step 3: Delete system users ────────────────────
   if (systemUsers.length > 0) {
     // First, delete any favorites referencing system users
     await prisma.favorite.deleteMany({
-      where: { userId: { in: systemUsers.map(u => u.id) } },
+      where: { userId: { in: systemUserIds } },
     })
 
-    // Delete system users
+    // Delete system users (onDelete: SetNull will clear vendedorId on their clients)
     await prisma.user.deleteMany({
-      where: { isSystemUser: true },
+      where: { email: { in: SYSTEM_USER_EMAILS } },
     })
     console.log(`🗑️ Deleted ${systemUsers.length} system users`)
+  } else {
+    console.log('ℹ️ No system users found (may have already been removed)')
   }
 
-  // ─── Step 4: Remove isSystemUser column ─────────────
-  // This will be done via prisma db push (schema already doesn't have the field)
-
-  // ─── Step 5: Seed permissions ───────────────────────
+  // ─── Step 4: Seed permissions ───────────────────────
   console.log('🔐 Seeding permissions...')
 
   for (const perm of PERMISSIONS) {
@@ -214,7 +247,7 @@ async function main() {
   }
   console.log(`✅ Seeded ${PERMISSIONS.length} permissions`)
 
-  // ─── Step 6: Seed role permissions ──────────────────
+  // ─── Step 5: Seed role permissions ──────────────────
   console.log('🔑 Seeding role permissions...')
 
   let rpCount = 0
