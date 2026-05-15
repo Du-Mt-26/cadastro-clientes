@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, memo } from 'react'
 import { useTheme } from 'next-themes'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Input } from '@/components/ui/input'
@@ -98,6 +98,7 @@ import {
   getRecordValue,
   toEditableKey,
 } from '@/lib/clientes'
+import { useVirtualizer } from '@tanstack/react-virtual'
 
 // ─── Client-only helpers ──────────────────────────
 
@@ -283,15 +284,16 @@ export default function HomeClient() {
   const [carteiraFilter, setCarteiraFilter] = useState(searchParams.get('carteira') || 'all')
   const [tipoFilter, setTipoFilter] = useState(searchParams.get('tipo') || 'all')
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
-  const [limit, setLimit] = useState<string>(searchParams.get('limit') || 'all')
+  const [limit, setLimit] = useState<string>(searchParams.get('limit') || '50')
   const [debouncedSearch, setDebouncedSearch] = useState(search)
   const [saving, setSaving] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || '')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sort_order') as 'asc' | 'desc') || 'asc')
   const [favoritos, setFavoritos] = useState<string[]>([])
   const tableContainerRef = useRef<HTMLDivElement>(null)
-  const [focusedRow, setFocusedRow] = useState(-1)
-  const [focusedCol, setFocusedCol] = useState(-1)
+  const focusedRowRef = useRef(-1)
+  const focusedColRef = useRef(-1)
+  const [focusedCell, setFocusedCell] = useState({ row: -1, col: -1 })
   const [pageJump, setPageJump] = useState('')
 
   // Column ordering state
@@ -472,12 +474,20 @@ export default function HomeClient() {
   useEffect(() => { fetchData() }, [fetchData])
   useEffect(() => { if (tableContainerRef.current) tableContainerRef.current.scrollTop = 0 }, [page])
 
+  // Pre-compute diasSemVenda for each record — avoids recalculating in multiple places
+  const dataWithDias = useMemo(() => {
+    if (!data?.data) return []
+    return data.data.map(r => ({
+      ...r,
+      _diasSemVenda: calcDiasSemVenda(r.parsed.ultima_venda),
+    }))
+  }, [data?.data])
+
   // Client-side filter for dias sem venda
   const filteredData = useMemo(() => {
-    if (!data?.data) return []
-    if (diasSemVendaFilter === 'all') return data.data
-    return data.data.filter((r) => {
-      const dias = calcDiasSemVenda(r.parsed.ultima_venda)
+    if (diasSemVendaFilter === 'all') return dataWithDias
+    return dataWithDias.filter((r) => {
+      const dias = r._diasSemVenda
       switch (diasSemVendaFilter) {
         case '0-45': return dias !== null && dias <= 45
         case '46-90': return dias !== null && dias > 45 && dias <= 90
@@ -486,7 +496,7 @@ export default function HomeClient() {
         default: return true
       }
     })
-  }, [data?.data, diasSemVendaFilter])
+  }, [dataWithDias, diasSemVendaFilter])
 
   // Client-side sort for computed fields
   const sortedData = useMemo(() => {
@@ -495,8 +505,8 @@ export default function HomeClient() {
     if (sortBy && CLIENT_SORT_KEYS.has(sortBy)) {
       result = [...result].sort((a, b) => {
         if (sortBy === 'dias_sem_venda') {
-          const aVal = calcDiasSemVenda(a.parsed.ultima_venda)
-          const bVal = calcDiasSemVenda(b.parsed.ultima_venda)
+          const aVal = a._diasSemVenda
+          const bVal = b._diasSemVenda
           if (aVal === null && bVal === null) return 0
           if (aVal === null) return 1
           if (bVal === null) return -1
@@ -698,6 +708,7 @@ export default function HomeClient() {
   const updateForm = (field: keyof NewClientForm, value: string) => setForm((f) => ({ ...f, [field]: value }))
 
   // Keyboard navigation (Excel-style: arrow keys move cell, Enter opens detail)
+  // Uses refs for focused position to avoid re-rendering the entire table on every key press
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!sortedData.length) return
@@ -705,54 +716,63 @@ export default function HomeClient() {
 
       const maxRow = sortedData.length - 1
       const maxCol = columns.length - 1
+      let row = focusedRowRef.current
+      let col = focusedColRef.current
+      let changed = false
 
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        const newRow = focusedRow < 0 ? 0 : Math.min(focusedRow + 1, maxRow)
-        setFocusedRow(newRow)
-        if (focusedCol < 0) setFocusedCol(0)
+        row = row < 0 ? 0 : Math.min(row + 1, maxRow)
+        if (col < 0) col = 0
+        changed = true
       } else if (e.key === 'ArrowUp') {
         e.preventDefault()
-        const newRow = focusedRow <= 0 ? 0 : focusedRow - 1
-        setFocusedRow(newRow)
-        if (focusedCol < 0) setFocusedCol(0)
-        if (focusedRow <= 0 && focusedCol < 0) setFocusedCol(0)
+        row = row <= 0 ? 0 : row - 1
+        if (col < 0) col = 0
+        changed = true
       } else if (e.key === 'ArrowRight') {
         e.preventDefault()
-        const newCol = focusedCol < 0 ? 0 : Math.min(focusedCol + 1, maxCol)
-        setFocusedCol(newCol)
-        if (focusedRow < 0) setFocusedRow(0)
+        col = col < 0 ? 0 : Math.min(col + 1, maxCol)
+        if (row < 0) row = 0
+        changed = true
       } else if (e.key === 'ArrowLeft') {
         e.preventDefault()
-        const newCol = focusedCol <= 0 ? 0 : focusedCol - 1
-        setFocusedCol(newCol)
-        if (focusedRow < 0) setFocusedRow(0)
-      } else if (e.key === 'Enter' && focusedRow >= 0 && focusedRow < sortedData.length) {
+        col = col <= 0 ? 0 : col - 1
+        if (row < 0) row = 0
+        changed = true
+      } else if (e.key === 'Enter' && row >= 0 && row < sortedData.length) {
         e.preventDefault()
-        // If focused on an editable cell, start editing
-        if (focusedCol >= 0 && focusedCol < columns.length) {
-          const col = columns[focusedCol]
-          const editableKey = toEditableKey(col.key)
-          if (col.editable && editableKey) {
-            // Trigger edit on the editable cell
-            const cell = document.querySelector(`[data-cell="${focusedRow}-${focusedCol}"]`) as HTMLElement
+        if (col >= 0 && col < columns.length) {
+          const column = columns[col]
+          const editableKey = toEditableKey(column.key)
+          if (column.editable && editableKey) {
+            const cell = document.querySelector(`[data-cell="${row}-${col}"]`) as HTMLElement
             if (cell) { cell.click(); return }
           }
         }
-        openDetail(sortedData[focusedRow])
+        openDetail(sortedData[row])
+        return
       } else if (e.key === 'Escape') {
-        setFocusedRow(-1)
-        setFocusedCol(-1)
+        focusedRowRef.current = -1
+        focusedColRef.current = -1
+        setFocusedCell({ row: -1, col: -1 })
+        return
+      }
+
+      if (changed) {
+        focusedRowRef.current = row
+        focusedColRef.current = col
+        setFocusedCell({ row, col })
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [sortedData, focusedRow, focusedCol, columns])
+  }, [sortedData, columns])
 
   // Auto-scroll focused cell into view (considering sticky columns)
   useEffect(() => {
-    if (focusedRow < 0 || focusedCol < 0) return
-    const cell = document.querySelector(`[data-cell="${focusedRow}-${focusedCol}"]`) as HTMLElement | null
+    if (focusedCell.row < 0 || focusedCell.col < 0) return
+    const cell = document.querySelector(`[data-cell="${focusedCell.row}-${focusedCell.col}"]`) as HTMLElement | null
     const container = tableContainerRef.current
     if (!cell || !container) return
 
@@ -784,7 +804,7 @@ export default function HomeClient() {
     } else if (cellBottom > containerRect.height) {
       container.scrollTop += cellBottom - containerRect.height + 2
     }
-  }, [focusedRow, focusedCol, columns])
+  }, [focusedCell, columns])
 
   const totalPages = data?.pagination.totalPages ?? 0
   const scStats = data?.stats.situacao_cadastral ?? {}
@@ -804,7 +824,7 @@ export default function HomeClient() {
   }
 
   // Reset focused cell when data changes
-  useEffect(() => { setFocusedRow(-1); setFocusedCol(-1) }, [data?.data])
+  useEffect(() => { focusedRowRef.current = -1; focusedColRef.current = -1; setFocusedCell({ row: -1, col: -1 }) }, [data?.data])
 
   // Show loading while checking session
   if (sessionStatus === 'loading') {
@@ -1041,7 +1061,7 @@ export default function HomeClient() {
                     sortedData.map((r, idx) => {
                       const isEven = idx % 2 === 0
                       const rowBg = isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'
-                      const diasSemVenda = calcDiasSemVenda(r.parsed.ultima_venda)
+                      const diasSemVenda = r._diasSemVenda
 
                       return (
                         <tr key={idx} className={`${rowBg} ${favoritos.includes(r.parsed.codigo) ? 'border-l-2 border-l-amber-400 dark:border-l-amber-500' : ''} hover:bg-teal-50/40 dark:hover:bg-teal-900/30 transition-colors cursor-pointer`} onClick={() => openDetail(r)}>
@@ -1054,7 +1074,7 @@ export default function HomeClient() {
                           {columns.map((col, colIdx) => {
                             const isSticky = col.sticky === 'left'
                             const editableKey = toEditableKey(col.key)
-                            const isCellFocused = focusedRow === idx && focusedCol === colIdx
+                            const isCellFocused = focusedCell.row === idx && focusedCell.col === colIdx
                             const cellFocus = isCellFocused ? 'ring-2 ring-inset ring-teal-500 dark:ring-teal-400 bg-teal-50/80 dark:bg-teal-900/50' : ''
 
                             if (col.key === 'dias_sem_venda') {

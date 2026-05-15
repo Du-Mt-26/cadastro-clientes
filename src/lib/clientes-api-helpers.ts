@@ -185,25 +185,21 @@ export async function fetchFilterOptions(
     cityUfPairs,
     vendedorUsers,
   ] = await Promise.all([
-    db.cliente.findMany({
+    db.cliente.groupBy({
+      by: ['situacaoCadastral'],
       where: visibilityWhere,
-      select: { situacaoCadastral: true },
-      distinct: ['situacaoCadastral'],
     }),
-    db.cliente.findMany({
+    db.cliente.groupBy({
+      by: ['vendedor'],
       where: visibilityWhere,
-      select: { vendedor: true },
-      distinct: ['vendedor'],
     }),
-    db.cliente.findMany({
+    db.cliente.groupBy({
+      by: ['cidade'],
       where: visibilityWhere,
-      select: { cidade: true },
-      distinct: ['cidade'],
     }),
-    db.cliente.findMany({
+    db.cliente.groupBy({
+      by: ['uf'],
       where: visibilityWhere,
-      select: { uf: true },
-      distinct: ['uf'],
     }),
     db.cliente.findMany({
       where: visibilityWhere,

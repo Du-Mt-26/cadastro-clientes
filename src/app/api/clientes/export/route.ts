@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { formatPhone, calcDiasSemVenda } from "@/lib/clientes";
-import type { ClienteRecord } from "@/lib/types";
-import { getRecords } from "@/lib/clientes-cache";
+import { dbToRecord } from "@/lib/clientes-cache";
+import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
+import {
+  buildVisibilityWhere,
+  buildFilterWhere,
+  buildSearchWhere,
+  combineWhere,
+} from "@/lib/clientes-api-helpers";
+import type { ClienteRecord } from "@/lib/types";
 
 /**
  * Column definitions for export — matches the exact column order shown on the site
  * (DEFAULT_COLUMNS from types.ts), including "Observações" and "Dias S/ Venda".
- *
- * Each entry defines: { key (field name), label (header in the export), value (extractor fn) }
  */
 const EXPORT_COLUMNS: { key: string; label: string; value: (r: ClienteRecord) => string }[] = [
   { key: 'codigo',            label: 'Código',            value: r => r.parsed.codigo },
@@ -58,6 +63,7 @@ export async function GET(request: NextRequest) {
     }
     const role = (session.user as any).role as Role;
     const userId = (session.user as any).id;
+    const userEmail = session.user.email || "";
 
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get("search") || "";
@@ -69,99 +75,56 @@ export async function GET(request: NextRequest) {
     const ufFilter = searchParams.get("uf") || "";
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
-    const format = searchParams.get("format") || "xlsx"; // "xlsx" or "csv"
+    const format = searchParams.get("format") || "xlsx";
 
-    // Get all cached records — carteira is now read directly from DB field
-    const allCachedRecords = await getRecords();
+    // ── Build where clauses using Prisma (server-side filtering) ──
+    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail);
+    const filterWhere = buildFilterWhere({
+      situacaoCadastral,
+      vendedor,
+      cidade: cidadeFilter,
+      uf: ufFilter,
+      carteira: carteiraFilter,
+      tipo: tipoFilter,
+      role,
+    });
+    const searchWhere = buildSearchWhere(search);
+    const fullWhere = combineWhere(visibilityWhere, filterWhere, searchWhere);
 
-    // ── Role-based visibility (same as main GET /api/clientes) ──
-    let visibleRecords = allCachedRecords;
-    if (role === "VENDEDOR") {
-      visibleRecords = allCachedRecords.filter(r => {
-        if (r.fornecedor && r.carteira !== "FORNECEDOR") return false;
-        if (r.vendedor_id === userId) return true;
-        if (r.carteira === "BOLSAO") return true;
-        if (r.carteira === "LISTA_FRIA" && canSeeListaFria(role)) return true;
-        if (r.carteira === "FORNECEDOR" && canSeeFornecedor(role)) return true;
-        return false;
-      });
+    // ── Fetch filtered data directly from DB (no getRecords cache) ──
+    const SORT_FIELD_MAP: Record<string, string> = {
+      codigo: 'codigo', ie_rg: 'ieRg', razao_social: 'razaoSocial',
+      nome_fantasia: 'nomeFantasia', situacao_cadastral: 'situacaoCadastral',
+      cnpj: 'cnpj', endereco: 'endereco', numero: 'numero', complemento: 'complemento',
+      bairro: 'bairro', cidade: 'cidade', cep: 'cep', uf: 'uf',
+      telefone1: 'telefone1', telefone2: 'telefone2', telefone3: 'telefone3', telefone4: 'telefone4',
+      email1: 'email1', email2: 'email2', email3: 'email3',
+      pessoa_contato: 'pessoaContato', data_situacao: 'dataSituacao', data_abertura: 'dataAbertura',
+      cnae_principal: 'cnaePrincipal', natureza_juridica: 'naturezaJuridica',
+      porte: 'porte', cadastro: 'cadastro', ultima_venda: 'ultimaVenda',
+      reg_simples: 'regSimples', vendedor: 'vendedor', tipo: 'tipo', carteira: 'carteira',
     }
 
-    // Apply filters
-    let filtered = visibleRecords;
+    const prismaSortField = sortBy && SORT_FIELD_MAP[sortBy] ? SORT_FIELD_MAP[sortBy] : null
+    const orderBy = prismaSortField
+      ? { [prismaSortField]: sortOrder as 'asc' | 'desc' }
+      : { codigo: 'desc' as const }
 
-    if (search) {
-      const searchLower = search.toLowerCase();
-      filtered = filtered.filter(
-        (r) =>
-          r.razao_social.toLowerCase().includes(searchLower) ||
-          r.nome_fantasia.toLowerCase().includes(searchLower) ||
-          r.cnpj.includes(search) ||
-          r.parsed.codigo.includes(search) ||
-          r.cidade.toLowerCase().includes(searchLower) ||
-          r.parsed.vendedor.toLowerCase().includes(searchLower) ||
-          r.email1.toLowerCase().includes(searchLower)
-      );
-    }
+    const clientes = await db.cliente.findMany({
+      where: fullWhere,
+      orderBy,
+    })
 
-    if (situacaoCadastral) {
-      filtered = filtered.filter(
-        (r) => r.situacao_cadastral.toLowerCase() === situacaoCadastral.toLowerCase()
-      );
-    }
+    // Convert to ClienteRecord format
+    const records: ClienteRecord[] = clientes.map(c => {
+      const record = dbToRecord(c)
+      record.carteira = c.carteira
+      return record
+    })
 
-    if (vendedor) {
-      filtered = filtered.filter(
-        (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
-      );
-    }
-
-    if (carteiraFilter) {
-      filtered = filtered.filter(
-        (r) => r.carteira.toLowerCase() === carteiraFilter.toLowerCase()
-      );
-    }
-
-    if (tipoFilter) {
-      filtered = filtered.filter(
-        (r) => r.tipo.toLowerCase() === tipoFilter.toLowerCase()
-      );
-    }
-
-    if (cidadeFilter) {
-      filtered = filtered.filter(
-        (r) => r.cidade.toLowerCase() === cidadeFilter.toLowerCase()
-      );
-    }
-
-    if (ufFilter) {
-      filtered = filtered.filter(
-        (r) => r.uf.toLowerCase() === ufFilter.toLowerCase()
-      );
-    }
-
-    // Sorting
-    if (sortBy) {
-      const colDef = EXPORT_COLUMNS.find(c => c.key === sortBy);
-      if (colDef) {
-        filtered = [...filtered].sort((a, b) => {
-          const valA = colDef.value(a).toLowerCase();
-          const valB = colDef.value(b).toLowerCase();
-          // Numeric sort for dias_sem_venda
-          if (sortBy === 'dias_sem_venda') {
-            const numA = parseInt(valA) || 0;
-            const numB = parseInt(valB) || 0;
-            return sortOrder === "desc" ? numB - numA : numA - numB;
-          }
-          const cmp = valA.localeCompare(valB, "pt-BR");
-          return sortOrder === "desc" ? -cmp : cmp;
-        });
-      }
-    }
-
-    // Build export rows with columns in the SAME ORDER as the site
+    // ── Build export rows with columns in the SAME ORDER as the site ──
     const headers = EXPORT_COLUMNS.map(c => c.label);
-    const rows = filtered.map(r => EXPORT_COLUMNS.map(c => c.value(r)));
+    const rows = records.map(r => EXPORT_COLUMNS.map(c => c.value(r)));
 
     // ── Generate output ──
     const timestamp = new Date().toISOString().slice(0, 10);
