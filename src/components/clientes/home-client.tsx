@@ -273,7 +273,7 @@ export default function HomeClient() {
   const [mounted, setMounted] = useState(false)
   const [data, setData] = useState<ApiResponse | null>(null)
   const [loading, setLoading] = useState(true)
-  const [exporting, setExporting] = useState(false)
+  const [exporting, setExporting] = useState<'xlsx' | 'csv' | null>(null)
   const [search, setSearch] = useState(searchParams.get('search') || '')
   const [situacaoCadastral, setSituacaoCadastral] = useState(searchParams.get('situacao') || 'all')
   const [vendedor, setVendedor] = useState(searchParams.get('vendedor') || 'all')
@@ -620,24 +620,26 @@ export default function HomeClient() {
     setPage(1)
   }
 
-  const handleExport = async () => {
-    setExporting(true)
+  const handleExport = async (format: 'xlsx' | 'csv') => {
+    setExporting(format)
     toast({ title: '⏳ Preparando exportação...', description: 'Aguarde enquanto o arquivo é gerado' })
     try {
       const params = buildFilterParams()
+      params.set('format', format)
       const res = await fetch(`/api/clientes/export?${params.toString()}`)
       if (!res.ok) throw new Error('Erro na exportação')
       const blob = await res.blob()
       const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a'); a.href = url; a.download = `Cadastro_Clientes_Mtech_${new Date().toISOString().slice(0, 10)}.xlsx`
+      const a = document.createElement('a'); a.href = url; a.download = `Cadastro_Clientes_Mtech_${new Date().toISOString().slice(0, 10)}.${format}`
       document.body.appendChild(a); a.click(); document.body.removeChild(a); window.URL.revokeObjectURL(url)
       const count = data?.pagination.total ?? 0
-      toast({ title: `✓ ${count.toLocaleString('pt-BR')} clientes exportados`, description: 'Arquivo XLSX baixado com sucesso' })
+      const label = format === 'csv' ? 'CSV (para Google Sheets)' : 'XLSX'
+      toast({ title: `✓ ${count.toLocaleString('pt-BR')} clientes exportados`, description: `Arquivo ${label} baixado com sucesso` })
     } catch (error) {
       console.error('Error exporting:', error)
       toast({ title: '✗ Erro na exportação', description: 'Não foi possível gerar o arquivo', variant: 'destructive' })
     }
-    finally { setExporting(false) }
+    finally { setExporting(null) }
   }
 
   const maskCnpj = (val: string) => {
@@ -844,7 +846,10 @@ export default function HomeClient() {
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
               <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"><UserPlus className="size-4 mr-1.5" />Novo Cliente</Button>
-              {!isVendedor && <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />{exporting ? 'Exportando...' : 'Exportar XLSX'}</Button>}
+              {!isVendedor && <>
+                <Button variant="outline" size="sm" onClick={() => handleExport('xlsx')} disabled={exporting !== null} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting === 'xlsx' ? 'animate-bounce' : ''}`} />{exporting === 'xlsx' ? 'Exportando...' : 'Exportar XLSX'}</Button>
+                <Button variant="outline" size="sm" onClick={() => handleExport('csv')} disabled={exporting !== null} className="bg-emerald-700 text-white hover:bg-emerald-800 border-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:border-emerald-600"><Download className={`size-4 mr-1.5 ${exporting === 'csv' ? 'animate-bounce' : ''}`} />{exporting === 'csv' ? 'Exportando...' : 'Exportar CSV'}</Button>
+              </>}
               <Button variant="outline" size="sm" onClick={() => { setColumnOrder(DEFAULT_COLUMNS.map(c => c.key)); localStorage.removeItem('columnOrder') }} className="text-slate-600 dark:text-slate-400"><RotateCcw className="size-4 mr-1.5" />Restaurar Colunas</Button>
               {!isVendedor && <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>}
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
