@@ -1,10 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
-import { formatPhone } from "@/lib/clientes";
+import { formatPhone, calcDiasSemVenda } from "@/lib/clientes";
 import type { ClienteRecord } from "@/lib/types";
 import { getRecords } from "@/lib/clientes-cache";
 import { getServerSession } from "next-auth";
 import { authOptions, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
+
+/**
+ * Column definitions for export — matches the exact column order shown on the site
+ * (DEFAULT_COLUMNS from types.ts), including "Observações" and "Dias S/ Venda".
+ *
+ * Each entry defines: { key (field name), label (header in the export), value (extractor fn) }
+ */
+const EXPORT_COLUMNS: { key: string; label: string; value: (r: ClienteRecord) => string }[] = [
+  { key: 'codigo',            label: 'Código',            value: r => r.parsed.codigo },
+  { key: 'razao_social',      label: 'Razão Social',      value: r => r.razao_social },
+  { key: 'cnpj',              label: 'CNPJ',              value: r => r.cnpj },
+  { key: 'dias_sem_venda',    label: 'Dias S/ Venda',     value: r => { const d = calcDiasSemVenda(r.parsed.ultima_venda); return d !== null ? String(d) : '' } },
+  { key: 'pessoa_contato',    label: 'Contato',           value: r => r.pessoa_contato },
+  { key: 'telefone1',         label: 'Tel. 1',            value: r => formatPhone(r.telefone1) },
+  { key: 'telefone2',         label: 'Tel. 2',            value: r => formatPhone(r.telefone2) },
+  { key: 'telefone3',         label: 'Tel. 3',            value: r => formatPhone(r.telefone3) },
+  { key: 'email1',            label: 'Email 1',           value: r => r.email1 },
+  { key: 'email2',            label: 'Email 2',           value: r => r.email2 },
+  { key: 'email3',            label: 'Email 3',           value: r => r.email3 },
+  { key: 'vendedor',          label: 'Vendedora',         value: r => r.parsed.vendedor },
+  { key: 'tipo',              label: 'Tipo',              value: r => r.tipo },
+  { key: 'carteira',          label: 'Carteira',          value: r => CARTEIRA_LABELS[r.carteira] || r.carteira },
+  { key: 'situacao_cadastral', label: 'Sit. Cadastral',  value: r => r.situacao_cadastral },
+  { key: 'nome_fantasia',     label: 'Nome Fantasia',     value: r => r.nome_fantasia },
+  { key: 'ie_rg',             label: 'IE/RG',             value: r => r.parsed.ie_rg },
+  { key: 'reg_simples',       label: 'Reg. Simples',      value: r => r.parsed.reg_simples },
+  { key: 'observacoes',       label: 'Observações',       value: r => r.editable.observacoes },
+  { key: 'telefone4',         label: 'Tel. 4',            value: r => formatPhone(r.telefone4) },
+  { key: 'endereco',          label: 'Endereço',          value: r => r.endereco },
+  { key: 'numero',            label: 'Número',            value: r => r.numero },
+  { key: 'complemento',       label: 'Complemento',       value: r => r.complemento },
+  { key: 'bairro',            label: 'Bairro',            value: r => r.bairro },
+  { key: 'cidade',            label: 'Cidade',            value: r => r.cidade },
+  { key: 'cep',               label: 'CEP',               value: r => r.cep },
+  { key: 'uf',                label: 'Estado',            value: r => r.uf },
+  { key: 'data_situacao',     label: 'Data Situação',     value: r => r.data_situacao },
+  { key: 'data_abertura',     label: 'Data Abertura',     value: r => r.data_abertura },
+  { key: 'cnae_principal',    label: 'CNAE Principal',    value: r => r.cnae_principal },
+  { key: 'natureza_juridica', label: 'Natureza Jurídica', value: r => r.natureza_juridica },
+  { key: 'porte',             label: 'Porte',             value: r => r.porte },
+  { key: 'cadastro',          label: 'Cadastro',          value: r => r.parsed.cadastro },
+  { key: 'ultima_venda',      label: 'Última Venda',      value: r => r.parsed.ultima_venda },
+]
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,8 +63,13 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const vendedor = searchParams.get("vendedor") || "";
+    const carteiraFilter = searchParams.get("carteira") || "";
+    const tipoFilter = searchParams.get("tipo") || "";
+    const cidadeFilter = searchParams.get("cidade") || "";
+    const ufFilter = searchParams.get("uf") || "";
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
+    const format = searchParams.get("format") || "xlsx"; // "xlsx" or "csv"
 
     // Get all cached records — carteira is now read directly from DB field
     const allCachedRecords = await getRecords();
@@ -39,131 +87,124 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Convert to export-friendly column names
-    const allRecords = visibleRecords.map((r) => ({
-      "Código": r.parsed.codigo,
-      "IE/RG": r.parsed.ie_rg,
-      "Razão Social": r.razao_social,
-      "Nome Fantasia": r.nome_fantasia,
-      "Situação Cadastral": r.situacao_cadastral,
-      "CNPJ": r.cnpj,
-      "Endereço Rua/Avenida": r.endereco,
-      "Numero": r.numero,
-      "Complemento": r.complemento,
-      "Bairro": r.bairro,
-      "Cidade": r.cidade,
-      "CEP": r.cep,
-      "UF": r.uf,
-      "Telefone 1": formatPhone(r.telefone1),
-      "Telefone 2": formatPhone(r.telefone2),
-      "Telefone 3": formatPhone(r.telefone3),
-      "Telefone 4": formatPhone(r.telefone4),
-      "Email 1": r.email1,
-      "Email 2": r.email2,
-      "Email 3": r.email3,
-      "Pessoa de contato": r.pessoa_contato,
-      "Data Situação": r.data_situacao,
-      "Data Abertura": r.data_abertura,
-      "CNAE Principal": r.cnae_principal,
-      "Natureza Jurídica": r.natureza_juridica,
-      "Porte": r.porte,
-      "Cadastro": r.parsed.cadastro,
-      "Última Venda": r.parsed.ultima_venda,
-      "Reg. Simples": r.parsed.reg_simples,
-      "Vendedor": r.parsed.vendedor,
-      "Tipo": r.tipo,
-      "Carteira": CARTEIRA_LABELS[r.carteira] || r.carteira,
-    }));
-
     // Apply filters
-    let filtered = allRecords;
+    let filtered = visibleRecords;
 
     if (search) {
       const searchLower = search.toLowerCase();
       filtered = filtered.filter(
         (r) =>
-          r["Razão Social"].toLowerCase().includes(searchLower) ||
-          r["Nome Fantasia"].toLowerCase().includes(searchLower) ||
-          r["CNPJ"].includes(search) ||
-          r["Código"].includes(search) ||
-          r["Cidade"].toLowerCase().includes(searchLower) ||
-          r["Vendedor"].toLowerCase().includes(searchLower) ||
-          r["Email 1"].toLowerCase().includes(searchLower)
+          r.razao_social.toLowerCase().includes(searchLower) ||
+          r.nome_fantasia.toLowerCase().includes(searchLower) ||
+          r.cnpj.includes(search) ||
+          r.parsed.codigo.includes(search) ||
+          r.cidade.toLowerCase().includes(searchLower) ||
+          r.parsed.vendedor.toLowerCase().includes(searchLower) ||
+          r.email1.toLowerCase().includes(searchLower)
       );
     }
 
     if (situacaoCadastral) {
       filtered = filtered.filter(
-        (r) => r["Situação Cadastral"].toLowerCase() === situacaoCadastral.toLowerCase()
+        (r) => r.situacao_cadastral.toLowerCase() === situacaoCadastral.toLowerCase()
       );
     }
 
     if (vendedor) {
       filtered = filtered.filter(
-        (r) => r["Vendedor"].toLowerCase() === vendedor.toLowerCase()
+        (r) => r.parsed.vendedor.toLowerCase() === vendedor.toLowerCase()
+      );
+    }
+
+    if (carteiraFilter) {
+      filtered = filtered.filter(
+        (r) => r.carteira.toLowerCase() === carteiraFilter.toLowerCase()
+      );
+    }
+
+    if (tipoFilter) {
+      filtered = filtered.filter(
+        (r) => r.tipo.toLowerCase() === tipoFilter.toLowerCase()
+      );
+    }
+
+    if (cidadeFilter) {
+      filtered = filtered.filter(
+        (r) => r.cidade.toLowerCase() === cidadeFilter.toLowerCase()
+      );
+    }
+
+    if (ufFilter) {
+      filtered = filtered.filter(
+        (r) => r.uf.toLowerCase() === ufFilter.toLowerCase()
       );
     }
 
     // Sorting
     if (sortBy) {
-      const columnMap: Record<string, string> = {
-        codigo: "Código",
-        ie_rg: "IE/RG",
-        razao_social: "Razão Social",
-        nome_fantasia: "Nome Fantasia",
-        situacao_cadastral: "Situação Cadastral",
-        cnpj: "CNPJ",
-        endereco: "Endereço Rua/Avenida",
-        numero: "Numero",
-        complemento: "Complemento",
-        bairro: "Bairro",
-        cidade: "Cidade",
-        cep: "CEP",
-        uf: "UF",
-        telefone1: "Telefone 1",
-        telefone2: "Telefone 2",
-        telefone3: "Telefone 3",
-        telefone4: "Telefone 4",
-        email1: "Email 1",
-        email2: "Email 2",
-        email3: "Email 3",
-        pessoa_contato: "Pessoa de contato",
-        data_situacao: "Data Situação",
-        data_abertura: "Data Abertura",
-        cnae_principal: "CNAE Principal",
-        natureza_juridica: "Natureza Jurídica",
-        porte: "Porte",
-        cadastro: "Cadastro",
-        ultima_venda: "Última Venda",
-        reg_simples: "Reg. Simples",
-        vendedor: "Vendedor",
-        tipo: "Tipo",
-        carteira: "Carteira",
-      };
-      const colName = columnMap[sortBy] || "";
-      if (colName) {
+      const colDef = EXPORT_COLUMNS.find(c => c.key === sortBy);
+      if (colDef) {
         filtered = [...filtered].sort((a, b) => {
-          const valA = (a[colName as keyof typeof a] || "").toLowerCase();
-          const valB = (b[colName as keyof typeof b] || "").toLowerCase();
+          const valA = colDef.value(a).toLowerCase();
+          const valB = colDef.value(b).toLowerCase();
+          // Numeric sort for dias_sem_venda
+          if (sortBy === 'dias_sem_venda') {
+            const numA = parseInt(valA) || 0;
+            const numB = parseInt(valB) || 0;
+            return sortOrder === "desc" ? numB - numA : numA - numB;
+          }
           const cmp = valA.localeCompare(valB, "pt-BR");
           return sortOrder === "desc" ? -cmp : cmp;
         });
       }
     }
 
-    // Create new workbook
+    // Build export rows with columns in the SAME ORDER as the site
+    const headers = EXPORT_COLUMNS.map(c => c.label);
+    const rows = filtered.map(r => EXPORT_COLUMNS.map(c => c.value(r)));
+
+    // ── Generate output ──
+    const timestamp = new Date().toISOString().slice(0, 10);
+
+    if (format === "csv") {
+      // CSV format — ideal for Google Sheets import
+      const csvEscape = (val: string) => {
+        if (val.includes(',') || val.includes('"') || val.includes('\n')) {
+          return '"' + val.replace(/"/g, '""') + '"'
+        }
+        return val
+      }
+      const csvLines = [
+        headers.map(csvEscape).join(','),
+        ...rows.map(row => row.map(csvEscape).join(','))
+      ]
+      const csvContent = csvLines.join('\n')
+      // Add BOM for Excel/Google Sheets to correctly detect UTF-8
+      const bom = '\uFEFF'
+      const buffer = Buffer.from(bom + csvContent, 'utf-8')
+
+      return new NextResponse(buffer, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="Cadastro_Clientes_Mtech_${timestamp}.csv"`,
+        },
+      })
+    }
+
+    // XLSX format (default)
     const newWorkbook = XLSX.utils.book_new();
-    const newWorksheet = XLSX.utils.json_to_sheet(filtered);
+    const worksheetData = [headers, ...rows];
+    const newWorksheet = XLSX.utils.aoa_to_sheet(worksheetData);
 
     // Auto-size columns
-    const colWidths = Object.keys(filtered[0] || {}).map((key) => {
+    newWorksheet["!cols"] = headers.map((header, colIdx) => {
       const maxLen = Math.max(
-        key.length,
-        ...filtered.map((r) => String(r[key as keyof typeof r] || "").length)
+        header.length,
+        ...rows.map(row => String(row[colIdx] || "").length)
       );
       return { wch: Math.min(maxLen + 2, 50) };
     });
-    newWorksheet["!cols"] = colWidths;
 
     XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Cadastro de Clientes");
 
@@ -173,11 +214,11 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="Cadastro_Clientes_Mtech_${new Date().toISOString().slice(0, 10)}.xlsx"`,
+        "Content-Disposition": `attachment; filename="Cadastro_Clientes_Mtech_${timestamp}.xlsx"`,
       },
     });
   } catch (error) {
-    console.error("Error exporting XLSX:", error);
+    console.error("Error exporting:", error);
     return NextResponse.json(
       { error: "Erro ao exportar o arquivo" },
       { status: 500 }

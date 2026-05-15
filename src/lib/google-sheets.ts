@@ -342,31 +342,37 @@ export async function updateSyncStatus(configId: string, syncResult: SyncResult)
 
 /**
  * The canonical column order for Google Sheets export.
- * This matches the column order shown on the site (DEFAULT_COLUMNS from types.ts),
- * excluding computed fields like "dias_sem_venda" that don't exist in the DB.
+ * This matches the EXACT column order shown on the site (DEFAULT_COLUMNS from types.ts),
+ * so that columns in the Google Sheets are in the same order as displayed on the site.
+ * Labels also match the site's labels (e.g. "Vendedora", "Tel. 1", "Contato").
  */
 const SHEETS_COLUMNS: { key: string; label: string }[] = [
   { key: 'codigo', label: 'Código' },
-  { key: 'ie_rg', label: 'IE/RG' },
   { key: 'razao_social', label: 'Razão Social' },
-  { key: 'nome_fantasia', label: 'Nome Fantasia' },
-  { key: 'situacao_cadastral', label: 'Situação Cadastral' },
   { key: 'cnpj', label: 'CNPJ' },
-  { key: 'endereco', label: 'Endereço Rua/Avenidade' },
-  { key: 'numero', label: 'Numero' },
+  { key: 'pessoa_contato', label: 'Contato' },
+  { key: 'telefone1', label: 'Tel. 1' },
+  { key: 'telefone2', label: 'Tel. 2' },
+  { key: 'telefone3', label: 'Tel. 3' },
+  { key: 'email1', label: 'Email 1' },
+  { key: 'email2', label: 'Email 2' },
+  { key: 'email3', label: 'Email 3' },
+  { key: 'vendedor', label: 'Vendedora' },
+  { key: 'tipo', label: 'Tipo' },
+  { key: 'carteira', label: 'Carteira' },
+  { key: 'situacao_cadastral', label: 'Sit. Cadastral' },
+  { key: 'nome_fantasia', label: 'Nome Fantasia' },
+  { key: 'ie_rg', label: 'IE/RG' },
+  { key: 'reg_simples', label: 'Reg. Simples' },
+  { key: 'observacoes', label: 'Observações' },
+  { key: 'telefone4', label: 'Tel. 4' },
+  { key: 'endereco', label: 'Endereço' },
+  { key: 'numero', label: 'Número' },
   { key: 'complemento', label: 'Complemento' },
   { key: 'bairro', label: 'Bairro' },
   { key: 'cidade', label: 'Cidade' },
   { key: 'cep', label: 'CEP' },
-  { key: 'uf', label: 'UF' },
-  { key: 'telefone1', label: 'Telefone 1' },
-  { key: 'telefone2', label: 'Telefone 2' },
-  { key: 'telefone3', label: 'Telefone 3' },
-  { key: 'telefone4', label: 'Telefone 4' },
-  { key: 'email1', label: 'Email 1' },
-  { key: 'email2', label: 'Email 2' },
-  { key: 'email3', label: 'Email 3' },
-  { key: 'pessoa_contato', label: 'Pessoa de Contato' },
+  { key: 'uf', label: 'Estado' },
   { key: 'data_situacao', label: 'Data Situação' },
   { key: 'data_abertura', label: 'Data Abertura' },
   { key: 'cnae_principal', label: 'CNAE Principal' },
@@ -374,11 +380,6 @@ const SHEETS_COLUMNS: { key: string; label: string }[] = [
   { key: 'porte', label: 'Porte' },
   { key: 'cadastro', label: 'Cadastro' },
   { key: 'ultima_venda', label: 'Última Venda' },
-  { key: 'reg_simples', label: 'Reg. Simples' },
-  { key: 'vendedor', label: 'Vendedor(a)' },
-  { key: 'tipo', label: 'Tipo' },
-  { key: 'carteira', label: 'Carteira' },
-  { key: 'observacoes', label: 'Observações' },
 ]
 
 /**
