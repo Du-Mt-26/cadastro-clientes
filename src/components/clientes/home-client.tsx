@@ -295,7 +295,7 @@ export default function HomeClient() {
   const focusedColRef = useRef(-1)
 
   // Row virtualizer — only renders visible rows for massive DOM savings
-  const ROW_HEIGHT = 40
+  const ROW_HEIGHT = 44
   const rowVirtualizer = useVirtualizer({
     count: sortedData.length,
     getScrollElement: () => tableContainerRef.current,
@@ -1092,7 +1092,7 @@ export default function HomeClient() {
                           }}
                         >
                           {/* Favorite star cell */}
-                          <td className="whitespace-nowrap px-1 py-2 text-center sticky left-0 z-[4]" style={{ background: 'inherit' }} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
+                          <td className={`whitespace-nowrap px-1 py-2 text-center sticky left-0 z-[4] ${isEven ? 'bg-white dark:bg-slate-900' : 'bg-slate-100 dark:bg-slate-800'}`} onClick={(e) => { e.stopPropagation(); toggleFavorito(r.parsed.codigo) }}>
                             <button className="p-0.5 rounded hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors" title={favoritos.includes(r.parsed.codigo) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}>
                               <Star className={`size-4 ${favoritos.includes(r.parsed.codigo) ? 'fill-amber-400 text-amber-500 dark:fill-amber-400 dark:text-amber-400' : 'text-slate-300 dark:text-slate-600 hover:text-amber-400 dark:hover:text-amber-400'} transition-colors`} />
                             </button>
