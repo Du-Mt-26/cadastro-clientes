@@ -221,7 +221,7 @@ export function UserManagementModal({ open, onOpenChange }: UserManagementModalP
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl max-h-[85vh] flex flex-col">
+      <DialogContent className="flex flex-col">
         <DialogHeader>
           <DialogTitle>Gerenciar Usuários</DialogTitle>
           <DialogDescription>
