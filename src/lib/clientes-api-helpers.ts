@@ -3,9 +3,11 @@
  *
  * Used by both /api/clientes and /api/clientes/filtros to avoid
  * duplicating Prisma where-clause construction and filter/stats logic.
+ *
+ * Updated: carteira is now an explicit enum field on Cliente (no longer computed).
  */
 
-import { Prisma } from '@prisma/client'
+import { Prisma, Carteira } from '@prisma/client'
 import { db } from '@/lib/db'
 import { calcDiasSemVenda } from '@/lib/clientes'
 import { dbToRecord } from '@/lib/clientes-cache'
@@ -13,7 +15,6 @@ import {
   canSeeAllClients,
   canSeeListaFria,
   canSeeFornecedor,
-  computeCarteira,
   type Role,
 } from '@/lib/auth'
 import type { ClienteRecord } from '@/lib/types'
@@ -52,38 +53,40 @@ export const SORT_FIELD_MAP: Record<string, string> = {
   reg_simples: 'regSimples',
   vendedor: 'vendedor',
   tipo: 'tipo',
+  carteira: 'carteira',  // Now a real DB field — can be sorted server-side!
 }
 
-export const COMPUTED_SORT_FIELDS = new Set(['dias_sem_venda', 'carteira'])
+export const COMPUTED_SORT_FIELDS = new Set(['dias_sem_venda']) // carteira removed — it's now a DB field
 
 // ─── Visibility where clause ────────────────────────────────────────
 
 export function buildVisibilityWhere(
   role: Role,
   userId: string,
-  userEmail: string,
-  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string },
+  _userEmail?: string,
 ): Prisma.ClienteWhereInput {
-  if (canSeeAllClients(role)) return {}
+  if (canSeeAllClients(role)) {
+    // Non-VENDEDOR: can see all, but fornecedor-flagged clients only if they have permission
+    if (canSeeFornecedor(role)) return {}
+    return {
+      OR: [
+        { fornecedor: false },
+        { carteira: 'FORNECEDOR' }, // can still see FORNECEDOR carteira clients
+      ],
+    }
+  }
 
-  // VENDEDOR visibility
+  // VENDEDOR visibility: own clients + BOLSAO
   const orConditions: Prisma.ClienteWhereInput[] = [
-    { vendedorId: userId },                     // own clients
-    { vendedorId: systemUserIds.bolsao },       // bolsão — all vendedores can see
+    { vendedorId: userId },             // own clients
+    { carteira: 'BOLSAO' },             // bolsão — all vendedores can see
   ]
-
-  if (canSeeListaFria(role)) {
-    orConditions.push({ vendedorId: systemUserIds.listaFria })
-  }
-  if (canSeeFornecedor(role, userEmail)) {
-    orConditions.push({ vendedorId: systemUserIds.fornecedor })
-  }
 
   return {
     AND: [
       { OR: orConditions },
-      // Fornecedor-flagged clients hidden unless in FORNECEDOR carteira
-      { OR: [{ fornecedor: false }, { vendedorId: systemUserIds.fornecedor }] },
+      // Fornecedor-flagged clients hidden from VENDEDOR
+      { fornecedor: false },
     ],
   }
 }
@@ -98,12 +101,10 @@ export function buildFilterWhere(params: {
   carteira: string
   tipo: string
   role: Role
-  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string }
-  systemUserIdList: string[]
 }): Prisma.ClienteWhereInput {
   const {
     situacaoCadastral, vendedor, cidade, uf,
-    carteira, tipo, role, systemUserIds, systemUserIdList,
+    carteira, tipo, role,
   } = params
 
   const and: Prisma.ClienteWhereInput[] = []
@@ -125,19 +126,9 @@ export function buildFilterWhere(params: {
     and.push({ uf: { equals: uf, mode: 'insensitive' } })
   }
 
-  // Carteira filter via vendedorId (carteira is computed, not stored)
+  // Carteira filter — now uses the explicit carteira field directly
   if (carteira) {
-    if (carteira === 'COM_VENDEDOR') {
-      and.push({ vendedorId: { not: null, notIn: systemUserIdList } })
-    } else if (carteira === 'BOLSAO') {
-      and.push({ vendedorId: systemUserIds.bolsao })
-    } else if (carteira === 'LISTA_FRIA') {
-      and.push({ vendedorId: systemUserIds.listaFria })
-    } else if (carteira === 'FORNECEDOR') {
-      and.push({ vendedorId: systemUserIds.fornecedor })
-    } else if (carteira === 'SEM_VENDEDOR') {
-      and.push({ vendedorId: null })
-    }
+    and.push({ carteira: carteira as Carteira })
   }
 
   if (tipo) {
@@ -184,7 +175,7 @@ export function combineWhere(
 export async function fetchFilterOptions(
   visibilityWhere: Prisma.ClienteWhereInput,
   role: Role,
-  userEmail: string,
+  _userEmail?: string,
 ) {
   const [
     situacaoResult,
@@ -219,17 +210,14 @@ export async function fetchFilterOptions(
       select: { cidade: true, uf: true },
       distinct: ['cidade', 'uf'],
     }),
-    // Single query for both vendedor + system users (merged & deduplicated)
+    // Only real vendor users (no system users anymore)
     db.user.findMany({
       where: {
         active: true,
-        OR: [
-          { role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] } },
-          { isSystemUser: true },
-        ],
+        role: { in: ['VENDEDOR', 'DIRETOR_COMERCIAL'] },
       },
-      orderBy: [{ isSystemUser: 'asc' }, { name: 'asc' }],
-      select: { id: true, name: true, role: true, isSystemUser: true, email: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, role: true, email: true },
     }),
   ])
 
@@ -270,7 +258,7 @@ export async function fetchFilterOptions(
   // Available carteiras based on user role
   const availableCarteiras = ['COM_VENDEDOR', 'BOLSAO', 'SEM_VENDEDOR']
   if (canSeeListaFria(role)) availableCarteiras.push('LISTA_FRIA')
-  if (canSeeFornecedor(role, userEmail)) availableCarteiras.push('FORNECEDOR')
+  if (canSeeFornecedor(role)) availableCarteiras.push('FORNECEDOR')
 
   return {
     situacao_cadastral: uniqueSituacaoCadastral,
@@ -283,7 +271,6 @@ export async function fetchFilterOptions(
       id: v.id,
       name: v.name,
       role: v.role,
-      isSystemUser: v.isSystemUser,
       email: v.email,
     })),
   }
@@ -294,10 +281,8 @@ export async function fetchFilterOptions(
 export async function fetchStats(
   role: Role,
   userId: string,
-  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string },
 ) {
   const isVendedor = role === 'VENDEDOR'
-  const systemUserIdList = [systemUserIds.bolsao, systemUserIds.listaFria, systemUserIds.fornecedor]
 
   // Stats base where: own clients for VENDEDOR, all for others
   const statsBaseWhere: Prisma.ClienteWhereInput = isVendedor
@@ -314,7 +299,7 @@ export async function fetchStats(
     tipoGroup,
     totalCount,
   ] = await Promise.all([
-    // situacaoCadastral stats (includes fornecedor records for non-VENDEDOR)
+    // situacaoCadastral stats
     db.cliente.groupBy({
       by: ['situacaoCadastral'],
       where: statsBaseWhere,
@@ -328,25 +313,25 @@ export async function fetchStats(
     // carteira: com_vendedor
     db.cliente.count({
       where: isVendedor
-        ? { vendedorId: userId, fornecedor: false }
-        : { vendedorId: { not: null, notIn: systemUserIdList }, fornecedor: false },
+        ? { vendedorId: userId, fornecedor: false, carteira: 'COM_VENDEDOR' }
+        : { carteira: 'COM_VENDEDOR', fornecedor: false },
     }),
     // carteira: bolsao
     db.cliente.count({
-      where: { vendedorId: systemUserIds.bolsao, fornecedor: false },
+      where: { carteira: 'BOLSAO', fornecedor: false },
     }),
     // carteira: lista_fria (0 for VENDEDOR)
     isVendedor
       ? Promise.resolve(0)
       : db.cliente.count({
-          where: { vendedorId: systemUserIds.listaFria, fornecedor: false },
+          where: { carteira: 'LISTA_FRIA', fornecedor: false },
         }),
     // carteira: fornecedores (0 for VENDEDOR)
     isVendedor
       ? Promise.resolve(0)
       : db.cliente.count({
           where: {
-            OR: [{ fornecedor: true }, { vendedorId: systemUserIds.fornecedor }],
+            OR: [{ fornecedor: true }, { carteira: 'FORNECEDOR' }],
           },
         }),
     // tipo stats (non-fornecedor only)
@@ -368,7 +353,7 @@ export async function fetchStats(
     situacaoCadastralStats[key] = g._count
   }
 
-  // Process dias_sem_venda stats (0-45 verde, 46-90 amarelo, 91-150 laranja, 151+ vermelho)
+  // Process dias_sem_venda stats
   let verde = 0, amarelo = 0, laranja = 0, vermelho = 0
   for (const r of diasRecords) {
     const dias = calcDiasSemVenda(r.ultimaVenda)
@@ -400,7 +385,7 @@ export async function fetchStats(
   }
 }
 
-// ─── Computed-sort handler (dias_sem_venda, carteira) ───────────────
+// ─── Computed-sort handler (dias_sem_venda only — carteira is now a DB field) ───
 
 export async function handleComputedSort(params: {
   fullWhere: Prisma.ClienteWhereInput
@@ -409,9 +394,8 @@ export async function handleComputedSort(params: {
   page: number
   limit: number
   showAll: boolean
-  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string }
 }): Promise<{ records: ClienteRecord[]; total: number }> {
-  const { fullWhere, sortBy, sortOrder, page, limit, showAll, systemUserIds } = params
+  const { fullWhere, sortBy, sortOrder, page, limit, showAll } = params
 
   // Fetch minimal fields for all matching records to compute sort key
   const minimalRecords = await db.cliente.findMany({
@@ -419,8 +403,6 @@ export async function handleComputedSort(params: {
     select: {
       id: true,
       ultimaVenda: true,
-      vendedorId: true,
-      tipo: true,
     },
   })
 
@@ -435,7 +417,6 @@ export async function handleComputedSort(params: {
       dias: calcDiasSemVenda(r.ultimaVenda),
     }))
     withDias.sort((a, b) => {
-      // null sorts last in asc, first in desc
       if (a.dias === null && b.dias === null) return 0
       if (a.dias === null) return sortOrder === 'asc' ? 1 : -1
       if (b.dias === null) return sortOrder === 'asc' ? -1 : 1
@@ -444,16 +425,7 @@ export async function handleComputedSort(params: {
     })
     sortedIds = withDias.map((r) => r.id)
   } else {
-    // carteira
-    const withCarteira = minimalRecords.map((r) => ({
-      id: r.id,
-      carteira: computeCarteira(r.vendedorId, r.tipo, systemUserIds),
-    }))
-    withCarteira.sort((a, b) => {
-      const cmp = a.carteira.localeCompare(b.carteira, 'pt-BR')
-      return sortOrder === 'desc' ? -cmp : cmp
-    })
-    sortedIds = withCarteira.map((r) => r.id)
+    sortedIds = minimalRecords.map((r) => r.id)
   }
 
   // Paginate the sorted IDs
@@ -469,14 +441,14 @@ export async function handleComputedSort(params: {
     where: { id: { in: pageIds } },
   })
 
-  // Restore the computed sort order (findMany may return in different order)
+  // Restore the computed sort order
   const idOrder = new Map(pageIds.map((id, i) => [id, i]))
   fullRecords.sort((a, b) => idOrder.get(a.id)! - idOrder.get(b.id)!)
 
-  // Convert to ClienteRecord with carteira computed
+  // Convert to ClienteRecord — carteira now comes from the DB field
   const records = fullRecords.map((c) => {
     const record = dbToRecord(c)
-    record.carteira = computeCarteira(c.vendedorId, c.tipo, systemUserIds)
+    record.carteira = c.carteira
     return record
   })
 

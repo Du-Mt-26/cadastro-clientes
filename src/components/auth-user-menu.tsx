@@ -18,16 +18,16 @@ import {
   Users,
   LogOut,
   ChevronDown,
-  Briefcase,
+  Shield,
 } from 'lucide-react'
 
 interface AuthUserMenuProps {
   onOpen2FA: () => void
   onOpenUserManagement: () => void
-  onOpenVendedorManagement: () => void
+  onOpenPermissions: () => void
 }
 
-export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenVendedorManagement }: AuthUserMenuProps) {
+export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenPermissions }: AuthUserMenuProps) {
   const { data: session } = useSession()
 
   if (!session?.user) return null
@@ -40,7 +40,7 @@ export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenVendedorMa
 
   const role = user.role as Role
   const isAdmin = role === 'ADMIN'
-  const canManageVendedores = role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
+  const canManageUsers = role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
   const initials = user.name
     ?.split(' ')
     .map((n) => n[0])
@@ -93,17 +93,17 @@ export function AuthUserMenu({ onOpen2FA, onOpenUserManagement, onOpenVendedorMa
             <span>Configurar 2FA</span>
           </DropdownMenuItem>
 
-          {isAdmin && (
+          {canManageUsers && (
             <DropdownMenuItem onClick={onOpenUserManagement} className="cursor-pointer">
               <Users className="size-4" />
-              <span>Gerenciar Usuários</span>
+              <span>Cadastro de Usuários</span>
             </DropdownMenuItem>
           )}
 
-          {canManageVendedores && (
-            <DropdownMenuItem onClick={onOpenVendedorManagement} className="cursor-pointer">
-              <Briefcase className="size-4" />
-              <span>Cadastro de Usuários</span>
+          {isAdmin && (
+            <DropdownMenuItem onClick={onOpenPermissions} className="cursor-pointer">
+              <Shield className="size-4" />
+              <span>Permissões</span>
             </DropdownMenuItem>
           )}
         </DropdownMenuGroup>

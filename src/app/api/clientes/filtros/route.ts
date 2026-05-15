@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions, getSystemUserIds, type Role } from "@/lib/auth";
+import { authOptions, type Role } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
 import {
   buildVisibilityWhere,
@@ -64,8 +64,7 @@ export async function GET(request: NextRequest) {
     }
 
     // No cache or fully expired — fetch fresh data
-    const systemUserIds = await getSystemUserIds();
-    const visibilityWhere: Prisma.ClienteWhereInput = buildVisibilityWhere(role, userId, userEmail, systemUserIds);
+    const visibilityWhere: Prisma.ClienteWhereInput = buildVisibilityWhere(role, userId, userEmail);
     const data = await fetchFilterOptions(visibilityWhere, role, userEmail);
 
     filterCache.set(cacheKey, { data, timestamp: now });
@@ -96,8 +95,7 @@ async function refreshCache(
   userEmail: string,
 ): Promise<void> {
   try {
-    const systemUserIds = await getSystemUserIds();
-    const visibilityWhere: Prisma.ClienteWhereInput = buildVisibilityWhere(role, userId, userEmail, systemUserIds);
+    const visibilityWhere: Prisma.ClienteWhereInput = buildVisibilityWhere(role, userId, userEmail);
     const data = await fetchFilterOptions(visibilityWhere, role, userEmail);
     filterCache.set(cacheKey, { data, timestamp: Date.now() });
   } catch {

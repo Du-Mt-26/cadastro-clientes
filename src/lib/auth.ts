@@ -5,7 +5,10 @@
  *  - ADMIN             → total access
  *  - DIRETOR_COMERCIAL → full read/write on data
  *  - GERENTE_COMERCIAL → read/write on commercial data
- *  - VENDEDOR          → own clients + Bolsão + unassigned Revendas
+ *  - VENDEDOR          → own clients + Bolsão
+ *
+ * Permissions are now dynamic (DB-backed) with in-memory cache.
+ * Use canDo(role, permissionKey) instead of hardcoded functions.
  */
 
 import type { NextAuthOptions } from 'next-auth'
@@ -111,7 +114,7 @@ export const authOptions: NextAuthOptions = {
   debug: false,
 }
 
-// ─── Role Hierarchy & Permissions ──────────────────
+// ─── Role Hierarchy & Labels ──────────────────────
 
 export type Role = 'ADMIN' | 'DIRETOR_COMERCIAL' | 'GERENTE_COMERCIAL' | 'VENDEDOR'
 
@@ -136,140 +139,6 @@ export const ROLE_PRIORITY: Record<Role, number> = {
   VENDEDOR: 25,
 }
 
-export function canManageUsers(role: Role): boolean {
-  return role === 'ADMIN'
-}
-
-export function canSeeAllClients(role: Role): boolean {
-  return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
-}
-
-export function canEditAllFields(role: Role): boolean {
-  return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL'
-}
-
-export function canEditCommercialData(role: Role): boolean {
-  return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
-}
-
-export function canViewReports(role: Role): boolean {
-  return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
-}
-
-export function canAssignVendedor(role: Role): boolean {
-  return role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL'
-}
-
-// ─── System User Emails ────────────────────────────
-
-export const SYSTEM_USER_EMAILS = {
-  BOLSAO: 'bolsao@sistema.mtech',
-  LISTA_FRIA: 'lista-fria@sistema.mtech',
-  FORNECEDOR: 'fornecedor@sistema.mtech',
-} as const
-
-export const SYSTEM_USER_NAMES = {
-  BOLSAO: 'BOLSÃO',
-  LISTA_FRIA: 'LISTA FRIA',
-  FORNECEDOR: 'FORNECEDOR',
-} as const
-
-// Cached system user IDs (populated after first DB call)
-let _systemUserIds: { bolsao: string; listaFria: string; fornecedor: string } | null = null
-
-/**
- * Get system user IDs from the database.
- * Results are cached after the first call.
- *
- * Optimized: first tries a fast findMany (no hashing, no writes).
- * Only falls back to upsert if any system user is missing.
- */
-export async function getSystemUserIds() {
-  if (_systemUserIds) return _systemUserIds
-
-  // Fast path: check if all system users already exist (no hashing, no writes)
-  const existing = await db.user.findMany({
-    where: { isSystemUser: true },
-    select: { id: true, email: true },
-  })
-
-  const bolsao = existing.find((u) => u.email === SYSTEM_USER_EMAILS.BOLSAO)
-  const listaFria = existing.find((u) => u.email === SYSTEM_USER_EMAILS.LISTA_FRIA)
-  const fornecedor = existing.find((u) => u.email === SYSTEM_USER_EMAILS.FORNECEDOR)
-
-  if (bolsao && listaFria && fornecedor) {
-    _systemUserIds = { bolsao: bolsao.id, listaFria: listaFria.id, fornecedor: fornecedor.id }
-    return _systemUserIds
-  }
-
-  // Slow path: some system users are missing — need to upsert (requires hashing)
-  const bcrypt = await import('bcryptjs')
-  const hashedPassword = await bcrypt.hash('sistema@mtech2024', 12)
-
-  const [bolsaoUser, listaFriaUser, fornecedorUser] = await Promise.all([
-    db.user.upsert({
-      where: { email: SYSTEM_USER_EMAILS.BOLSAO },
-      update: {},
-      create: { email: SYSTEM_USER_EMAILS.BOLSAO, name: SYSTEM_USER_NAMES.BOLSAO, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
-    }),
-    db.user.upsert({
-      where: { email: SYSTEM_USER_EMAILS.LISTA_FRIA },
-      update: {},
-      create: { email: SYSTEM_USER_EMAILS.LISTA_FRIA, name: SYSTEM_USER_NAMES.LISTA_FRIA, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
-    }),
-    db.user.upsert({
-      where: { email: SYSTEM_USER_EMAILS.FORNECEDOR },
-      update: {},
-      create: { email: SYSTEM_USER_EMAILS.FORNECEDOR, name: SYSTEM_USER_NAMES.FORNECEDOR, password: hashedPassword, role: 'VENDEDOR', isSystemUser: true, active: true },
-    }),
-  ])
-
-  _systemUserIds = { bolsao: bolsaoUser.id, listaFria: listaFriaUser.id, fornecedor: fornecedorUser.id }
-  return _systemUserIds
-}
-
-/**
- * Invalidate the cached system user IDs.
- * Call this after creating/migrating system users.
- */
-export function invalidateSystemUserIds() {
-  _systemUserIds = null
-}
-
-/**
- * Compute the carteira label from vendedorId + tipo.
- * Carteira is no longer stored — it is derived from the relationship.
- */
-export function computeCarteira(
-  vendedorId: string | null,
-  tipo: string,
-  systemUserIds: { bolsao: string; listaFria: string; fornecedor: string }
-): string {
-  if (!vendedorId) return 'SEM_VENDEDOR'
-  if (vendedorId === systemUserIds.bolsao) return 'BOLSAO'
-  if (vendedorId === systemUserIds.listaFria) return 'LISTA_FRIA'
-  if (vendedorId === systemUserIds.fornecedor) return 'FORNECEDOR'
-  // Regular vendedor assigned
-  return 'COM_VENDEDOR'
-}
-
-/**
- * Check if user can see LISTA FRIA clients.
- */
-export function canSeeListaFria(role: Role): boolean {
-  if (role === 'ADMIN' || role === 'DIRETOR_COMERCIAL' || role === 'GERENTE_COMERCIAL') return true
-  return false
-}
-
-/**
- * Check if user can see FORNECEDOR clients.
- */
-export function canSeeFornecedor(role: Role, userEmail: string): boolean {
-  if (role === 'ADMIN' || role === 'DIRETOR_COMERCIAL') return true
-  if (userEmail === SYSTEM_USER_EMAILS.FORNECEDOR) return true
-  return false
-}
-
 // ─── Carteira Labels ───────────────────────────────
 
 export const CARTEIRA_LABELS: Record<string, string> = {
@@ -287,3 +156,210 @@ export const CARTEIRA_COLORS: Record<string, string> = {
   FORNECEDOR: 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300',
   SEM_VENDEDOR: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 }
+
+// ─── Dynamic Permission System ─────────────────────
+// Permissions are stored in DB (Permission + RolePermission tables).
+// They are cached in memory with a TTL for performance.
+
+type PermissionMap = Map<string, boolean> // permissionKey → allowed
+type RolePermissionCache = Map<string, PermissionMap> // role → permissions
+
+let _permissionCache: RolePermissionCache | null = null
+let _permissionCacheExpiry = 0
+const PERMISSION_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
+// Hardcoded fallback (used when DB permissions are not available)
+const FALLBACK_PERMISSIONS: Record<string, Record<string, boolean>> = {
+  ADMIN: {
+    'clients.view_all': true, 'clients.edit_all_fields': true, 'clients.edit_contact': true,
+    'clients.export': true, 'clients.receita': true, 'clients.audit': true,
+    'clients.bulk_import': true, 'clients.create': true, 'clients.edit_commercial': true,
+    'clients.view_reports': true, 'bolsao.check': true, 'bolsao.pull': true,
+    'bolsao.move': true, 'bolsao.abordar': true, 'users.manage': true,
+    'users.assign_clients': true, 'sheets.manage': true, 'favorites.use': true,
+    'permissions.manage': true,
+  },
+  DIRETOR_COMERCIAL: {
+    'clients.view_all': true, 'clients.edit_all_fields': true, 'clients.edit_contact': true,
+    'clients.export': true, 'clients.receita': true, 'clients.audit': true,
+    'clients.bulk_import': true, 'clients.create': true, 'clients.edit_commercial': true,
+    'clients.view_reports': true, 'bolsao.check': true, 'bolsao.pull': true,
+    'bolsao.move': true, 'bolsao.abordar': true, 'users.manage': false,
+    'users.assign_clients': true, 'sheets.manage': true, 'favorites.use': true,
+    'permissions.manage': false,
+  },
+  GERENTE_COMERCIAL: {
+    'clients.view_all': true, 'clients.edit_all_fields': false, 'clients.edit_contact': true,
+    'clients.export': false, 'clients.receita': true, 'clients.audit': true,
+    'clients.bulk_import': false, 'clients.create': true, 'clients.edit_commercial': true,
+    'clients.view_reports': true, 'bolsao.check': true, 'bolsao.pull': true,
+    'bolsao.move': true, 'bolsao.abordar': true, 'users.manage': false,
+    'users.assign_clients': true, 'sheets.manage': false, 'favorites.use': true,
+    'permissions.manage': false,
+  },
+  VENDEDOR: {
+    'clients.view_all': false, 'clients.edit_all_fields': false, 'clients.edit_contact': true,
+    'clients.export': false, 'clients.receita': true, 'clients.audit': false,
+    'clients.bulk_import': false, 'clients.create': true, 'clients.edit_commercial': false,
+    'clients.view_reports': false, 'bolsao.check': false, 'bolsao.pull': true,
+    'bolsao.move': false, 'bolsao.abordar': true, 'users.manage': false,
+    'users.assign_clients': false, 'sheets.manage': false, 'favorites.use': true,
+    'permissions.manage': false,
+  },
+}
+
+/**
+ * Load permissions from DB into cache.
+ */
+async function loadPermissionsFromDB(): Promise<RolePermissionCache> {
+  const cache: RolePermissionCache = new Map()
+
+  try {
+    const rolePerms = await db.rolePermission.findMany({
+      select: { role: true, permissionKey: true, allowed: true },
+    })
+
+    for (const rp of rolePerms) {
+      if (!cache.has(rp.role)) cache.set(rp.role, new Map())
+      cache.get(rp.role)!.set(rp.permissionKey, rp.allowed)
+    }
+  } catch {
+    // DB not available yet (migration not run) — use fallback
+  }
+
+  return cache
+}
+
+/**
+ * Get the permission cache, loading from DB if expired.
+ */
+async function getPermissionCache(): Promise<RolePermissionCache> {
+  if (_permissionCache && Date.now() < _permissionCacheExpiry) {
+    return _permissionCache
+  }
+
+  _permissionCache = await loadPermissionsFromDB()
+  _permissionCacheExpiry = Date.now() + PERMISSION_CACHE_TTL
+  return _permissionCache
+}
+
+/**
+ * Invalidate the permission cache.
+ * Call after changing permissions.
+ */
+export function invalidatePermissionCache() {
+  _permissionCache = null
+  _permissionCacheExpiry = 0
+}
+
+/**
+ * Check if a role has a specific permission.
+ * Falls back to hardcoded defaults if DB permissions are not available.
+ */
+export async function canDo(role: Role | string, permissionKey: string): Promise<boolean> {
+  const cache = await getPermissionCache()
+  const rolePerms = cache.get(role)
+
+  if (rolePerms && rolePerms.has(permissionKey)) {
+    return rolePerms.get(permissionKey)!
+  }
+
+  // Fallback to hardcoded
+  const fallback = FALLBACK_PERMISSIONS[role]
+  if (fallback && permissionKey in fallback) {
+    return fallback[permissionKey]
+  }
+
+  // Default deny
+  return false
+}
+
+/**
+ * Synchronous version using fallback only (no DB call).
+ * Use in middleware or non-async contexts where DB access is not possible.
+ */
+export function canDoSync(role: Role | string, permissionKey: string): boolean {
+  // Try cache first
+  if (_permissionCache) {
+    const rolePerms = _permissionCache.get(role)
+    if (rolePerms && rolePerms.has(permissionKey)) {
+      return rolePerms.get(permissionKey)!
+    }
+  }
+
+  // Fallback to hardcoded
+  const fallback = FALLBACK_PERMISSIONS[role]
+  if (fallback && permissionKey in fallback) {
+    return fallback[permissionKey]
+  }
+
+  return false
+}
+
+// ─── Legacy helper functions (now backed by canDo) ──
+// These are kept for backward compatibility and convenience.
+
+export function canManageUsers(role: Role): boolean {
+  return canDoSync(role, 'users.manage')
+}
+
+export function canSeeAllClients(role: Role): boolean {
+  return canDoSync(role, 'clients.view_all')
+}
+
+export function canEditAllFields(role: Role): boolean {
+  return canDoSync(role, 'clients.edit_all_fields')
+}
+
+export function canEditCommercialData(role: Role): boolean {
+  return canDoSync(role, 'clients.edit_commercial')
+}
+
+export function canViewReports(role: Role): boolean {
+  return canDoSync(role, 'clients.view_reports')
+}
+
+export function canAssignVendedor(role: Role): boolean {
+  return canDoSync(role, 'users.assign_clients')
+}
+
+export function canSeeListaFria(role: Role): boolean {
+  return canDoSync(role, 'bolsao.move')
+}
+
+export function canSeeFornecedor(role: Role, _userEmail?: string): boolean {
+  return canDoSync(role, 'bolsao.move')
+}
+
+/**
+ * Get carteira label from the Carteira enum value.
+ * Now carteira is stored directly on the Cliente record.
+ */
+export function getCarteiraLabel(carteira: string): string {
+  return CARTEIRA_LABELS[carteira] || carteira
+}
+
+/**
+ * Compute carteira is no longer needed — carteira is stored on the model.
+ * Kept for migration compatibility only.
+ * @deprecated Use the carteira field directly from the Cliente model.
+ */
+export function computeCarteira(
+  vendedorId: string | null,
+  tipo: string,
+  _systemUserIds?: { bolsao: string; listaFria: string; fornecedor: string }
+): string {
+  // Backward compatibility: if carteira field is not set, compute from vendedorId
+  // This should not happen after migration
+  if (!vendedorId) return 'SEM_VENDEDOR'
+  return 'COM_VENDEDOR'
+}
+
+// ─── Removed: System User system ────────────────────
+// The following have been removed:
+// - SYSTEM_USER_EMAILS
+// - SYSTEM_USER_NAMES
+// - getSystemUserIds()
+// - invalidateSystemUserIds()
+// - canSeeFornecedor(role, userEmail) — now just checks canDo(role, 'bolsao.move')
+// Carteira is now an explicit enum field on the Cliente model.

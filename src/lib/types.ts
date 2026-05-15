@@ -95,7 +95,7 @@ export interface ApiResponse {
     ufs: string[]
     cidadesPorUf: Record<string, string[]>
     carteiras: string[]
-    vendedorUsers: { id: string; name: string; role: string; isSystemUser: boolean; email: string }[]
+    vendedorUsers: { id: string; name: string; role: string; email: string }[]
   }
   stats: {
     total: number

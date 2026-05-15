@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { dbToRecord, invalidateCache } from "@/lib/clientes-cache";
 import { getServerSession } from "next-auth";
-import { authOptions, getSystemUserIds, computeCarteira, canSeeListaFria, canSeeFornecedor, type Role } from "@/lib/auth";
+import { authOptions, type Role } from "@/lib/auth";
 import type { ClienteRecord } from "@/lib/types";
 import {
   SORT_FIELD_MAP,
@@ -43,12 +43,8 @@ export async function GET(request: NextRequest) {
     const sortBy = searchParams.get("sort_by") || "";
     const sortOrder = searchParams.get("sort_order") || "asc";
 
-    // ── Get system user IDs for carteira computation ──
-    const systemUserIds = await getSystemUserIds();
-    const systemUserIdList = [systemUserIds.bolsao, systemUserIds.listaFria, systemUserIds.fornecedor];
-
     // ── Build where clauses ──
-    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail, systemUserIds);
+    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail);
     const filterWhere = buildFilterWhere({
       situacaoCadastral,
       vendedor,
@@ -57,8 +53,6 @@ export async function GET(request: NextRequest) {
       carteira,
       tipo: tipoFilter,
       role,
-      systemUserIds,
-      systemUserIdList,
     });
     const searchWhere = buildSearchWhere(search);
     const fullWhere = combineWhere(visibilityWhere, filterWhere, searchWhere);
@@ -79,7 +73,6 @@ export async function GET(request: NextRequest) {
             page,
             limit,
             showAll,
-            systemUserIds,
           });
         }
 
@@ -101,7 +94,7 @@ export async function GET(request: NextRequest) {
           total: countResult,
           records: clientes.map((c) => {
             const record = dbToRecord(c);
-            record.carteira = computeCarteira(c.vendedorId, c.tipo, systemUserIds);
+            record.carteira = c.carteira;
             return record;
           }),
         };
@@ -111,7 +104,7 @@ export async function GET(request: NextRequest) {
       fetchFilterOptions(visibilityWhere, role, userEmail),
 
       // Stats (visibility-only where, no search/filter)
-      fetchStats(role, userId, systemUserIds),
+      fetchStats(role, userId),
     ]);
 
     // ── Pagination info ──
@@ -213,16 +206,15 @@ export async function POST(request: NextRequest) {
         vendedor: body.vendedor || "",
         source: "manual",
         tipo,
+        carteira: body.carteira || "SEM_VENDEDOR",
       },
     });
 
     // Invalidate cache
     invalidateCache();
 
-    // Compute carteira for the new record
-    const systemUserIds = await getSystemUserIds();
     const record = dbToRecord(novo);
-    record.carteira = computeCarteira(novo.vendedorId, novo.tipo, systemUserIds);
+    record.carteira = novo.carteira;
 
     return NextResponse.json({ success: true, cliente: record }, { status: 201 });
   } catch (error) {
@@ -306,8 +298,8 @@ export async function PATCH(request: NextRequest) {
     }
 
     // Handle carteira changes via vendedorId assignment (not direct carteira field)
-    // The carteira is computed, so to change it we change vendedorId
-    // This is handled by the /api/vendedores/assign route
+    // The carteira is stored on the model, changes are handled by /api/vendedores/assign
+    // or /api/users/assign-clients routes
 
     // Create audit logs for changed fields
     for (const entry of auditEntries) {
@@ -324,9 +316,8 @@ export async function PATCH(request: NextRequest) {
 
     if (Object.keys(updateData).length === 0) {
       // No changes to make
-      const systemUserIds = await getSystemUserIds();
       const record = dbToRecord(existing);
-      record.carteira = computeCarteira(existing.vendedorId, existing.tipo, systemUserIds);
+      record.carteira = existing.carteira;
       return NextResponse.json({ success: true, edit: record });
     }
 
@@ -338,9 +329,8 @@ export async function PATCH(request: NextRequest) {
     // Invalidate cache so next read picks up changes
     invalidateCache();
 
-    const systemUserIds = await getSystemUserIds();
     const record = dbToRecord(updated);
-    record.carteira = computeCarteira(updated.vendedorId, updated.tipo, systemUserIds);
+    record.carteira = updated.carteira;
 
     return NextResponse.json({ success: true, edit: record });
   } catch (error) {

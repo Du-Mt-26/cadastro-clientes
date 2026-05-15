@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
-import { authOptions, getSystemUserIds, canSeeAllClients, type Role, SYSTEM_USER_EMAILS } from '@/lib/auth'
+import { authOptions, canSeeAllClients, type Role } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { invalidateCache } from '@/lib/clientes-cache'
 import { calcDiasSemVenda } from '@/lib/clientes'
@@ -16,7 +16,7 @@ import { calcDiasSemVenda } from '@/lib/clientes'
  *   stays with the vendor.
  * - If dataAtribuicaoVendedor is null (initial import, not a Bolsão pull),
  *   there is NO grace period — DSV >= 151 means Bolsão.
- * - Also moves unassigned clients (vendedorId = null) to BOLSÃO.
+ * - Also moves unassigned clients (carteira = SEM_VENDEDOR) to BOLSÃO.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -30,16 +30,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    const systemUserIds = await getSystemUserIds()
     const now = new Date()
 
-    // Find all clients that are NOT assigned to system users (bolsão, lista fria, fornecedor)
+    // Find all clients that are NOT in BOLSAO, LISTA_FRIA, or FORNECEDOR carteiras
     // and are not fornecedores
-    const systemVendorNames = ['BOLSÃO', 'LISTA FRIA', 'FORNECEDOR']
     const clientes = await db.cliente.findMany({
       where: {
         fornecedor: false,
-        vendedorId: { notIn: [systemUserIds.bolsao, systemUserIds.listaFria, systemUserIds.fornecedor].filter(Boolean) },
+        carteira: { notIn: ['BOLSAO', 'LISTA_FRIA', 'FORNECEDOR'] },
       },
       select: {
         id: true,
@@ -51,9 +49,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    // Get all real (non-system) vendor user IDs for checking
+    // Get all active vendor user IDs for checking
     const realVendorUsers = await db.user.findMany({
-      where: { isSystemUser: false, active: true },
+      where: { active: true },
       select: { id: true, name: true },
     })
     const realVendorIds = new Set(realVendorUsers.map(u => u.id))
@@ -93,6 +91,7 @@ export async function POST(request: NextRequest) {
 
       // Also handle clients with vendor name string but no vendedorId (legacy data)
       if (!c.vendedorId) {
+        const systemVendorNames = ['BOLSÃO', 'LISTA FRIA', 'FORNECEDOR']
         const isSystemVendorName = systemVendorNames.some(n => c.vendedor.toUpperCase().includes(n))
         const hasRealVendorString = c.vendedor && !isSystemVendorName
         if (hasRealVendorString) {
@@ -115,11 +114,12 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Move to Bolsão
+      // Move to Bolsão — set carteira directly instead of assigning system user
       await db.cliente.update({
         where: { id: c.id },
         data: {
-          vendedorId: systemUserIds.bolsao || null,
+          carteira: 'BOLSAO',
+          vendedorId: null,
           dataEntradaBolsao: now,
           dataAtribuicaoVendedor: null,
         },
@@ -127,10 +127,10 @@ export async function POST(request: NextRequest) {
       movedToBolsao++
     }
 
-    // Also find clients where vendedorId = null (unassigned) and move to BOLSÃO
+    // Also find clients where carteira = SEM_VENDEDOR (unassigned) and move to BOLSÃO
     const unassigned = await db.cliente.findMany({
       where: {
-        vendedorId: null,
+        carteira: 'SEM_VENDEDOR',
         fornecedor: false,
       },
       select: { id: true },
@@ -141,7 +141,8 @@ export async function POST(request: NextRequest) {
       await db.cliente.update({
         where: { id: c.id },
         data: {
-          vendedorId: systemUserIds.bolsao || null,
+          carteira: 'BOLSAO',
+          vendedorId: null,
           dataEntradaBolsao: now,
         },
       })
@@ -168,7 +169,7 @@ export async function POST(request: NextRequest) {
  * PATCH /api/clientes/bolsao
  * Actions:
  *  - 'puxar': vendedor picks up a client from BOLSÃO (starts 150-day grace period)
- *  - 'mover': move client to LISTA FRIA or FORNECEDOR (set vendedorId to system user ID)
+ *  - 'mover': move client to LISTA_FRIA or FORNECEDOR (set carteira field)
  *  - 'abordar': mark client as approached by a vendor
  */
 export async function PATCH(request: NextRequest) {
@@ -193,8 +194,6 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 })
     }
 
-    const systemUserIds = await getSystemUserIds()
-
     if (action === 'puxar') {
       // Vendedor picks up client from BOLSÃO — starts 150-day grace period
       const puxarVendedorId = vendedorId || userId
@@ -204,15 +203,16 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
       }
 
-      // Verify the vendedor exists and is not a system user
+      // Verify the vendedor exists
       const vendedor = await db.user.findUnique({ where: { id: puxarVendedorId } })
-      if (!vendedor || vendedor.isSystemUser) {
+      if (!vendedor) {
         return NextResponse.json({ error: 'Vendedor inválido' }, { status: 400 })
       }
 
       await db.cliente.update({
         where: { codigo: clienteCodigo },
         data: {
+          carteira: 'COM_VENDEDOR',
           vendedorId: puxarVendedorId,
           vendedor: vendedor.name,
           dataAtribuicaoVendedor: new Date(), // Start 150-day grace period
@@ -230,21 +230,28 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
       }
 
-      let targetUserId = ''
-      let targetUserName = ''
-
       if (destino === 'LISTA_FRIA') {
-        targetUserId = systemUserIds.listaFria
-        targetUserName = 'LISTA FRIA'
-      } else if (destino === 'FORNECEDOR') {
-        targetUserId = systemUserIds.fornecedor
-        targetUserName = 'FORNECEDOR'
-        // Also set fornecedor flag
         await db.cliente.update({
           where: { codigo: clienteCodigo },
           data: {
-            vendedorId: targetUserId || null,
-            vendedor: targetUserName,
+            carteira: 'LISTA_FRIA',
+            vendedorId: null,
+            vendedor: 'LISTA FRIA',
+            dataAtribuicaoVendedor: null,
+            dataEntradaBolsao: null,
+          },
+        })
+        invalidateCache()
+        return NextResponse.json({ success: true, destino })
+      }
+
+      if (destino === 'FORNECEDOR') {
+        await db.cliente.update({
+          where: { codigo: clienteCodigo },
+          data: {
+            carteira: 'FORNECEDOR',
+            vendedorId: null,
+            vendedor: 'FORNECEDOR',
             fornecedor: true,
             dataAtribuicaoVendedor: null,
             dataEntradaBolsao: null,
@@ -252,26 +259,9 @@ export async function PATCH(request: NextRequest) {
         })
         invalidateCache()
         return NextResponse.json({ success: true, destino })
-      } else {
-        return NextResponse.json({ error: 'Destino inválido. Use LISTA_FRIA ou FORNECEDOR' }, { status: 400 })
       }
 
-      if (!targetUserId) {
-        return NextResponse.json({ error: `Usuário do sistema para ${destino} não encontrado` }, { status: 500 })
-      }
-
-      await db.cliente.update({
-        where: { codigo: clienteCodigo },
-        data: {
-          vendedorId: targetUserId,
-          vendedor: targetUserName,
-          dataAtribuicaoVendedor: null,
-          dataEntradaBolsao: null,
-        },
-      })
-
-      invalidateCache()
-      return NextResponse.json({ success: true, destino })
+      return NextResponse.json({ error: 'Destino inválido. Use LISTA_FRIA ou FORNECEDOR' }, { status: 400 })
     }
 
     if (action === 'abordar') {

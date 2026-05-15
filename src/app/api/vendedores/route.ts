@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     const users = await db.user.findMany({
-      orderBy: [{ isSystemUser: 'asc' }, { active: 'desc' }, { name: 'asc' }],
+      orderBy: [{ active: 'desc' }, { name: 'asc' }],
       select: {
         id: true,
         name: true,
@@ -29,39 +29,37 @@ export async function GET() {
         role: true,
         active: true,
         twoFactorEnabled: true,
-        isSystemUser: true,
         clientes: {
           select: {
             tipo: true,
             fornecedor: true,
-            vendedorId: true,
+            carteira: true,
           },
         },
       },
     })
 
+    // Compute bolsao/listaFria/fornecedores counts from carteira field on Cliente records
+    const [bolsaoCount, listaFriaCount, fornecedoresCount] = await Promise.all([
+      db.cliente.count({ where: { carteira: 'BOLSAO' } }),
+      db.cliente.count({ where: { carteira: 'LISTA_FRIA' } }),
+      db.cliente.count({ where: { carteira: 'FORNECEDOR' } }),
+    ])
+
     const vendedores = users.map((u) => {
-      // Compute carteira counts using the new logic
+      // Compute carteira counts for each vendedor
       let carteiraRevendas = 0
       let carteiraCorporativo = 0
-      let bolsao = 0
-      let listaFria = 0
-      let fornecedores = 0
+      let fornecedoresPersonal = 0
 
       for (const c of u.clientes) {
-        if (u.isSystemUser) {
-          if (u.email === 'bolsao@sistema.mtech') bolsao++
-          else if (u.email === 'lista-fria@sistema.mtech') listaFria++
-          else if (u.email === 'fornecedor@sistema.mtech') fornecedores++
+        // Regular vendedor: count their assigned clients by type
+        if (c.fornecedor || c.carteira === 'FORNECEDOR') {
+          fornecedoresPersonal++
+        } else if (c.tipo === 'CORPORATIVO') {
+          carteiraCorporativo++
         } else {
-          // Regular vendedor
-          if (c.fornecedor) {
-            fornecedores++
-          } else if (c.tipo === 'CORPORATIVO') {
-            carteiraCorporativo++
-          } else {
-            carteiraRevendas++
-          }
+          carteiraRevendas++
         }
       }
 
@@ -72,13 +70,12 @@ export async function GET() {
         role: u.role,
         active: u.active,
         twoFactorEnabled: u.twoFactorEnabled,
-        isSystemUser: u.isSystemUser,
         clientCount: u.clientes.length,
         carteiraRevendas,
         carteiraCorporativo,
-        bolsao,
-        listaFria,
-        fornecedores,
+        bolsao: bolsaoCount,
+        listaFria: listaFriaCount,
+        fornecedores: fornecedoresCount,
       }
     })
 
@@ -105,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, email, password: rawPassword, role: newRole, isSystemUser } = body
+    const { name, email, password: rawPassword, role: newRole } = body
 
     if (!name || !email || !rawPassword) {
       return NextResponse.json(
@@ -143,7 +140,6 @@ export async function POST(request: NextRequest) {
         email: email.toLowerCase().trim(),
         password: hashedPassword,
         role: newRole,
-        isSystemUser: isSystemUser || false,
       },
       select: {
         id: true,
@@ -152,16 +148,9 @@ export async function POST(request: NextRequest) {
         role: true,
         active: true,
         twoFactorEnabled: true,
-        isSystemUser: true,
         createdAt: true,
       },
     })
-
-    // Invalidate system user IDs cache if creating a system user
-    if (isSystemUser) {
-      const { invalidateSystemUserIds } = await import('@/lib/auth')
-      invalidateSystemUserIds()
-    }
 
     return NextResponse.json({ user }, { status: 201 })
   } catch (error) {
@@ -225,7 +214,6 @@ export async function PATCH(request: NextRequest) {
         role: true,
         active: true,
         twoFactorEnabled: true,
-        isSystemUser: true,
         createdAt: true,
         updatedAt: true,
       },
