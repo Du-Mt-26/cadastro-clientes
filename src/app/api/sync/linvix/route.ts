@@ -323,7 +323,9 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   return allClients
 }
 
-// ─── Upsert Logic (Optimized with Batched Prisma Transactions) ──
+// ─── Upsert Logic (Optimized: Raw SQL with proper type casting) ──
+
+import { Prisma } from '@prisma/client'
 
 async function upsertClients(clients: LinvixClientData[]): Promise<{
   created: number
@@ -342,17 +344,21 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
   const validClients = clients.filter(c => c.codigo)
   skipped += clients.length - validClients.length
 
-  // Process in batches using Prisma transactions for speed
-  const BATCH_SIZE = 100
+  // Process in batches of 500 using raw SQL bulk upsert
+  const BATCH_SIZE = 500
   for (let i = 0; i < validClients.length; i += BATCH_SIZE) {
     const batch = validClients.slice(i, i + BATCH_SIZE)
 
     try {
-      // Build all upsert operations for this batch
-      const upsertOps = batch.map(clientData => {
+      // Build parameterized bulk upsert
+      const valuesClauses: string[] = []
+      const params: unknown[] = []
+      let paramIdx = 1
+
+      for (const clientData of batch) {
         const cnpjNormalized = (clientData.cnpj || '').replace(/\D/g, '')
 
-        const data: Record<string, unknown> = {}
+        const fields: Record<string, string> = {}
         const fieldsToMap: Array<{ linvix: keyof LinvixClientData; mtech: string }> = [
           { linvix: 'razaoSocial', mtech: 'razaoSocial' },
           { linvix: 'nomeFantasia', mtech: 'nomeFantasia' },
@@ -388,222 +394,103 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           const value = clientData[linvix]
           if (value !== undefined && value !== null && value !== '') {
             if (mtech.startsWith('email')) {
-              data[mtech] = String(value).toLowerCase().trim()
+              fields[mtech] = String(value).toLowerCase().trim()
             } else if (mtech === 'cnpj') {
-              data[mtech] = cnpjNormalized
+              fields[mtech] = cnpjNormalized
             } else {
-              data[mtech] = String(value)
+              fields[mtech] = String(value)
             }
           }
         }
 
-        data.source = 'linvix'
+        // Generate a CUID-like ID
+        const id = `cl${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6).padEnd(4, '0')}${String(paramIdx).padStart(4, '0')}`
 
-        return db.cliente.upsert({
-          where: { codigo: String(clientData.codigo) },
-          create: {
-            codigo: String(clientData.codigo),
-            razaoSocial: String(data.razaoSocial || ''),
-            nomeFantasia: String(data.nomeFantasia || ''),
-            cnpj: cnpjNormalized,
-            ieRg: String(data.ieRg || ''),
-            telefone1: String(data.telefone1 || ''),
-            telefone2: String(data.telefone2 || ''),
-            telefone3: String(data.telefone3 || ''),
-            telefone4: String(data.telefone4 || ''),
-            email1: String(data.email1 || '').toLowerCase().trim(),
-            email2: String(data.email2 || '').toLowerCase().trim(),
-            email3: String(data.email3 || '').toLowerCase().trim(),
-            pessoaContato: String(data.pessoaContato || ''),
-            endereco: String(data.endereco || ''),
-            numero: String(data.numero || ''),
-            complemento: String(data.complemento || ''),
-            bairro: String(data.bairro || ''),
-            cidade: String(data.cidade || ''),
-            cep: String(data.cep || ''),
-            uf: String(data.uf || ''),
-            situacaoCadastral: String(data.situacaoCadastral || ''),
-            dataSituacao: String(data.dataSituacao || ''),
-            dataAbertura: String(data.dataAbertura || ''),
-            cnaePrincipal: String(data.cnaePrincipal || ''),
-            naturezaJuridica: String(data.naturezaJuridica || ''),
-            porte: String(data.porte || ''),
-            regSimples: String(data.regSimples || ''),
-            vendedor: String(data.vendedor || ''),
-            observacoes: String(data.observacoes || ''),
-            source: 'linvix',
-            tipo: 'REVENDA',
-            carteira: Carteira.SEM_VENDEDOR,
-          },
-          update: {
-            // Only update fields that have new data (don't erase existing)
-            ...(data.razaoSocial ? { razaoSocial: String(data.razaoSocial) } : {}),
-            ...(data.nomeFantasia ? { nomeFantasia: String(data.nomeFantasia) } : {}),
-            ...(data.cnpj ? { cnpj: cnpjNormalized } : {}),
-            ...(data.ieRg ? { ieRg: String(data.ieRg) } : {}),
-            ...(data.telefone1 ? { telefone1: String(data.telefone1) } : {}),
-            ...(data.telefone2 ? { telefone2: String(data.telefone2) } : {}),
-            ...(data.telefone3 ? { telefone3: String(data.telefone3) } : {}),
-            ...(data.telefone4 ? { telefone4: String(data.telefone4) } : {}),
-            ...(data.email1 ? { email1: String(data.email1).toLowerCase().trim() } : {}),
-            ...(data.email2 ? { email2: String(data.email2).toLowerCase().trim() } : {}),
-            ...(data.email3 ? { email3: String(data.email3).toLowerCase().trim() } : {}),
-            ...(data.pessoaContato ? { pessoaContato: String(data.pessoaContato) } : {}),
-            ...(data.endereco ? { endereco: String(data.endereco) } : {}),
-            ...(data.numero ? { numero: String(data.numero) } : {}),
-            ...(data.complemento ? { complemento: String(data.complemento) } : {}),
-            ...(data.bairro ? { bairro: String(data.bairro) } : {}),
-            ...(data.cidade ? { cidade: String(data.cidade) } : {}),
-            ...(data.cep ? { cep: String(data.cep) } : {}),
-            ...(data.uf ? { uf: String(data.uf) } : {}),
-            ...(data.situacaoCadastral ? { situacaoCadastral: String(data.situacaoCadastral) } : {}),
-            ...(data.dataSituacao ? { dataSituacao: String(data.dataSituacao) } : {}),
-            ...(data.dataAbertura ? { dataAbertura: String(data.dataAbertura) } : {}),
-            ...(data.cnaePrincipal ? { cnaePrincipal: String(data.cnaePrincipal) } : {}),
-            ...(data.naturezaJuridica ? { naturezaJuridica: String(data.naturezaJuridica) } : {}),
-            ...(data.porte ? { porte: String(data.porte) } : {}),
-            ...(data.regSimples ? { regSimples: String(data.regSimples) } : {}),
-            ...(data.vendedor ? { vendedor: String(data.vendedor) } : {}),
-            ...(data.observacoes ? { observacoes: String(data.observacoes) } : {}),
-            source: 'linvix',
-          },
-        })
-      })
+        // All columns in insert order
+        const allColumns = [
+          'id', 'codigo',
+          'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
+          'telefone1', 'telefone2', 'telefone3', 'telefone4',
+          'email1', 'email2', 'email3', 'pessoaContato',
+          'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
+          'situacaoCadastral', 'dataSituacao', 'dataAbertura',
+          'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
+          'vendedor', 'observacoes',
+          'source', 'tipo', 'carteira', 'fornecedor', 'sheetsRow',
+        ]
 
-      // Execute the entire batch in a single transaction
-      const results = await db.$transaction(upsertOps)
+        // Values for this row (in same order as columns)
+        const rowValues = [
+          id, String(clientData.codigo),
+          fields.razaoSocial || '', fields.nomeFantasia || '', cnpjNormalized, fields.ieRg || '',
+          fields.telefone1 || '', fields.telefone2 || '', fields.telefone3 || '', fields.telefone4 || '',
+          fields.email1 || '', fields.email2 || '', fields.email3 || '', fields.pessoaContato || '',
+          fields.endereco || '', fields.numero || '', fields.complemento || '',
+          fields.bairro || '', fields.cidade || '', fields.cep || '', fields.uf || '',
+          fields.situacaoCadastral || '', fields.dataSituacao || '', fields.dataAbertura || '',
+          fields.cnaePrincipal || '', fields.naturezaJuridica || '', fields.porte || '', fields.regSimples || '',
+          fields.vendedor || '', fields.observacoes || '',
+          'linvix', 'REVENDA', 'SEM_VENDEDOR', false, 0,
+        ]
 
-      // Count created vs updated
-      for (let j = 0; j < results.length; j++) {
-        const existingBefore = batch[j]
-        // $transaction with upsert returns the records
-        // We can check if it was created by comparing createdAt and updatedAt
-        const record = results[j] as any
-        if (record.createdAt && record.updatedAt && 
-            Math.abs(record.createdAt.getTime() - record.updatedAt.getTime()) < 1000) {
+        const rowPlaceholders = rowValues.map(() => `$${paramIdx++}`)
+        valuesClauses.push(`(${rowPlaceholders.join(', ')})`)
+        params.push(...rowValues)
+      }
+
+      if (valuesClauses.length === 0) continue
+
+      // Update columns (only non-empty new values, keep old if new is empty)
+      const updateColumns = [
+        'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
+        'telefone1', 'telefone2', 'telefone3', 'telefone4',
+        'email1', 'email2', 'email3', 'pessoaContato',
+        'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
+        'situacaoCadastral', 'dataSituacao', 'dataAbertura',
+        'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
+        'vendedor', 'observacoes',
+      ]
+
+      const updateSet = updateColumns.map(col =>
+        `"${col}" = COALESCE(NULLIF(EXCLUDED."${col}", ''), "Cliente"."${col}")`
+      ).join(',\n    ')
+
+      const sql = `
+        INSERT INTO "Cliente" (
+          id, codigo,
+          "razaoSocial", "nomeFantasia", "cnpj", "ieRg",
+          "telefone1", "telefone2", "telefone3", "telefone4",
+          "email1", "email2", "email3", "pessoaContato",
+          "endereco", "numero", "complemento", "bairro", "cidade", "cep", "uf",
+          "situacaoCadastral", "dataSituacao", "dataAbertura",
+          "cnaePrincipal", "naturezaJuridica", "porte", "regSimples",
+          "vendedor", "observacoes",
+          "source", "tipo", "carteira", "fornecedor", "sheetsRow"
+        )
+        VALUES ${valuesClauses.join(',\n    ')}
+        ON CONFLICT (codigo) DO UPDATE SET
+          ${updateSet},
+          "source" = EXCLUDED."source"
+        RETURNING (xmax = 0) AS is_new
+      `
+
+      const result = await db.$queryRawUnsafe<{ is_new: boolean }[]>(sql, ...params)
+
+      for (const row of result) {
+        if (row.is_new) {
           created++
         } else {
           updated++
         }
       }
 
-      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados`)
+      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados (bulk upsert)`)
 
     } catch (err: any) {
       errors += batch.length
-      const msg = `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${err.message?.substring(0, 150)}`
+      const msg = `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${err.message?.substring(0, 200)}`
       errorDetails.push(msg)
       console.error(`[sync/linvix] ${msg}`)
-      
-      // Fallback: try individual upserts for this batch
-      console.log(`[sync/linvix] Fallback: tentando upserts individuais...`)
-      for (const clientData of batch) {
-        try {
-          const cnpjNormalized = (clientData.cnpj || '').replace(/\D/g, '')
-          
-          const data: Record<string, unknown> = {}
-          const fieldsToMap: Array<{ linvix: keyof LinvixClientData; mtech: string }> = [
-            { linvix: 'razaoSocial', mtech: 'razaoSocial' },
-            { linvix: 'nomeFantasia', mtech: 'nomeFantasia' },
-            { linvix: 'cnpj', mtech: 'cnpj' },
-            { linvix: 'ieRg', mtech: 'ieRg' },
-            { linvix: 'telefone1', mtech: 'telefone1' },
-            { linvix: 'telefone2', mtech: 'telefone2' },
-            { linvix: 'telefone3', mtech: 'telefone3' },
-            { linvix: 'telefone4', mtech: 'telefone4' },
-            { linvix: 'email1', mtech: 'email1' },
-            { linvix: 'email2', mtech: 'email2' },
-            { linvix: 'email3', mtech: 'email3' },
-            { linvix: 'bairro', mtech: 'bairro' },
-            { linvix: 'cidade', mtech: 'cidade' },
-            { linvix: 'uf', mtech: 'uf' },
-            { linvix: 'vendedor', mtech: 'vendedor' },
-            { linvix: 'observacoes', mtech: 'observacoes' },
-          ]
-
-          for (const { linvix, mtech } of fieldsToMap) {
-            const value = clientData[linvix]
-            if (value !== undefined && value !== null && value !== '') {
-              if (mtech.startsWith('email')) {
-                data[mtech] = String(value).toLowerCase().trim()
-              } else if (mtech === 'cnpj') {
-                data[mtech] = cnpjNormalized
-              } else {
-                data[mtech] = String(value)
-              }
-            }
-          }
-
-          const existing = await db.cliente.findUnique({
-            where: { codigo: String(clientData.codigo) },
-          })
-
-          if (existing) {
-            const updateData: Record<string, unknown> = { source: 'linvix' }
-            let hasChanges = false
-            for (const [key, newValue] of Object.entries(data)) {
-              if (key === 'source') continue
-              const oldValue = String((existing as any)[key] ?? '')
-              const newStr = String(newValue ?? '')
-              if (newStr !== '' && newStr !== oldValue) {
-                updateData[key] = newValue
-                hasChanges = true
-              }
-            }
-            if (hasChanges) {
-              await db.cliente.update({
-                where: { codigo: String(clientData.codigo) },
-                data: updateData,
-              })
-              updated++
-            } else {
-              skipped++
-            }
-          } else {
-            await db.cliente.create({
-              data: {
-                codigo: String(clientData.codigo),
-                razaoSocial: String(data.razaoSocial || ''),
-                nomeFantasia: String(data.nomeFantasia || ''),
-                cnpj: cnpjNormalized,
-                ieRg: String(data.ieRg || ''),
-                telefone1: String(data.telefone1 || ''),
-                telefone2: String(data.telefone2 || ''),
-                telefone3: String(data.telefone3 || ''),
-                telefone4: String(data.telefone4 || ''),
-                email1: String(data.email1 || '').toLowerCase().trim(),
-                email2: '',
-                email3: '',
-                pessoaContato: '',
-                endereco: '',
-                numero: '',
-                complemento: '',
-                bairro: String(data.bairro || ''),
-                cidade: String(data.cidade || ''),
-                cep: '',
-                uf: String(data.uf || ''),
-                situacaoCadastral: '',
-                dataSituacao: '',
-                dataAbertura: '',
-                cnaePrincipal: '',
-                naturezaJuridica: '',
-                porte: '',
-                regSimples: '',
-                vendedor: String(data.vendedor || ''),
-                observacoes: String(data.observacoes || ''),
-                source: 'linvix',
-                tipo: 'REVENDA',
-                carteira: Carteira.SEM_VENDEDOR,
-              },
-            })
-            created++
-          }
-          errors-- // Was counted as error, now succeeded
-        } catch (innerErr: any) {
-          // Keep the error count
-          errorDetails.push(`Cliente ${clientData.codigo}: ${innerErr.message?.substring(0, 100)}`)
-        }
-      }
     }
   }
 
