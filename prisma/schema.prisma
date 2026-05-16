@@ -86,6 +86,7 @@ model Cliente {
 
   vendedorUser User? @relation("VendedorClientes", fields: [vendedorId], references: [id], onDelete: SetNull)
   favorites   Favorite[]
+  vendas      Venda[]
 
   @@index([cnpj])
   @@index([cidade])
@@ -226,4 +227,83 @@ model LinvixSyncLog {
 
   @@index([startedAt])
   @@index([status])
+}
+
+// ─── Venda (NF-e) ────────────────────────────────
+// Sincronizado do Linvix ERP → M-Tech (unidirecional)
+// Apenas dados comerciais — tributação não é importada por enquanto
+
+model Venda {
+  id                String   @id @default(cuid())
+  linvixId          Int      @unique              // ID interno do Linvix
+  uuid              String   @default("")         // UUID da NF-e
+  faturamento       Int      @default(0)          // Nº do faturamento Linvix
+  numeroPedido      Int      @default(0)          // Nº do pedido originário
+  numero            String   @default("")         // Número da NF-e
+  serie             String   @default("1")        // Série da NF-e
+  clienteCodigo     String                        // FK → Cliente.codigo
+  finalidade        String   @default("")         // "1 - NORMAL", "2 - COMPLEMENTAR", etc.
+  situacao          String   @default("")         // "AUTORIZADO", "CANCELAMENTO", "AGUARDANDO", etc.
+  valorTotal        Float    @default(0)          // Valor total da nota
+  dataEmissao       DateTime?                     // Data/hora de emissão
+  dataSaida         DateTime?                     // Data/hora de saída
+  operador          String   @default("")         // Quem emitiu a NF-e
+  naturezaOperacao  String   @default("")         // "VENDA DE MERCADORIAS..."
+  emitente          String   @default("")         // Emitente (M-TECH ou RP)
+  chave             String   @default("")         // Chave de acesso NF-e
+  transportadora    String   @default("")         // Nome da transportadora
+  devolvido         Boolean  @default(false)       // Se foi devolvido
+  observacoes       String   @default("")  @db.Text
+
+  // Pagamento (resumo financeiro)
+  valorVenda        Float    @default(0)
+  valorPago         Float    @default(0)
+  valorProdutos     Float    @default(0)
+  valorFrete        Float    @default(0)
+  valorDesconto     Float    @default(0)
+  valorFinal        Float    @default(0)
+  formaPagamento    String   @default("")         // "12x Sem Juros", "À Vista", etc.
+
+  // Sync metadata
+  source            String   @default("linvix")   // Sempre "linvix"
+  syncedAt          DateTime @default(now())      // Quando foi sincronizado
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relações
+  cliente           Cliente  @relation(fields: [clienteCodigo], references: [codigo], onDelete: Cascade)
+  itens             VendaItem[]
+
+  @@index([clienteCodigo])
+  @@index([dataEmissao])
+  @@index([situacao])
+  @@index([numero])
+  @@index([faturamento])
+}
+
+// ─── Itens da Venda (Produtos da NF-e) ──────────
+
+model VendaItem {
+  id                String   @id @default(cuid())
+  vendaId           String                        // FK → Venda.id
+  item              Int      @default(0)          // Número do item na NF-e
+  codigoProduto     String   @default("")         // Código do produto
+  descricao         String   @default("")         // Descrição do produto
+  unidade           String   @default("")         // UND, PC, etc.
+  quantidade        Float    @default(0)          // Quantidade
+  precoVenda        Float    @default(0)          // Preço unitário
+  valorDesconto     Float    @default(0)          // Desconto total
+  valorCusto        Float    @default(0)          // Custo unitário
+  valorTotal        Float    @default(0)          // Valor total do item
+  vendedor          String   @default("")         // Vendedor do item
+  ncm               String   @default("")         // Código NCM
+  cfop              String   @default("")         // CFOP
+
+  createdAt         DateTime @default(now())
+
+  // Relação
+  venda             Venda    @relation(fields: [vendaId], references: [id], onDelete: Cascade)
+
+  @@index([vendaId])
+  @@index([codigoProduto])
 }

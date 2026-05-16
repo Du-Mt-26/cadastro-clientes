@@ -10,6 +10,7 @@ import {
   Building2,
   StickyNote,
   Clock,
+  ShoppingCart,
 } from 'lucide-react'
 
 // ─── Interfaces ───────────────────────────────────
@@ -224,7 +225,7 @@ export const EMPTY_FORM: NewClientForm = {
 
 // ─── Detail Modal Tabs ────────────────────────────
 
-export type DetailTab = 'contato' | 'comercial' | 'endereco' | 'fiscal' | 'obs' | 'historico'
+export type DetailTab = 'contato' | 'comercial' | 'endereco' | 'fiscal' | 'obs' | 'vendas' | 'historico'
 
 export const DETAIL_TABS: { key: DetailTab; label: string; icon: React.ElementType }[] = [
   { key: 'contato', label: 'Contato', icon: Phone },
@@ -232,6 +233,7 @@ export const DETAIL_TABS: { key: DetailTab; label: string; icon: React.ElementTy
   { key: 'endereco', label: 'Endereço', icon: MapPin },
   { key: 'fiscal', label: 'Fiscal', icon: Building2 },
   { key: 'obs', label: 'Obs.', icon: StickyNote },
+  { key: 'vendas', label: 'Vendas', icon: ShoppingCart },
   { key: 'historico', label: 'Histórico', icon: Clock },
 ]
 
