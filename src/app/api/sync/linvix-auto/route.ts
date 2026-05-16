@@ -549,6 +549,10 @@ export async function POST(request: NextRequest) {
   // Check authorization: either SYNC_SECRET or NextAuth session
   const syncSecret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret')
 
+  // Vercel Cron jobs send this header automatically — trust it
+  if (request.headers.get('x-vercel-cron') === 'true') {
+    // Allow Vercel cron through without secret
+  } else
   if (SYNC_SECRET && syncSecret !== SYNC_SECRET) {
     // If SYNC_SECRET is configured, validate it
     // (if not configured, allow all — for development)
