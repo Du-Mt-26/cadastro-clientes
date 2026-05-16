@@ -323,9 +323,7 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   return allClients
 }
 
-// ─── Upsert Logic (Optimized: Raw SQL with proper type casting) ──
-
-import { Prisma } from '@prisma/client'
+// ─── Upsert Logic (Optimized with Raw SQL) ─────────────────
 
 async function upsertClients(clients: LinvixClientData[]): Promise<{
   created: number
@@ -340,17 +338,14 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
   let errors = 0
   const errorDetails: string[] = []
 
-  // Filter out clients without codigo
   const validClients = clients.filter(c => c.codigo)
   skipped += clients.length - validClients.length
 
-  // Process in batches of 500 using raw SQL bulk upsert
   const BATCH_SIZE = 500
   for (let i = 0; i < validClients.length; i += BATCH_SIZE) {
     const batch = validClients.slice(i, i + BATCH_SIZE)
 
     try {
-      // Build parameterized bulk upsert
       const valuesClauses: string[] = []
       const params: unknown[] = []
       let paramIdx = 1
@@ -403,23 +398,9 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           }
         }
 
-        // Generate a CUID-like ID
         const id = `cl${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6).padEnd(4, '0')}${String(paramIdx).padStart(4, '0')}`
 
-        // All columns in insert order
-        const allColumns = [
-          'id', 'codigo',
-          'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
-          'telefone1', 'telefone2', 'telefone3', 'telefone4',
-          'email1', 'email2', 'email3', 'pessoaContato',
-          'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
-          'situacaoCadastral', 'dataSituacao', 'dataAbertura',
-          'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
-          'vendedor', 'observacoes',
-          'source', 'tipo', 'carteira', 'fornecedor', 'sheetsRow',
-        ]
-
-        // Values for this row (in same order as columns)
+        // Omit enum/bool/int columns (carteira, fornecedor, sheetsRow, tipo) - schema defaults handle them
         const rowValues = [
           id, String(clientData.codigo),
           fields.razaoSocial || '', fields.nomeFantasia || '', cnpjNormalized, fields.ieRg || '',
@@ -430,7 +411,7 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           fields.situacaoCadastral || '', fields.dataSituacao || '', fields.dataAbertura || '',
           fields.cnaePrincipal || '', fields.naturezaJuridica || '', fields.porte || '', fields.regSimples || '',
           fields.vendedor || '', fields.observacoes || '',
-          'linvix', 'REVENDA', 'SEM_VENDEDOR', false, 0,
+          'linvix',
         ]
 
         const rowPlaceholders = rowValues.map(() => `$${paramIdx++}`)
@@ -440,7 +421,6 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
 
       if (valuesClauses.length === 0) continue
 
-      // Update columns (only non-empty new values, keep old if new is empty)
       const updateColumns = [
         'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
         'telefone1', 'telefone2', 'telefone3', 'telefone4',
@@ -451,8 +431,9 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
         'vendedor', 'observacoes',
       ]
 
+      const q = (s: string) => `"${s}"`
       const updateSet = updateColumns.map(col =>
-        `"${col}" = COALESCE(NULLIF(EXCLUDED."${col}", ''), "Cliente"."${col}")`
+        `${q(col)} = COALESCE(NULLIF(EXCLUDED.${q(col)}, ''), "Cliente".${q(col)})`
       ).join(',\n    ')
 
       const sql = `
@@ -465,7 +446,7 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           "situacaoCadastral", "dataSituacao", "dataAbertura",
           "cnaePrincipal", "naturezaJuridica", "porte", "regSimples",
           "vendedor", "observacoes",
-          "source", "tipo", "carteira", "fornecedor", "sheetsRow"
+          "source"
         )
         VALUES ${valuesClauses.join(',\n    ')}
         ON CONFLICT (codigo) DO UPDATE SET
@@ -484,7 +465,7 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
         }
       }
 
-      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados (bulk upsert)`)
+      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados`)
 
     } catch (err: any) {
       errors += batch.length
@@ -496,6 +477,7 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
 
   return { created, updated, skipped, errors, errorDetails }
 }
+
 // ─── Auto-Sync ─────────────────────────────────────────
 
 async function runAutoSync(): Promise<{
