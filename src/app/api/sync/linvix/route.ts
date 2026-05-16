@@ -413,7 +413,8 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         // Build row: gen_random_uuid()::text for id, $N for params, NOW() for timestamps
         const placeholders = [
           'gen_random_uuid()::text',  // id — PostgreSQL 13+ built-in
-          ...params.map(() => `$${paramIdx++}`),
+          ...params.slice(0, -1).map(() => `$${paramIdx++}`),  // All params except carteira
+          `$${paramIdx++}::"Carteira"`,  // carteira — cast to enum type
           'NOW()',   // updatedAt
           'NOW()',   // createdAt
         ]
