@@ -283,6 +283,7 @@ export async function PATCH(request: NextRequest) {
       'telefone1', 'telefone2', 'telefone3', 'telefone4',
       'email1', 'email2', 'email3',
       'pessoaContato', 'observacoes',
+      'ultimaVenda', 'cadastro', 'ieRg',
     ];
 
     const updateData: Record<string, unknown> = {};
