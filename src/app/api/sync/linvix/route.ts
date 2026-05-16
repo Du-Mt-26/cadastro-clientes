@@ -323,7 +323,7 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   return allClients
 }
 
-// ─── Upsert Logic ──────────────────────────────────────
+// ─── Upsert Logic (Optimized with Bulk SQL) ──────────────────
 
 async function upsertClients(clients: LinvixClientData[]): Promise<{
   created: number
@@ -338,21 +338,28 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
   let errors = 0
   const errorDetails: string[] = []
 
-  const BATCH_SIZE = 50
-  for (let i = 0; i < clients.length; i += BATCH_SIZE) {
-    const batch = clients.slice(i, i + BATCH_SIZE)
+  // Filter out clients without codigo
+  const validClients = clients.filter(c => c.codigo)
+  skipped += clients.length - validClients.length
 
-    for (const clientData of batch) {
-      try {
-        if (!clientData.codigo) {
-          skipped++
-          continue
-        }
+  // Process in batches of 200 for bulk SQL
+  const BATCH_SIZE = 200
+  for (let i = 0; i < validClients.length; i += BATCH_SIZE) {
+    const batch = validClients.slice(i, i + BATCH_SIZE)
 
+    try {
+      // Build a single bulk upsert SQL statement
+      // INSERT ... ON CONFLICT (codigo) DO UPDATE SET ...
+      // Only updates fields where the new value is not empty
+      const values: string[] = []
+      const params: string[] = []
+      let paramIdx = 1
+
+      for (const clientData of batch) {
         const cnpjNormalized = (clientData.cnpj || '').replace(/\D/g, '')
 
-        const data: Record<string, unknown> = {}
-
+        // Collect all field values for this row
+        const fields: Record<string, string> = {}
         const fieldsToMap: Array<{ linvix: keyof LinvixClientData; mtech: string }> = [
           { linvix: 'razaoSocial', mtech: 'razaoSocial' },
           { linvix: 'nomeFantasia', mtech: 'nomeFantasia' },
@@ -388,99 +395,105 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           const value = clientData[linvix]
           if (value !== undefined && value !== null && value !== '') {
             if (mtech.startsWith('email')) {
-              data[mtech] = String(value).toLowerCase().trim()
+              fields[mtech] = String(value).toLowerCase().trim()
             } else if (mtech === 'cnpj') {
-              data[mtech] = cnpjNormalized
+              fields[mtech] = cnpjNormalized
             } else {
-              data[mtech] = String(value)
+              fields[mtech] = String(value)
             }
           }
         }
 
-        data.source = 'linvix'
+        // Build value placeholders for this row
+        // Columns: id, codigo, all fields..., source, tipo, carteira
+        const rowParams: string[] = []
+        
+        // Generate a cuid-like ID (simplified)
+        const id = `cl_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}_${paramIdx}`
+        
+        rowParams.push(`$${paramIdx++}`) // id
+        params.push(id)
+        rowParams.push(`$${paramIdx++}`) // codigo
+        params.push(String(clientData.codigo))
 
-        const existing = await db.cliente.findUnique({
-          where: { codigo: String(clientData.codigo) },
-        })
+        // All field columns in order matching the INSERT column list
+        const allColumns = [
+          'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
+          'telefone1', 'telefone2', 'telefone3', 'telefone4',
+          'email1', 'email2', 'email3', 'pessoaContato',
+          'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
+          'situacaoCadastral', 'dataSituacao', 'dataAbertura',
+          'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
+          'vendedor', 'observacoes'
+        ]
 
-        if (existing) {
-          const updateData: Record<string, unknown> = { source: 'linvix' }
-          let hasChanges = false
-
-          for (const [key, newValue] of Object.entries(data)) {
-            if (key === 'source') continue
-            const oldValue = String((existing as any)[key] ?? '')
-            const newStr = String(newValue ?? '')
-            if (newStr !== '' && newStr !== oldValue) {
-              updateData[key] = newValue
-              hasChanges = true
-            }
-          }
-
-          if (hasChanges) {
-            await db.cliente.update({
-              where: { codigo: String(clientData.codigo) },
-              data: updateData,
-            })
-            updated++
-          } else {
-            skipped++
-          }
-        } else {
-          await db.cliente.create({
-            data: {
-              codigo: String(clientData.codigo),
-              razaoSocial: String(data.razaoSocial || ''),
-              nomeFantasia: String(data.nomeFantasia || ''),
-              cnpj: cnpjNormalized,
-              ieRg: String(data.ieRg || ''),
-              telefone1: String(data.telefone1 || ''),
-              telefone2: String(data.telefone2 || ''),
-              telefone3: String(data.telefone3 || ''),
-              telefone4: String(data.telefone4 || ''),
-              email1: String(data.email1 || '').toLowerCase().trim(),
-              email2: String(data.email2 || '').toLowerCase().trim(),
-              email3: String(data.email3 || '').toLowerCase().trim(),
-              pessoaContato: String(data.pessoaContato || ''),
-              endereco: String(data.endereco || ''),
-              numero: String(data.numero || ''),
-              complemento: String(data.complemento || ''),
-              bairro: String(data.bairro || ''),
-              cidade: String(data.cidade || ''),
-              cep: String(data.cep || ''),
-              uf: String(data.uf || ''),
-              situacaoCadastral: String(data.situacaoCadastral || ''),
-              dataSituacao: String(data.dataSituacao || ''),
-              dataAbertura: String(data.dataAbertura || ''),
-              cnaePrincipal: String(data.cnaePrincipal || ''),
-              naturezaJuridica: String(data.naturezaJuridica || ''),
-              porte: String(data.porte || ''),
-              regSimples: String(data.regSimples || ''),
-              vendedor: String(data.vendedor || ''),
-              observacoes: String(data.observacoes || ''),
-              source: 'linvix',
-              tipo: 'REVENDA',
-              carteira: Carteira.SEM_VENDEDOR,
-            },
-          })
-          created++
+        for (const col of allColumns) {
+          rowParams.push(`$${paramIdx++}`)
+          params.push(fields[col] || '')
         }
-      } catch (err: any) {
-        errors++
-        const msg = `Cliente ${clientData.codigo}: ${err.message?.substring(0, 100)}`
-        errorDetails.push(msg)
-        if (errors <= 5) console.error(`[sync/linvix] ${msg}`)
+
+        rowParams.push(`$${paramIdx++}`) // source
+        params.push('linvix')
+        rowParams.push(`$${paramIdx++}`) // tipo
+        params.push('REVENDA')
+        rowParams.push(`$${paramIdx++}`) // carteira
+        params.push('SEM_VENDEDOR')
+
+        values.push(`(${rowParams.join(', ')})`)
       }
-    }
 
-    if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= clients.length) {
-      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, clients.length)}/${clients.length} processados`)
+      if (values.length === 0) continue
+
+      // Build the full SQL
+      const allColumns = [
+        'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
+        'telefone1', 'telefone2', 'telefone3', 'telefone4',
+        'email1', 'email2', 'email3', 'pessoaContato',
+        'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
+        'situacaoCadastral', 'dataSituacao', 'dataAbertura',
+        'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
+        'vendedor', 'observacoes'
+      ]
+
+      // ON CONFLICT DO UPDATE: only set fields where new value is non-empty
+      const updateClauses = allColumns
+        .map(col => {
+          // Use COALESCE(NULLIF(EXCLUDED.col, ''), "Cliente".col) to keep old value if new is empty
+          return `"${col}" = COALESCE(NULLIF(EXCLUDED."${col}", ''), "Cliente"."${col}")`
+        })
+        .join(',\n    ')
+
+      const sql = `
+        INSERT INTO "Cliente" (id, codigo, ${allColumns.map(c => `"${c}"`).join(', ')}, source, tipo, carteira)
+        VALUES ${values.join(',\n    ')}
+        ON CONFLICT (codigo) DO UPDATE SET
+          ${updateClauses},
+          source = EXCLUDED.source
+        RETURNING (xmax = 0) AS is_new
+      `
+
+      const result = await db.$queryRawUnsafe<{ is_new: boolean }[]>(sql, ...params)
+      
+      // Count created vs updated
+      for (const row of result) {
+        if (row.is_new) {
+          created++
+        } else {
+          updated++
+        }
+      }
+
+      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados (batch upsert)`)
+    } catch (err: any) {
+      errors += batch.length
+      const msg = `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${err.message?.substring(0, 100)}`
+      errorDetails.push(msg)
+      console.error(`[sync/linvix] ${msg}`)
     }
   }
 
   return { created, updated, skipped, errors, errorDetails }
 }
-
 // ─── Auto-Sync ─────────────────────────────────────────
 
 async function runAutoSync(): Promise<{
