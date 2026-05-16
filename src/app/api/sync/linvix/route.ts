@@ -323,7 +323,7 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   return allClients
 }
 
-// ─── Upsert Logic (Optimized: Parallel Prisma upserts) ──────────
+// ─── Upsert Logic (Page-by-page for Vercel 60s timeout) ────────
 
 async function upsertClients(clients: LinvixClientData[]): Promise<{
   created: number
@@ -341,7 +341,7 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
   const validClients = clients.filter(c => c.codigo)
   skipped += clients.length - validClients.length
 
-  // Process in batches of 50, executing upserts in parallel within each batch
+  // Process in batches of 50 parallel upserts
   const BATCH_SIZE = 50
   for (let i = 0; i < validClients.length; i += BATCH_SIZE) {
     const batch = validClients.slice(i, i + BATCH_SIZE)
@@ -470,7 +470,6 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
 
     for (const result of results) {
       if (result.status === 'fulfilled') {
-        // Check if it was created or updated based on createdAt vs updatedAt
         const record = result.value as any
         if (record.createdAt && record.updatedAt &&
             Math.abs(record.createdAt.getTime() - record.updatedAt.getTime()) < 2000) {
@@ -485,18 +484,17 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
         }
       }
     }
-
-    if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= validClients.length) {
-      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length}`)
-    }
   }
 
   return { created, updated, skipped, errors, errorDetails }
 }
 
-// ─── Auto-Sync ─────────────────────────────────────────
+// ─── Auto-Sync (Page-by-page for Vercel 60s timeout) ───────────
+// Each run processes ONE page of clients from Linvix (~350 clients).
+// The cron runs daily, so a full sync completes every 7 days.
+// Manual trigger with ?mode=auto&full=true does all pages at once (may timeout).
 
-async function runAutoSync(): Promise<{
+async function runAutoSync(request: NextRequest): Promise<{
   success: boolean
   totalClients: number
   created: number
@@ -508,21 +506,47 @@ async function runAutoSync(): Promise<{
   pagesScraped: number
 }> {
   const startTime = Date.now()
+  const isFullSync = request.nextUrl.searchParams.get('full') === 'true'
 
   const phpsessid = await loginToLinvix()
-  const rawClients = await fetchAllClientsFromLinvix(phpsessid)
-  const clients = rawClients.map(mapLinvixRowToMtech)
-  const pagesScraped = Math.ceil(rawClients.length / PAGE_SIZE) || 1
 
+  if (isFullSync) {
+    // Full sync: fetch ALL pages (may timeout on Vercel Hobby)
+    const rawClients = await fetchAllClientsFromLinvix(phpsessid)
+    const clients = rawClients.map(mapLinvixRowToMtech)
+    const pagesScraped = Math.ceil(rawClients.length / PAGE_SIZE) || 1
+    const result = await upsertClients(clients)
+    return { success: true, totalClients: rawClients.length, ...result, durationMs: Date.now() - startTime, pagesScraped }
+  }
+
+  // Page-by-page sync: fetch only ONE page per cron run
+  // Determine which page to process next
+  const lastSync = await db.linvixSyncLog.findFirst({
+    where: { status: { in: ['success', 'partial'] } },
+    orderBy: { startedAt: 'desc' },
+  })
+
+  let nextPage = 1
+  if (lastSync) {
+    const lastPage = lastSync.pagesScraped || 0
+    // Calculate total pages from last sync
+    const totalPages = Math.ceil((lastSync.totalClients || 2279) / PAGE_SIZE) || 7
+    nextPage = (lastPage % totalPages) + 1
+  }
+
+  const start = (nextPage - 1) * PAGE_SIZE
+  console.log(`[sync/linvix] Page-by-page sync: fetching page ${nextPage} (start=${start})`)
+
+  const pageData = await fetchDataTablePage(phpsessid, nextPage, start)
+  const clients = pageData.data.map(mapLinvixRowToMtech)
   const result = await upsertClients(clients)
-  const durationMs = Date.now() - startTime
 
   return {
-    success: result.errors === 0 || result.created + result.updated > 0,
-    totalClients: rawClients.length,
+    success: true,
+    totalClients: pageData.recordsTotal,
     ...result,
-    durationMs,
-    pagesScraped,
+    durationMs: Date.now() - startTime,
+    pagesScraped: nextPage,
   }
 }
 
