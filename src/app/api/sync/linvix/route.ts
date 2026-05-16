@@ -39,6 +39,9 @@ function validateApiKey(request: NextRequest): boolean {
 }
 
 function validateSyncSecret(request: NextRequest): boolean {
+  // Vercel Cron jobs send this header automatically
+  if (request.headers.get('x-vercel-cron') === 'true') return true
+
   // If SYNC_SECRET is not configured, allow all (for development)
   if (!SYNC_SECRET) return true
   const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || ''
