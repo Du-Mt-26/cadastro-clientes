@@ -64,6 +64,7 @@ import {
   Package,
   MessageCircle,
   Star,
+  ShoppingCart,
 } from 'lucide-react'
 import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import { useSession } from 'next-auth/react'
@@ -330,6 +331,13 @@ export default function HomeClient() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([])
   const [loadingAudit, setLoadingAudit] = useState(false)
 
+  // Client vendas (NF-e) state
+  const [clienteVendas, setClienteVendas] = useState<any[]>([])
+  const [clienteVendasStats, setClienteVendasStats] = useState<any>(null)
+  const [loadingVendas, setLoadingVendas] = useState(false)
+  const [vendaDetail, setVendaDetail] = useState<any>(null)
+  const [loadingVendaDetail, setLoadingVendaDetail] = useState(false)
+
   // Auth guard - redirect to login if not authenticated
   useEffect(() => {
     if (sessionStatus === 'unauthenticated') {
@@ -551,6 +559,22 @@ export default function HomeClient() {
         .then(json => setAuditLogs(json.data || []))
         .catch(() => setAuditLogs([]))
         .finally(() => setLoadingAudit(false))
+    }
+  }, [detailTab, detailClient])
+
+  // Fetch vendas when vendas tab is active
+  useEffect(() => {
+    if (detailTab === 'vendas' && detailClient) {
+      setLoadingVendas(true)
+      setVendaDetail(null)
+      fetch(`/api/clientes/${detailClient.parsed.codigo}/vendas`)
+        .then(res => res.json())
+        .then(json => {
+          setClienteVendas(json.data || [])
+          setClienteVendasStats(json.stats || null)
+        })
+        .catch(() => { setClienteVendas([]); setClienteVendasStats(null) })
+        .finally(() => setLoadingVendas(false))
     }
   }, [detailTab, detailClient])
 
@@ -1221,6 +1245,7 @@ export default function HomeClient() {
                   { key: 'endereco', label: 'Endereço', icon: MapPin },
                   { key: 'comercial', label: 'Comercial', icon: Briefcase },
                   { key: 'obs', label: 'Observações', icon: StickyNote },
+                  { key: 'vendas', label: 'Vendas', icon: ShoppingCart },
                   { key: 'historico', label: 'Histórico', icon: Clock },
                 ]
 
@@ -1521,6 +1546,149 @@ export default function HomeClient() {
                           className="w-full min-h-[300px] text-sm border rounded-md p-4 bg-white dark:bg-slate-900 dark:border-slate-600 dark:text-slate-200 resize-y focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 leading-relaxed"
                           placeholder="Escreva observações sobre o cliente aqui..."
                         />
+                      </fieldset>
+                    )}
+
+                    {/* ═══ VENDAS TAB (NF-e data from Linvix) ═══ */}
+                    {activeTab === 'vendas' && r && (
+                      <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                        <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><ShoppingCart className="size-3.5" />Vendas (NF-e)</legend>
+                        {loadingVendas ? (
+                          <div className="flex items-center gap-2 py-4 text-slate-500 dark:text-slate-400"><Loader2 className="size-4 animate-spin" /><span className="text-sm">Carregando vendas...</span></div>
+                        ) : (
+                          <>
+                            {/* Stats summary */}
+                            {clienteVendasStats && (
+                              <div className="grid grid-cols-3 gap-3 mb-4">
+                                <div className="bg-emerald-50 dark:bg-emerald-900/30 rounded-lg p-3 text-center">
+                                  <div className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Total Vendido</div>
+                                  <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{(clienteVendasStats.totalVendido || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                                </div>
+                                <div className="bg-blue-50 dark:bg-blue-900/30 rounded-lg p-3 text-center">
+                                  <div className="text-xs text-blue-600 dark:text-blue-400 font-medium">NF-e Autorizadas</div>
+                                  <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{clienteVendasStats.totalNotas || 0}</div>
+                                </div>
+                                <div className="bg-amber-50 dark:bg-amber-900/30 rounded-lg p-3 text-center">
+                                  <div className="text-xs text-amber-600 dark:text-amber-400 font-medium">Última Venda</div>
+                                  <div className="text-lg font-bold text-amber-700 dark:text-amber-300">
+                                    {clienteVendasStats.ultimaVenda
+                                      ? new Date(clienteVendasStats.ultimaVenda).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                                      : '—'}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Vendas list */}
+                            {clienteVendas.length > 0 ? (
+                              <div className="space-y-2 max-h-96 overflow-y-auto">
+                                {clienteVendas.map((venda: any) => {
+                                  const isAutorizada = venda.situacao?.includes('AUTORIZADO')
+                                  const isCancelada = venda.situacao?.includes('CANCELAMENTO')
+                                  return (
+                                    <div
+                                      key={venda.id}
+                                      className={`p-3 rounded-lg border cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors ${
+                                        isCancelada ? 'border-red-200 bg-red-50/50 dark:border-red-800 dark:bg-red-900/20' :
+                                        isAutorizada ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-900/20' :
+                                        'border-slate-200 dark:border-slate-700'
+                                      }`}
+                                      onClick={() => {
+                                        setLoadingVendaDetail(true)
+                                        fetch(`/api/vendas/${venda.id}`)
+                                          .then(res => res.json())
+                                          .then(json => setVendaDetail(json.data))
+                                          .catch(() => setVendaDetail(null))
+                                          .finally(() => setLoadingVendaDetail(false))
+                                      }}
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                          <Badge className={`text-[10px] font-semibold ${
+                                            isAutorizada ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300' :
+                                            isCancelada ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300' :
+                                            'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300'
+                                          }`}>
+                                            {isAutorizada ? 'Autorizada' : isCancelada ? 'Cancelada' : 'Aguardando'}
+                                          </Badge>
+                                          <span className="text-xs text-slate-500 dark:text-slate-400">NF {venda.numero}</span>
+                                        </div>
+                                        <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 shrink-0">
+                                          {(venda.valorTotal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center justify-between gap-2 mt-1">
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                                          {venda.dataEmissao ? new Date(venda.dataEmissao).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'}
+                                          {venda.itens?.length > 0 && ` · ${venda.itens.length} item(ns)`}
+                                        </span>
+                                        {venda.itens?.[0]?.vendedor && (
+                                          <span className="text-xs text-teal-600 dark:text-teal-400">{venda.itens[0].vendedor}</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-slate-400 dark:text-slate-500 py-4">Nenhuma venda encontrada para este cliente.</p>
+                            )}
+
+                            {/* Venda detail modal */}
+                            {vendaDetail && (
+                              <div className="mt-4 p-4 bg-white dark:bg-slate-900 rounded-lg border dark:border-slate-700">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                    NF-e {vendaDetail.numero} — Detalhe
+                                  </h4>
+                                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setVendaDetail(null)}>Fechar</Button>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs mb-3">
+                                  <div><span className="text-slate-500 dark:text-slate-400">Faturamento:</span> <span className="font-medium">{vendaDetail.faturamento}</span></div>
+                                  <div><span className="text-slate-500 dark:text-slate-400">Pedido:</span> <span className="font-medium">{vendaDetail.numeroPedido || '—'}</span></div>
+                                  <div><span className="text-slate-500 dark:text-slate-400">Emissão:</span> <span className="font-medium">{vendaDetail.dataEmissao ? new Date(vendaDetail.dataEmissao).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : '—'}</span></div>
+                                  <div><span className="text-slate-500 dark:text-slate-400">Natureza:</span> <span className="font-medium">{vendaDetail.naturezaOperacao || '—'}</span></div>
+                                  <div><span className="text-slate-500 dark:text-slate-400">Forma Pgto:</span> <span className="font-medium">{vendaDetail.formaPagamento || '—'}</span></div>
+                                  <div><span className="text-slate-500 dark:text-slate-400">Valor Final:</span> <span className="font-bold text-emerald-700 dark:text-emerald-400">{(vendaDetail.valorFinal || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span></div>
+                                </div>
+                                {/* Items table */}
+                                {vendaDetail.itens?.length > 0 && (
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b dark:border-slate-700">
+                                          <th className="text-left py-1 px-2 text-slate-500">#</th>
+                                          <th className="text-left py-1 px-2 text-slate-500">Código</th>
+                                          <th className="text-left py-1 px-2 text-slate-500">Descrição</th>
+                                          <th className="text-right py-1 px-2 text-slate-500">Qtd</th>
+                                          <th className="text-right py-1 px-2 text-slate-500">Preço</th>
+                                          <th className="text-right py-1 px-2 text-slate-500">Total</th>
+                                          <th className="text-left py-1 px-2 text-slate-500">Vendedor</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {vendaDetail.itens.map((item: any) => (
+                                          <tr key={item.id} className="border-b dark:border-slate-700/50">
+                                            <td className="py-1 px-2 text-slate-500">{item.item}</td>
+                                            <td className="py-1 px-2 font-mono">{item.codigoProduto}</td>
+                                            <td className="py-1 px-2 max-w-[200px] truncate">{item.descricao}</td>
+                                            <td className="py-1 px-2 text-right">{item.quantidade} {item.unidade}</td>
+                                            <td className="py-1 px-2 text-right">{item.precoVenda.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                            <td className="py-1 px-2 text-right font-medium">{item.valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                            <td className="py-1 px-2 text-teal-600 dark:text-teal-400">{item.vendedor}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            {loadingVendaDetail && (
+                              <div className="flex items-center gap-2 py-2 text-slate-500 dark:text-slate-400"><Loader2 className="size-4 animate-spin" /><span className="text-sm">Carregando detalhe...</span></div>
+                            )}
+                          </>
+                        )}
                       </fieldset>
                     )}
 
