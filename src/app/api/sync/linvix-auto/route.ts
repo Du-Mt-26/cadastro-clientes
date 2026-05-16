@@ -18,7 +18,7 @@ const LINVIX_BASE = 'https://rp.erp.linvix.com'
 const LINVIX_LOGIN_URL = `${LINVIX_BASE}/ajax/ajax-login.php`
 const LINVIX_DATATABLE_URL = `${LINVIX_BASE}/cadastros/clientes/ajax/ajax-clientes-datatable.php`
 const PAGE_SIZE = 350 // Max supported by Linvix
-const PAGE_DELAY_MS = 2000 // 2s between pages (be gentle)
+const PAGE_DELAY_MS = 1000 // 2s between pages (be gentle)
 
 const LINVIX_USER = process.env.LINVIX_USER || ''
 const LINVIX_PASSWORD = process.env.LINVIX_PASSWORD || ''

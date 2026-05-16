@@ -25,7 +25,7 @@ const LINVIX_BASE = 'https://rp.erp.linvix.com'
 const LINVIX_LOGIN_URL = `${LINVIX_BASE}/ajax/ajax-login.php`
 const LINVIX_DATATABLE_URL = `${LINVIX_BASE}/cadastros/clientes/ajax/ajax-clientes-datatable.php`
 const PAGE_SIZE = 350
-const PAGE_DELAY_MS = 2000
+const PAGE_DELAY_MS = 1000
 
 // ─── Auth helpers ──────────────────────────────────────
 
