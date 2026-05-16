@@ -363,8 +363,8 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
   const CHUNK_SIZE = 200
 
   for (let i = 0; i < validClients.length; i += CHUNK_SIZE) {
+    const chunk = validClients.slice(i, i + CHUNK_SIZE)
     try {
-      const chunk = validClients.slice(i, i + CHUNK_SIZE)
       const values: any[] = []
       const rowPlaceholders: string[] = []
       let paramIdx = 1
