@@ -323,7 +323,7 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   return allClients
 }
 
-// ─── Upsert Logic (Optimized with Raw SQL) ─────────────────
+// ─── Upsert Logic (Optimized: Parallel Prisma upserts) ──────────
 
 async function upsertClients(clients: LinvixClientData[]): Promise<{
   created: number
@@ -341,19 +341,16 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
   const validClients = clients.filter(c => c.codigo)
   skipped += clients.length - validClients.length
 
-  const BATCH_SIZE = 500
+  // Process in batches of 50, executing upserts in parallel within each batch
+  const BATCH_SIZE = 50
   for (let i = 0; i < validClients.length; i += BATCH_SIZE) {
     const batch = validClients.slice(i, i + BATCH_SIZE)
 
-    try {
-      const valuesClauses: string[] = []
-      const params: unknown[] = []
-      let paramIdx = 1
-
-      for (const clientData of batch) {
+    const results = await Promise.allSettled(
+      batch.map(async (clientData) => {
         const cnpjNormalized = (clientData.cnpj || '').replace(/\D/g, '')
 
-        const fields: Record<string, string> = {}
+        const data: Record<string, unknown> = {}
         const fieldsToMap: Array<{ linvix: keyof LinvixClientData; mtech: string }> = [
           { linvix: 'razaoSocial', mtech: 'razaoSocial' },
           { linvix: 'nomeFantasia', mtech: 'nomeFantasia' },
@@ -389,89 +386,108 @@ async function upsertClients(clients: LinvixClientData[]): Promise<{
           const value = clientData[linvix]
           if (value !== undefined && value !== null && value !== '') {
             if (mtech.startsWith('email')) {
-              fields[mtech] = String(value).toLowerCase().trim()
+              data[mtech] = String(value).toLowerCase().trim()
             } else if (mtech === 'cnpj') {
-              fields[mtech] = cnpjNormalized
+              data[mtech] = cnpjNormalized
             } else {
-              fields[mtech] = String(value)
+              data[mtech] = String(value)
             }
           }
         }
 
-        const id = `cl${Date.now().toString(36)}${Math.random().toString(36).substring(2, 6).padEnd(4, '0')}${String(paramIdx).padStart(4, '0')}`
+        data.source = 'linvix'
 
-        // Omit enum/bool/int columns (carteira, fornecedor, sheetsRow, tipo) - schema defaults handle them
-        const rowValues = [
-          id, String(clientData.codigo),
-          fields.razaoSocial || '', fields.nomeFantasia || '', cnpjNormalized, fields.ieRg || '',
-          fields.telefone1 || '', fields.telefone2 || '', fields.telefone3 || '', fields.telefone4 || '',
-          fields.email1 || '', fields.email2 || '', fields.email3 || '', fields.pessoaContato || '',
-          fields.endereco || '', fields.numero || '', fields.complemento || '',
-          fields.bairro || '', fields.cidade || '', fields.cep || '', fields.uf || '',
-          fields.situacaoCadastral || '', fields.dataSituacao || '', fields.dataAbertura || '',
-          fields.cnaePrincipal || '', fields.naturezaJuridica || '', fields.porte || '', fields.regSimples || '',
-          fields.vendedor || '', fields.observacoes || '',
-          'linvix',
-        ]
+        return db.cliente.upsert({
+          where: { codigo: String(clientData.codigo) },
+          create: {
+            codigo: String(clientData.codigo),
+            razaoSocial: String(data.razaoSocial || ''),
+            nomeFantasia: String(data.nomeFantasia || ''),
+            cnpj: cnpjNormalized,
+            ieRg: String(data.ieRg || ''),
+            telefone1: String(data.telefone1 || ''),
+            telefone2: String(data.telefone2 || ''),
+            telefone3: String(data.telefone3 || ''),
+            telefone4: String(data.telefone4 || ''),
+            email1: String(data.email1 || '').toLowerCase().trim(),
+            email2: String(data.email2 || '').toLowerCase().trim(),
+            email3: String(data.email3 || '').toLowerCase().trim(),
+            pessoaContato: String(data.pessoaContato || ''),
+            endereco: String(data.endereco || ''),
+            numero: String(data.numero || ''),
+            complemento: String(data.complemento || ''),
+            bairro: String(data.bairro || ''),
+            cidade: String(data.cidade || ''),
+            cep: String(data.cep || ''),
+            uf: String(data.uf || ''),
+            situacaoCadastral: String(data.situacaoCadastral || ''),
+            dataSituacao: String(data.dataSituacao || ''),
+            dataAbertura: String(data.dataAbertura || ''),
+            cnaePrincipal: String(data.cnaePrincipal || ''),
+            naturezaJuridica: String(data.naturezaJuridica || ''),
+            porte: String(data.porte || ''),
+            regSimples: String(data.regSimples || ''),
+            vendedor: String(data.vendedor || ''),
+            observacoes: String(data.observacoes || ''),
+            source: 'linvix',
+            tipo: 'REVENDA',
+            carteira: Carteira.SEM_VENDEDOR,
+          },
+          update: {
+            ...(data.razaoSocial ? { razaoSocial: String(data.razaoSocial) } : {}),
+            ...(data.nomeFantasia ? { nomeFantasia: String(data.nomeFantasia) } : {}),
+            ...(data.cnpj ? { cnpj: cnpjNormalized } : {}),
+            ...(data.ieRg ? { ieRg: String(data.ieRg) } : {}),
+            ...(data.telefone1 ? { telefone1: String(data.telefone1) } : {}),
+            ...(data.telefone2 ? { telefone2: String(data.telefone2) } : {}),
+            ...(data.telefone3 ? { telefone3: String(data.telefone3) } : {}),
+            ...(data.telefone4 ? { telefone4: String(data.telefone4) } : {}),
+            ...(data.email1 ? { email1: String(data.email1).toLowerCase().trim() } : {}),
+            ...(data.email2 ? { email2: String(data.email2).toLowerCase().trim() } : {}),
+            ...(data.email3 ? { email3: String(data.email3).toLowerCase().trim() } : {}),
+            ...(data.pessoaContato ? { pessoaContato: String(data.pessoaContato) } : {}),
+            ...(data.endereco ? { endereco: String(data.endereco) } : {}),
+            ...(data.numero ? { numero: String(data.numero) } : {}),
+            ...(data.complemento ? { complemento: String(data.complemento) } : {}),
+            ...(data.bairro ? { bairro: String(data.bairro) } : {}),
+            ...(data.cidade ? { cidade: String(data.cidade) } : {}),
+            ...(data.cep ? { cep: String(data.cep) } : {}),
+            ...(data.uf ? { uf: String(data.uf) } : {}),
+            ...(data.situacaoCadastral ? { situacaoCadastral: String(data.situacaoCadastral) } : {}),
+            ...(data.dataSituacao ? { dataSituacao: String(data.dataSituacao) } : {}),
+            ...(data.dataAbertura ? { dataAbertura: String(data.dataAbertura) } : {}),
+            ...(data.cnaePrincipal ? { cnaePrincipal: String(data.cnaePrincipal) } : {}),
+            ...(data.naturezaJuridica ? { naturezaJuridica: String(data.naturezaJuridica) } : {}),
+            ...(data.porte ? { porte: String(data.porte) } : {}),
+            ...(data.regSimples ? { regSimples: String(data.regSimples) } : {}),
+            ...(data.vendedor ? { vendedor: String(data.vendedor) } : {}),
+            ...(data.observacoes ? { observacoes: String(data.observacoes) } : {}),
+            source: 'linvix',
+          },
+        })
+      })
+    )
 
-        const rowPlaceholders = rowValues.map(() => `$${paramIdx++}`)
-        valuesClauses.push(`(${rowPlaceholders.join(', ')})`)
-        params.push(...rowValues)
-      }
-
-      if (valuesClauses.length === 0) continue
-
-      const updateColumns = [
-        'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
-        'telefone1', 'telefone2', 'telefone3', 'telefone4',
-        'email1', 'email2', 'email3', 'pessoaContato',
-        'endereco', 'numero', 'complemento', 'bairro', 'cidade', 'cep', 'uf',
-        'situacaoCadastral', 'dataSituacao', 'dataAbertura',
-        'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
-        'vendedor', 'observacoes',
-      ]
-
-      const q = (s: string) => `"${s}"`
-      const updateSet = updateColumns.map(col =>
-        `${q(col)} = COALESCE(NULLIF(EXCLUDED.${q(col)}, ''), "Cliente".${q(col)})`
-      ).join(',\n    ')
-
-      const sql = `
-        INSERT INTO "Cliente" (
-          id, codigo,
-          "razaoSocial", "nomeFantasia", "cnpj", "ieRg",
-          "telefone1", "telefone2", "telefone3", "telefone4",
-          "email1", "email2", "email3", "pessoaContato",
-          "endereco", "numero", "complemento", "bairro", "cidade", "cep", "uf",
-          "situacaoCadastral", "dataSituacao", "dataAbertura",
-          "cnaePrincipal", "naturezaJuridica", "porte", "regSimples",
-          "vendedor", "observacoes",
-          "source"
-        )
-        VALUES ${valuesClauses.join(',\n    ')}
-        ON CONFLICT (codigo) DO UPDATE SET
-          ${updateSet},
-          "source" = EXCLUDED."source"
-        RETURNING (xmax = 0) AS is_new
-      `
-
-      const result = await db.$queryRawUnsafe<{ is_new: boolean }[]>(sql, ...params)
-
-      for (const row of result) {
-        if (row.is_new) {
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        // Check if it was created or updated based on createdAt vs updatedAt
+        const record = result.value as any
+        if (record.createdAt && record.updatedAt &&
+            Math.abs(record.createdAt.getTime() - record.updatedAt.getTime()) < 2000) {
           created++
         } else {
           updated++
         }
+      } else {
+        errors++
+        if (errorDetails.length < 10) {
+          errorDetails.push(result.reason?.message?.substring(0, 150) || 'Unknown error')
+        }
       }
+    }
 
-      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length} processados`)
-
-    } catch (err: any) {
-      errors += batch.length
-      const msg = `Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${err.message?.substring(0, 200)}`
-      errorDetails.push(msg)
-      console.error(`[sync/linvix] ${msg}`)
+    if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= validClients.length) {
+      console.log(`[sync/linvix] Progresso: ${Math.min(i + BATCH_SIZE, validClients.length)}/${validClients.length}`)
     }
   }
 
