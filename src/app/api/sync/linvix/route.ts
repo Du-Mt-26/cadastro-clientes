@@ -606,7 +606,7 @@ export async function GET(request: NextRequest) {
         throw new Error('Credenciais do Linvix não configuradas (LINVIX_USER / LINVIX_PASSWORD)')
       }
 
-      const result = await runAutoSync()
+      const result = await runAutoSync(request)
 
       await db.linvixSyncLog.update({
         where: { id: syncLog.id },
