@@ -589,6 +589,7 @@ export async function POST(request: NextRequest) {
   // Create sync log entry
   const syncLog = await db.linvixSyncLog.create({
     data: {
+      syncType: 'clientes',
       status: 'running',
       totalClients: 0,
     },
