@@ -15,6 +15,12 @@ import {
 } from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -27,6 +33,7 @@ import {
   Search,
   Users,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Building2,
@@ -111,10 +118,20 @@ function getDiasSemVendaBg(dias: number | null): string {
   return 'bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800'
 }
 
-function formatCnpj(raw: string): string {
+function formatDocumento(raw: string): { formatted: string; tipo: 'CNPJ' | 'CPF' | 'INVALIDO' } {
   const d = raw.replace(/\D/g, '')
-  if (d.length !== 14) return raw
-  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+  if (d.length === 14) {
+    return { formatted: `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`, tipo: 'CNPJ' }
+  }
+  if (d.length === 11) {
+    return { formatted: `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`, tipo: 'CPF' }
+  }
+  return { formatted: raw, tipo: 'INVALIDO' }
+}
+
+// Backward-compatible helper that returns just the formatted string
+function formatCnpj(raw: string): string {
+  return formatDocumento(raw).formatted
 }
 
 function formatCep(raw: string): string {
@@ -861,25 +878,39 @@ export default function HomeClient() {
             </div>
             <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
               <Button variant="outline" size="sm" onClick={openNewClient} className="bg-teal-600 text-white hover:bg-teal-700 border-teal-600"><UserPlus className="size-4 mr-1.5" />Novo Cliente</Button>
-              {!isVendedor && <>
-                <Button variant="outline" size="sm" onClick={() => handleExport('xlsx')} disabled={exporting !== null} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600"><Download className={`size-4 mr-1.5 ${exporting === 'xlsx' ? 'animate-bounce' : ''}`} />{exporting === 'xlsx' ? 'Exportando...' : 'Exportar XLSX'}</Button>
-                <Button variant="outline" size="sm" onClick={() => handleExport('csv')} disabled={exporting !== null} className="bg-emerald-700 text-white hover:bg-emerald-800 border-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 dark:border-emerald-600"><Download className={`size-4 mr-1.5 ${exporting === 'csv' ? 'animate-bounce' : ''}`} />{exporting === 'csv' ? 'Exportando...' : 'Exportar CSV'}</Button>
-              </>}
+              {!isVendedor && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" disabled={exporting !== null} className="bg-slate-700 text-white hover:bg-slate-800 border-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 dark:border-slate-600">
+                      <Download className={`size-4 mr-1.5 ${exporting ? 'animate-bounce' : ''}`} />
+                      {exporting ? 'Exportando...' : 'Exportar'}
+                      <ChevronDown className="size-3.5 ml-1" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start">
+                    <DropdownMenuItem onClick={() => handleExport('xlsx')} disabled={exporting !== null}>
+                      <Download className="size-4 mr-2" />
+                      Exportar XLSX
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleExport('csv')} disabled={exporting !== null}>
+                      <Download className="size-4 mr-2" />
+                      Exportar CSV (Google Sheets)
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Button variant="outline" size="sm" onClick={() => { setColumnOrder(DEFAULT_COLUMNS.map(c => c.key)); localStorage.removeItem('columnOrder') }} className="text-slate-600 dark:text-slate-400"><RotateCcw className="size-4 mr-1.5" />Restaurar Colunas</Button>
               {!isVendedor && <Button variant="outline" size="sm" onClick={() => setShowSheetsSync(true)} className={`text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30 ${sheetsConnected ? 'ring-1 ring-emerald-400 bg-emerald-50/50 dark:bg-emerald-950/20' : ''}`}><SheetIcon className="size-4 mr-1.5" />Google Sheets{sheetsConnected && <span className="ml-1.5 size-2 rounded-full bg-emerald-500 inline-block animate-pulse" title="Conectado" />}</Button>}
               <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}><RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />Atualizar</Button>
-              {session && (session.user as any).role !== 'VENDEDOR' && (
-                <Button variant="outline" size="sm" onClick={() => setShowUserManagement(true)} className="text-teal-600 dark:text-teal-400 border-teal-300 dark:border-teal-700 hover:bg-teal-50 dark:hover:bg-teal-950/30"><Users className="size-4 mr-1.5" />Usuários</Button>
-              )}
-              {session && (session.user as any).role === 'ADMIN' && (
-                <Button variant="outline" size="sm" onClick={() => setShowPermissions(true)} className="text-purple-600 dark:text-purple-400 border-purple-300 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/30"><Shield className="size-4 mr-1.5" />Permissões</Button>
-              )}
               {session && (session.user as any).role !== 'VENDEDOR' && (
                 <Button variant="outline" size="sm" onClick={handleBolsaoCheck} className="text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-950/30"><AlertCircle className="size-4 mr-1.5" />Verificar Bolsão</Button>
               )}
               <Button variant="ghost" size="icon" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
                 {mounted && (theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />)}
               </Button>
+            </div>
+            {/* Auth user menu — always pinned to the right, never wraps */}
+            <div className="flex-shrink-0 ml-auto sm:ml-2">
               <AuthUserMenu onOpen2FA={() => setShow2FASetup(true)} onOpenUserManagement={() => setShowUserManagement(true)} onOpenPermissions={() => setShowPermissions(true)} />
             </div>
           </div>
@@ -1165,16 +1196,34 @@ export default function HomeClient() {
                             )
                           }
 
-                          const isMono = ['ie_rg', 'cep'].includes(col.key)
-                          const isTruncate = ['nome_fantasia', 'endereco', 'complemento', 'bairro', 'cnae_principal', 'natureza_juridica'].includes(col.key)
+                          const isMono = ['ie_rg', 'cep', 'cnpj'].includes(col.key)
+                          // All text columns use truncate to prevent overflow, like Excel
+                          const noTruncateKeys = new Set(['dias_sem_venda', 'situacao_cadastral', 'carteira', 'tipo', 'reg_simples'])
+                          const isTruncate = !noTruncateKeys.has(col.key) && !col.editable && !isSticky
 
                           let displayVal = val || '—'
-                          if (col.key === 'cnpj' && val) displayVal = formatCnpj(val)
-                          else if (col.key === 'cep' && val) displayVal = formatCep(val)
+                          let docTipo: 'CNPJ' | 'CPF' | 'INVALIDO' | null = null
+                          if (col.key === 'cnpj' && val) {
+                            const doc = formatDocumento(val)
+                            displayVal = doc.formatted
+                            docTipo = doc.tipo
+                          } else if (col.key === 'cep' && val) {
+                            displayVal = formatCep(val)
+                          }
+
+                          // Build tooltip: show full value for truncated cells, and document info for cnpj
+                          let cellTitle: string | undefined
+                          if (col.key === 'cnpj' && val) {
+                            cellTitle = `${docTipo === 'CPF' ? 'CPF' : 'CNPJ'}: ${val}`
+                          } else if (isTruncate && val) {
+                            cellTitle = val
+                          }
 
                           return (
-                            <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${col.key === 'cnpj' ? 'font-mono' : ''} ${isTruncate ? 'truncate' : ''} ${col.centered ? 'justify-center' : ''} dark:text-slate-300 ${cellFocus}`} title={isTruncate ? val : undefined}>
+                            <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center text-xs whitespace-nowrap px-3 py-2 ${isMono ? 'font-mono' : ''} ${isTruncate ? 'truncate' : ''} ${col.centered ? 'justify-center' : ''} dark:text-slate-300 ${cellFocus}`} title={cellTitle}>
                               {col.key === 'vendedor' ? <span className="font-medium">{displayVal}</span> : displayVal}
+                              {col.key === 'cnpj' && docTipo === 'CPF' && <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400 font-bold">CPF</span>}
+                              {col.key === 'cnpj' && docTipo === 'INVALIDO' && val && <span className="ml-1 text-[9px] text-red-500 dark:text-red-400 font-bold" title="Documento com tamanho inválido">⚠</span>}
                             </div>
                           )
                         })}
@@ -1275,7 +1324,7 @@ export default function HomeClient() {
                         {r.nome_fantasia && <span className="font-medium">{r.nome_fantasia}</span>}
                         {r.nome_fantasia && ' · '}
                         Código: <span className="font-mono font-medium text-teal-700 dark:text-teal-400">{r.parsed.codigo}</span>
-                        {r.cnpj && <> · CNPJ: <span className="font-mono">{formatCnpj(r.cnpj)}</span></>}
+                        {r.cnpj && <> · {formatDocumento(r.cnpj).tipo === 'CPF' ? 'CPF' : 'CNPJ'}: <span className="font-mono">{formatCnpj(r.cnpj)}</span>{formatDocumento(r.cnpj).tipo === 'CPF' && <span className="ml-1 text-[9px] text-amber-600 dark:text-amber-400 font-bold">CPF</span>}{formatDocumento(r.cnpj).tipo === 'INVALIDO' && <span className="ml-1 text-[9px] text-red-500 dark:text-red-400 font-bold" title="Documento com tamanho inválido">⚠</span>}</>}
                       </p>
                     </>
                   )}
@@ -1347,7 +1396,7 @@ export default function HomeClient() {
                           <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
                             <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Building2 className="size-3.5" />Identificação</legend>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-sm">
-                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">CNPJ</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cnpj ? formatCnpj(r.cnpj) : '—'}</span></div>
+                              <div><span className="text-xs text-slate-500 dark:text-slate-400 block">{r.cnpj && formatDocumento(r.cnpj).tipo === 'CPF' ? 'CPF' : 'CNPJ/CPF'}</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.cnpj ? formatCnpj(r.cnpj) : '—'}</span>{r.cnpj && formatDocumento(r.cnpj).tipo === 'CPF' && <span className="ml-1.5 text-[10px] text-amber-600 dark:text-amber-400 font-bold">CPF</span>}{r.cnpj && formatDocumento(r.cnpj).tipo === 'INVALIDO' && <span className="ml-1.5 text-[10px] text-red-500 dark:text-red-400 font-bold" title="Documento com tamanho inválido">⚠ Inválido</span>}</div>
                               <div className="sm:col-span-2"><span className="text-xs text-slate-500 dark:text-slate-400 block">Razão Social</span><span className="text-slate-800 dark:text-slate-200 font-medium">{r.razao_social || '—'}</span></div>
                               <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Nome Fantasia</span><span className="text-slate-800 dark:text-slate-200">{r.nome_fantasia || '—'}</span></div>
                               <div><span className="text-xs text-slate-500 dark:text-slate-400 block">IE/RG</span><span className="font-mono text-slate-800 dark:text-slate-200">{r.parsed.ie_rg || '—'}</span></div>
