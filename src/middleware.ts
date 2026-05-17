@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/auth') ||  // NextAuth routes
     pathname.startsWith('/api/sync/linvix') ||  // Linvix sync (API key auth) — covers linvix, linvix-auto, linvix-vendas
     pathname.startsWith('/api/sync/all') ||  // Combined sync (cron-job.org + Vercel Cron)
+    pathname.startsWith('/api/clientes/backfill') ||  // Backfill endpoints (secret-based auth)
     pathname.startsWith('/login') ||       // Login page
     pathname.startsWith('/_next') ||       // Next.js internals
     pathname.includes('favicon') ||        // Favicon
