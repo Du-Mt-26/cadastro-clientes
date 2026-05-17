@@ -52,6 +52,8 @@ export interface ClienteRecord {
   nome_fantasia: string
   situacao_cadastral: string
   cnpj: string
+  cnpj_base: string               // Primeiros 8 dígitos do CNPJ (para agrupar filiais)
+  filial_numero: number           // Número da filial (1 = matriz, 2+ = filial, 0 = CPF/sem CNPJ)
   endereco: string
   numero: string
   complemento: string
@@ -177,6 +179,7 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'codigo', label: 'Código', sticky: 'left', stickyOffset: 0, minWidth: '90px' },
   { key: 'razao_social', label: 'Razão Social', sticky: 'left', stickyOffset: 90, minWidth: '220px' },
   { key: 'cnpj', label: 'CNPJ/CPF', minWidth: '160px' },
+  { key: 'filial', label: 'Filial', minWidth: '80px', centered: true },
   { key: 'dias_sem_venda', label: 'Dias S/ Venda', minWidth: '110px', numericSort: true, centered: true },
   { key: 'pessoa_contato', label: 'Contato', editable: true, minWidth: '140px' },
   { key: 'telefone1', label: 'Tel. 1', editable: true, minWidth: '140px' },

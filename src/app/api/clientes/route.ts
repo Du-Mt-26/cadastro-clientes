@@ -131,8 +131,42 @@ export async function GET(request: NextRequest) {
     // ── Pagination info ──
     const totalPages = showAll ? 1 : Math.ceil(dataResult.total / limit);
 
+    // ── Enrich with filial info ──
+    // For clients that share the same cnpjBase, add filial count and type
+    const cnpjBases = [...new Set(dataResult.records.map(r => r.cnpj_base).filter(Boolean))]
+    let filialMap: Record<string, { count: number; filiais: { codigo: string; razaoSocial: string; cidade: string; filialNumero: number; cnpj: string }[] }> = {}
+
+    if (cnpjBases.length > 0) {
+      const filiais = await db.cliente.findMany({
+        where: { cnpjBase: { in: cnpjBases } },
+        select: { codigo: true, razaoSocial: true, cidade: true, cnpj: true, cnpjBase: true },
+      })
+      for (const f of filiais) {
+        const base = f.cnpjBase
+        if (!filialMap[base]) filialMap[base] = { count: 0, filiais: [] }
+        const d = f.cnpj.replace(/\D/g, '')
+        const filialNumero = d.length === 14 ? parseInt(d.slice(8, 12), 10) : 0
+        filialMap[base].count++
+        filialMap[base].filiais.push({ codigo: f.codigo, razaoSocial: f.razaoSocial, cidade: f.cidade, filialNumero, cnpj: f.cnpj })
+      }
+    }
+
+    // Attach filial info to each record
+    const enrichedRecords = dataResult.records.map(r => ({
+      ...r,
+      _filial: r.cnpj_base && filialMap[r.cnpj_base]
+        ? {
+            totalFiliais: filialMap[r.cnpj_base].count,
+            isMatriz: r.filial_numero === 1,
+            isFilial: r.filial_numero > 1,
+            filialNumero: r.filial_numero,
+            filiais: filialMap[r.cnpj_base].filiais,
+          }
+        : null,
+    }))
+
     return NextResponse.json({
-      data: dataResult.records,
+      data: enrichedRecords,
       pagination: {
         page: showAll ? 1 : page,
         limit: showAll ? dataResult.total : limit,
@@ -201,6 +235,7 @@ export async function POST(request: NextRequest) {
         nomeFantasia: body.nomeFantasia || "",
         situacaoCadastral: body.situacaoCadastral || "",
         cnpj: cnpjDigits,
+        cnpjBase: cnpjDigits.slice(0, 8),
         endereco: body.endereco || "",
         numero: body.numero || "",
         complemento: body.complemento || "",

@@ -31,6 +31,7 @@ export function dbToRecord(c: {
   nomeFantasia: string
   situacaoCadastral: string
   cnpj: string
+  cnpjBase: string
   endereco: string
   numero: string
   complemento: string
@@ -76,6 +77,12 @@ export function dbToRecord(c: {
     nome_fantasia: c.nomeFantasia,
     situacao_cadastral: c.situacaoCadastral,
     cnpj: c.cnpj,
+    cnpj_base: c.cnpjBase || '',
+    filial_numero: (() => {
+      const d = c.cnpj.replace(/\D/g, '')
+      if (d.length === 14) return parseInt(d.slice(8, 12), 10)
+      return 0
+    })(),
     endereco: c.endereco,
     numero: c.numero,
     complemento: c.complemento,

@@ -378,6 +378,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
           client.razaoSocial || '',
           client.nomeFantasia || '',
           cnpj,
+          cnpj.length === 14 ? cnpj.slice(0, 8) : '',   // cnpjBase
           client.ieRg || '',
           client.telefone1 || '',
           client.telefone2 || '',
@@ -423,7 +424,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
       }
 
       const columns = [
-        '"id"', '"codigo"', '"razaoSocial"', '"nomeFantasia"', '"cnpj"', '"ieRg"',
+        '"id"', '"codigo"', '"razaoSocial"', '"nomeFantasia"', '"cnpj"', '"cnpjBase"', '"ieRg"',
         '"telefone1"', '"telefone2"', '"telefone3"', '"telefone4"',
         '"email1"', '"email2"', '"email3"', '"pessoaContato"',
         '"endereco"', '"numero"', '"complemento"', '"bairro"', '"cidade"', '"cep"', '"uf"',
@@ -442,6 +443,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"razaoSocial" = COALESCE(NULLIF(EXCLUDED."razaoSocial", \'\'), "Cliente"."razaoSocial")',
         '"nomeFantasia" = COALESCE(NULLIF(EXCLUDED."nomeFantasia", \'\'), "Cliente"."nomeFantasia")',
         '"cnpj" = COALESCE(NULLIF(EXCLUDED."cnpj", \'\'), "Cliente"."cnpj")',
+        '"cnpjBase" = COALESCE(NULLIF(EXCLUDED."cnpjBase", \'\'), "Cliente"."cnpjBase")',
         '"ieRg" = COALESCE(NULLIF(EXCLUDED."ieRg", \'\'), "Cliente"."ieRg")',
         '"telefone1" = COALESCE(NULLIF(EXCLUDED."telefone1", \'\'), "Cliente"."telefone1")',
         '"telefone2" = COALESCE(NULLIF(EXCLUDED."telefone2", \'\'), "Cliente"."telefone2")',

@@ -1181,6 +1181,26 @@ export default function HomeClient() {
                           }
                           if (col.key === 'reg_simples') return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}>{val ? <Badge variant="secondary" className="text-xs">{val}</Badge> : <span className="text-xs text-slate-400">—</span>}</div>
 
+                          // Filial badge — shows MATRIZ, FILIAL N, or nothing
+                          if (col.key === 'filial') {
+                            const filial = (r as any)._filial
+                            if (!filial || filial.totalFiliais <= 1) {
+                              return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 justify-center ${cellFocus}`} onClick={(e) => e.stopPropagation()}><span className="text-xs text-slate-400">—</span></div>
+                            }
+                            const filiaisList = filial.filiais
+                              .sort((a: any, b: any) => a.filialNumero - b.filialNumero)
+                              .map((f: any) => `${f.filialNumero.toString().padStart(4, '0')} — ${f.codigo} ${f.cidade ? '(' + f.cidade + ')' : ''}`)
+                              .join('\n')
+                            if (filial.isMatriz) {
+                              return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 justify-center ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
+                                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 text-[10px] border border-blue-200 dark:border-blue-700 cursor-help" title={`Matriz — ${filial.totalFiliais} filiais\n${filiaisList}`}>MATRIZ</Badge>
+                              </div>
+                            }
+                            return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap px-3 py-2 justify-center ${cellFocus}`} onClick={(e) => e.stopPropagation()}>
+                              <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300 text-[10px] border border-orange-200 dark:border-orange-700 cursor-help" title={`Filial ${filial.filialNumero.toString().padStart(4, '0')} de ${filial.totalFiliais}\n${filiaisList}`}>FILIAL {filial.filialNumero}</Badge>
+                            </div>
+                          }
+
                           if (col.editable && editableKey) {
                             const isPhone = PHONE_FIELDS.has(col.key)
                             const isEmailCell = EMAIL_FIELDS.has(col.key)
@@ -1408,6 +1428,26 @@ export default function HomeClient() {
                               <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Porte</span><span className="text-slate-800 dark:text-slate-200">{r.porte || '—'}</span></div>
                             </div>
                           </fieldset>
+                          {/* Filiais section — only shown when client has related filiais */}
+                          {(r as any)?._filial && (r as any)._filial.totalFiliais > 1 && (
+                            <fieldset className="border rounded-lg p-4 space-y-3 dark:border-slate-700">
+                              <legend className="text-sm font-semibold text-slate-600 dark:text-slate-400 px-2 flex items-center gap-1.5"><Building2 className="size-3.5" />Filiais ({(r as any)._filial.totalFiliais})</legend>
+                              <div className="space-y-1.5">
+                                {(r as any)._filial.filiais
+                                  .sort((a: any, b: any) => a.filialNumero - b.filialNumero)
+                                  .map((f: any) => (
+                                    <div key={f.codigo} className={`flex items-center gap-2 px-2 py-1.5 rounded text-sm ${f.codigo === r.parsed.codigo ? 'bg-teal-50 dark:bg-teal-900/30 ring-1 ring-teal-300 dark:ring-teal-700' : 'hover:bg-slate-50 dark:hover:bg-slate-800'}`}>
+                                      <Badge className={`${f.filialNumero === 1 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300' : 'bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300'} text-[10px] border shrink-0`}>
+                                        {f.filialNumero === 1 ? 'MATRIZ' : `FILIAL ${f.filialNumero.toString().padStart(4, '0')}`}
+                                      </Badge>
+                                      <span className="font-mono text-xs text-teal-700 dark:text-teal-400 shrink-0">{f.codigo}</span>
+                                      <span className="text-xs text-slate-700 dark:text-slate-300 truncate">{f.razaoSocial}</span>
+                                      {f.cidade && <span className="text-xs text-slate-400 dark:text-slate-500 ml-auto shrink-0">{f.cidade}</span>}
+                                    </div>
+                                  ))}
+                              </div>
+                            </fieldset>
+                          )}
                         </div>
                       )
                     )}
