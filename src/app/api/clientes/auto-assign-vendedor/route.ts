@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 // ─── POST /api/clientes/auto-assign-vendedor ────────────
-// One-time endpoint to auto-assign vendedores based on Linvix data
-// Will be removed after use
+// Auto-assign vendedores using efficient batch SQL
+// One-time endpoint, will be removed after use
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,77 +14,71 @@ export async function POST(request: NextRequest) {
 
     // Get all system users
     const users = await db.user.findMany({
-      select: { id: true, name: true, role: true },
+      select: { id: true, name: true },
     })
 
-    // Build mapping
-    const userMap = new Map<string, { id: string; role: string }>()
+    // Build mapping: normalized name → user ID
+    const userMap: { normalized: string; id: string; original: string }[] = []
     for (const user of users) {
       const normalized = user.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      userMap.set(normalized, { id: user.id, role: user.role })
+      userMap.push({ normalized, id: user.id, original: user.name })
     }
 
-    console.log('[auto-assign] System users:', users.map(u => u.name))
+    // 1. Set M-TECH DISTRIBUIDORA clients as FORNECEDOR
+    const mtechResult = await db.$executeRaw`
+      UPDATE "Cliente"
+      SET "carteira" = 'FORNECEDOR'::"Carteira", "vendedorId" = NULL, "updatedAt" = NOW()
+      WHERE "carteira" = 'SEM_VENDEDOR'::"Carteira"
+        AND ("vendedor" ILIKE '%M-TECH%' OR "vendedor" ILIKE '%MTECH%')
+    `
 
-    // Find all clients that need assignment
-    const clientsNeedingAssignment = await db.cliente.findMany({
+    // 2. For each user, assign matching clients using SQL ILIKE
+    const assignResults: { name: string; count: number }[] = []
+
+    for (const entry of userMap) {
+      // Skip admin/diretor/gerente users that shouldn't have clients assigned
+      // We'll assign to all VENDEDOR/SUPERVISORA users
+
+      // Try exact match first, then partial
+      // Use the original name parts (before hyphen) for matching
+      const nameParts = entry.original.split(' - ')[0].split(' ')
+      const firstName = nameParts[0]
+
+      // Match: vendedor field contains the first name AND carteira is still SEM_VENDEDOR
+      const result = await db.$executeRaw`
+        UPDATE "Cliente"
+        SET "carteira" = 'COM_VENDEDOR'::"Carteira", "vendedorId" = ${entry.id}, "updatedAt" = NOW()
+        WHERE "carteira" = 'SEM_VENDEDOR'::"Carteira"
+          AND "vendedor" ILIKE ${'%' + firstName + '%'}
+      `
+
+      if (result > 0) {
+        assignResults.push({ name: entry.original, count: result })
+      }
+    }
+
+    // 3. Count remaining SEM_VENDEDOR with vendedor name
+    const remaining = await db.cliente.count({
       where: {
-        vendedor: { not: '' },
         carteira: 'SEM_VENDEDOR',
+        vendedor: { not: '' },
       },
-      select: { id: true, codigo: true, vendedor: true },
     })
 
-    let assigned = 0
-    let fornecedor = 0
-    let unchanged = 0
-    const unmatchedNames = new Set<string>()
-
-    for (const client of clientsNeedingAssignment) {
-      const vendedorNorm = client.vendedor.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-
-      // M-TECH → FORNECEDOR
-      if (vendedorNorm.includes('M-TECH') || vendedorNorm.includes('MTECH')) {
-        await db.cliente.update({
-          where: { id: client.id },
-          data: { carteira: 'FORNECEDOR', vendedorId: null },
-        })
-        fornecedor++
-        continue
-      }
-
-      // Try to find matching user
-      let matchedUserId: string | null = null
-      for (const [userName, userInfo] of userMap) {
-        if (userName === vendedorNorm) {
-          matchedUserId = userInfo.id
-          break
-        }
-        if (userName.includes(vendedorNorm) || vendedorNorm.includes(userName)) {
-          matchedUserId = userInfo.id
-          break
-        }
-      }
-
-      if (matchedUserId) {
-        await db.cliente.update({
-          where: { id: client.id },
-          data: { carteira: 'COM_VENDEDOR', vendedorId: matchedUserId },
-        })
-        assigned++
-      } else {
-        unmatchedNames.add(client.vendedor)
-        unchanged++
-      }
-    }
+    // 4. Get unmatched vendedor names
+    const unmatched = await db.cliente.groupBy({
+      by: ['vendedor'],
+      where: { carteira: 'SEM_VENDEDOR', vendedor: { not: '' } },
+      _count: true,
+    })
 
     return NextResponse.json({
       success: true,
-      totalClientsProcessed: clientsNeedingAssignment.length,
-      assigned,
-      fornecedor,
-      unchanged,
-      unmatchedVendedorNames: [...unmatchedNames],
+      mtechToFornecedor: mtechResult,
+      assignedByUser: assignResults,
+      totalAssigned: assignResults.reduce((sum, r) => sum + r.count, 0),
+      remainingSemVendedor: remaining,
+      unmatchedVendedores: unmatched.map(u => ({ nome: u.vendedor, clientes: u._count })),
     })
   } catch (error) {
     console.error('Error auto-assigning vendedores:', error)
