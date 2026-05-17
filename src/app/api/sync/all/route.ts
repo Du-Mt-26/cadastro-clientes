@@ -3,11 +3,10 @@ import { db } from '@/lib/db'
 
 // ─── Combined Sync API ─────────────────────────────
 // Runs clients sync + vendas sync in sequence.
-// This is the single endpoint used by Vercel Cron and cron-job.org.
 //
 // Modes:
-//   ?mode=trigger  → Respond immediately, sync both in background (for cron-job.org)
-//                    No auth required — trigger only starts a background job, exposes no data
+//   ?mode=trigger  → Calls both /linvix?mode=trigger and /linvix-vendas?mode=trigger
+//                    No auth required — each sub-endpoint handles its own auth
 //   ?mode=auto     → Wait for both to complete (for Vercel Cron, requires auth)
 
 export const maxDuration = 300 // 5 minutes
@@ -26,8 +25,8 @@ export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
   // ─── Trigger mode: NO AUTH REQUIRED ────────────────────
-  // Trigger only starts a background job — it doesn't expose any data.
-  // The worst case is an extra sync being triggered, which is harmless.
+  // Calls both sync endpoints with mode=trigger
+  // Each sub-endpoint will run its own sync in background
   if (mode === 'trigger') {
     // Check if any sync is already running
     const runningSync = await db.linvixSyncLog.findFirst({
@@ -43,14 +42,6 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const triggeredAt = new Date().toISOString()
-    const response = NextResponse.json({
-      status: 'triggered',
-      message: 'Sync de clientes + vendas iniciado em background',
-      triggeredAt,
-    })
-
-    // Build internal URL for self-calls
     const baseUrl = process.env.VERCEL_URL
       ? `https://${process.env.VERCEL_URL}`
       : `http://localhost:${process.env.PORT || 3000}`
@@ -59,32 +50,36 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'application/json',
     }
 
-    // Pass cron header for internal call (so /mode=auto allows it)
-    headers['x-vercel-cron'] = 'true'
+    const results: any = { clientes: null, vendas: null }
 
-    // Fire and forget: call /api/sync/all?mode=auto internally
-    ;(async () => {
-      try {
-        const res = await fetch(`${baseUrl}/api/sync/all?mode=auto`, {
-          headers,
-          signal: AbortSignal.timeout(290_000),
-        })
-        const data = await res.json()
-        console.log(`[sync/all] Trigger concluído: clientes=${data.clientes?.status}, vendas=${data.vendas?.status}`)
-      } catch (err: any) {
-        console.error('[sync/all] Trigger falhou:', err.message)
+    // 1. Trigger client sync (responds immediately, runs in background)
+    try {
+      const clientRes = await fetch(`${baseUrl}/api/sync/linvix?mode=trigger`, {
+        headers,
+        signal: AbortSignal.timeout(10_000), // trigger should respond fast
+      })
+      results.clientes = await clientRes.json()
+    } catch (err: any) {
+      results.clientes = { status: 'error', error: err.message?.substring(0, 100) }
+    }
 
-        await db.linvixSyncLog.create({
-          data: {
-            syncType: 'all',
-            status: 'error',
-            errorMessage: `Trigger sync falhou: ${err.message?.substring(0, 400)}`,
-          },
-        })
-      }
-    })()
+    // 2. Trigger vendas sync (responds immediately, runs in background)
+    try {
+      const vendasRes = await fetch(`${baseUrl}/api/sync/linvix-vendas?mode=trigger`, {
+        headers,
+        signal: AbortSignal.timeout(10_000),
+      })
+      results.vendas = await vendasRes.json()
+    } catch (err: any) {
+      results.vendas = { status: 'error', error: err.message?.substring(0, 100) }
+    }
 
-    return response
+    return NextResponse.json({
+      status: 'triggered',
+      message: 'Sync de clientes + vendas disparado',
+      clientes: results.clientes,
+      vendas: results.vendas,
+    })
   }
 
   // ─── Auto mode: blocking, waits for both (AUTH REQUIRED) ──
@@ -101,7 +96,6 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'application/json',
     }
 
-    // Forward auth headers
     const syncSecret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret')
     if (syncSecret) {
       headers['x-sync-secret'] = syncSecret
@@ -123,7 +117,7 @@ export async function GET(request: NextRequest) {
         signal: AbortSignal.timeout(120_000),
       })
       results.clientes = await clientRes.json()
-      console.log(`[sync/all] Clientes: status=${results.clientes.status}, duration=${results.clientes.durationMs}ms`)
+      console.log(`[sync/all] Clientes: status=${results.clientes.status}`)
     } catch (err: any) {
       console.error('[sync/all] Erro no sync de clientes:', err.message)
       results.clientes = { status: 'error', error: err.message?.substring(0, 200) }
@@ -137,7 +131,7 @@ export async function GET(request: NextRequest) {
         signal: AbortSignal.timeout(180_000),
       })
       results.vendas = await vendasRes.json()
-      console.log(`[sync/all] Vendas: status=${results.vendas.status}, duration=${results.vendas.durationMs}ms`)
+      console.log(`[sync/all] Vendas: status=${results.vendas.status}`)
     } catch (err: any) {
       console.error('[sync/all] Erro no sync de vendas:', err.message)
       results.vendas = { status: 'error', error: err.message?.substring(0, 200) }
@@ -159,8 +153,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     message: 'Combined Sync API',
     modes: {
-      trigger: 'Fire and forget — no auth needed, syncs both in background (for cron-job.org)',
-      auto: 'Blocking — auth required, waits for clients + vendas (for Vercel Cron)',
+      trigger: 'No auth — triggers both syncs in background (for cron-job.org)',
+      auto: 'Auth required — waits for both (for Vercel Cron)',
     },
   })
 }
