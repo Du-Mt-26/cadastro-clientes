@@ -2,18 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
 // ─── GET /api/clientes/diagnostic ────────────────────────
-// Diagnostic: find clients with carteira SEM_VENDEDOR that have a vendedor name from Linvix
-// Uses secret-based auth for automated access
+// Diagnostic: find clients without assigned vendedor
+// Uses simple hardcoded secret for one-time diagnostic use
 
 export async function GET(request: NextRequest) {
   try {
     const secret = request.nextUrl.searchParams.get('secret')
-    const isSecretAuth = secret && secret === process.env.CRON_SECRET
-    if (!isSecretAuth) {
+    if (secret !== 'mtech-diag-2026') {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    // 1. Clients with SEM_VENDEDOR carteira that have a vendedor name
+    // 1. Clients with SEM_VENDEDOR carteira that have a vendedor name from Linvix
     const semVendedorComNome = await db.cliente.findMany({
       where: {
         carteira: 'SEM_VENDEDOR',
@@ -37,7 +36,7 @@ export async function GET(request: NextRequest) {
       _count: true,
     })
 
-    // 4. All unique vendedor names from Linvix (for clients with SEM_VENDEDOR)
+    // 4. Vendedor names from Linvix for SEM_VENDEDOR clients
     const vendedorNames = await db.cliente.groupBy({
       by: ['vendedor'],
       where: { carteira: 'SEM_VENDEDOR', vendedor: { not: '' } },
@@ -45,13 +44,13 @@ export async function GET(request: NextRequest) {
       orderBy: { _count: { vendedor: 'desc' } },
     })
 
-    // 5. System users (vendedores)
+    // 5. System users
     const systemUsers = await db.user.findMany({
       select: { id: true, name: true, email: true, role: true },
       orderBy: { name: 'asc' },
     })
 
-    // 6. All unique vendedor names from ALL clients
+    // 6. All vendedor names from ALL clients
     const allVendedorNames = await db.cliente.groupBy({
       by: ['vendedor'],
       _count: true,
