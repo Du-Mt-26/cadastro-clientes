@@ -24,7 +24,7 @@ const LINVIX_USER = process.env.LINVIX_USER || ''
 const LINVIX_PASSWORD = process.env.LINVIX_PASSWORD || ''
 
 // Optional: protect the endpoint with a secret (cron auth)
-const SYNC_SECRET = process.env.SYNC_SECRET || ''
+const CRON_SECRET = process.env.CRON_SECRET || process.env.SYNC_SECRET || ''
 
 // ─── Types ─────────────────────────────────────────────
 
@@ -546,15 +546,15 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
 
-  // Check authorization: either SYNC_SECRET or NextAuth session
-  const syncSecret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret')
+  // Check authorization: either CRON_SECRET or NextAuth session
+  const syncSecret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || request.nextUrl.searchParams.get('cron-secret')
 
   // Vercel Cron jobs send this header automatically — trust it
   if (request.headers.get('x-vercel-cron') === 'true') {
     // Allow Vercel cron through without secret
   } else
-  if (SYNC_SECRET && syncSecret !== SYNC_SECRET) {
-    // If SYNC_SECRET is configured, validate it
+  if (CRON_SECRET && syncSecret !== CRON_SECRET) {
+    // If CRON_SECRET is configured, validate it
     // (if not configured, allow all — for development)
     return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
   }

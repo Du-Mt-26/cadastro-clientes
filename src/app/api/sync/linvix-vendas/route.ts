@@ -15,7 +15,7 @@ import { db } from '@/lib/db'
 export const maxDuration = 300 // 5 minutes for Vercel
 export const dynamic = 'force-dynamic'
 
-const SYNC_SECRET = process.env.SYNC_SECRET || ''
+const CRON_SECRET = process.env.CRON_SECRET || process.env.SYNC_SECRET || ''
 const LINVIX_USER = process.env.LINVIX_USER || ''
 const LINVIX_PASSWORD = process.env.LINVIX_PASSWORD || ''
 
@@ -36,9 +36,9 @@ const MAX_DETAILS_PER_RUN = 200
 
 function validateSyncSecret(request: NextRequest): boolean {
   if (request.headers.get('x-vercel-cron') === 'true') return true
-  if (!SYNC_SECRET) return true
-  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || ''
-  return secret === SYNC_SECRET
+  if (!CRON_SECRET) return true
+  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || request.nextUrl.searchParams.get('cron-secret') || ''
+  return secret === CRON_SECRET
 }
 
 function sleep(ms: number): Promise<void> {
