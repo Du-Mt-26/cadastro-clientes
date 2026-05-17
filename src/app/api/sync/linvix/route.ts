@@ -573,6 +573,78 @@ async function runAutoSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
+  // ─── Trigger mode: respond immediately, sync in background ──
+  if (mode === 'trigger') {
+    if (!validateSyncSecret(request)) {
+      return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
+    }
+
+    if (!LINVIX_USER || !LINVIX_PASSWORD) {
+      return NextResponse.json(
+        { error: 'Credenciais do Linvix não configuradas' },
+        { status: 500 }
+      )
+    }
+
+    // Check if a clientes sync is already running
+    const runningSync = await db.linvixSyncLog.findFirst({
+      where: { syncType: 'clientes', status: 'running' },
+      orderBy: { startedAt: 'desc' },
+    })
+
+    if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
+      return NextResponse.json({
+        status: 'already_running',
+        message: 'Um sync de clientes já está em andamento',
+      })
+    }
+
+    const triggeredAt = new Date().toISOString()
+    const response = NextResponse.json({
+      status: 'triggered',
+      message: 'Sync de clientes iniciado em background',
+      triggeredAt,
+    })
+
+    // Fire and forget
+    ;(async () => {
+      const syncLog = await db.linvixSyncLog.create({
+        data: { syncType: 'clientes', status: 'running', totalClients: 0 },
+      })
+
+      try {
+        const result = await runAutoSync()
+
+        await db.linvixSyncLog.update({
+          where: { id: syncLog.id },
+          data: {
+            status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
+            finishedAt: new Date(),
+            totalClients: result.totalClients,
+            createdCount: result.created,
+            updatedCount: result.updated,
+            skippedCount: result.skipped,
+            errorCount: result.errors,
+            errorMessage: result.errorDetails.slice(0, 10).join('\n'),
+            pagesScraped: result.pagesScraped,
+            durationMs: result.durationMs,
+          },
+        })
+      } catch (err: any) {
+        await db.linvixSyncLog.update({
+          where: { id: syncLog.id },
+          data: {
+            status: 'error',
+            finishedAt: new Date(),
+            errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+          },
+        })
+      }
+    })()
+
+    return response
+  }
+
   // ─── Auto-sync mode ───────────────────────────────
   if (mode === 'auto') {
     if (!validateSyncSecret(request)) {
