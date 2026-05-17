@@ -11,6 +11,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/sync/linvix') ||  // Linvix sync (API key auth) — covers linvix, linvix-auto, linvix-vendas
     pathname.startsWith('/api/sync/all') ||  // Combined sync (cron-job.org + Vercel Cron)
     pathname.startsWith('/api/clientes/backfill') ||  // Backfill endpoints (secret-based auth)
+    pathname.startsWith('/api/clientes/diagnostic') ||  // Diagnostic (secret-based auth)
     pathname.startsWith('/api/admin/reset-password') ||  // Password reset (secret-based auth)
     pathname.startsWith('/login') ||       // Login page
     pathname.startsWith('/_next') ||       // Next.js internals

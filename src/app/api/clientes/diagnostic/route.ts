@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 
 // ─── GET /api/clientes/diagnostic ────────────────────────
 // Diagnostic: find clients with carteira SEM_VENDEDOR that have a vendedor name from Linvix
+// Uses secret-based auth for automated access
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
+    const secret = request.nextUrl.searchParams.get('secret')
+    const isSecretAuth = secret && secret === process.env.CRON_SECRET
+    if (!isSecretAuth) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    // 6. All unique vendedor names from ALL clients (not just SEM_VENDEDOR)
+    // 6. All unique vendedor names from ALL clients
     const allVendedorNames = await db.cliente.groupBy({
       by: ['vendedor'],
       _count: true,
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       vendedoresLinvixSemCarteira: vendedorNames.map(v => ({ nome: v.vendedor, clientes: v._count })),
       todosVendedoresLinvix: allVendedorNames.map(v => ({ nome: v.vendedor, clientes: v._count })),
       usuariosSistema: systemUsers,
-      clientesSemVendedorAmostra: semVendedorComNome.slice(0, 50),
+      clientesSemVendedorAmostra: semVendedorComNome.slice(0, 100),
     })
   } catch (error) {
     console.error('Error in diagnostic:', error)
