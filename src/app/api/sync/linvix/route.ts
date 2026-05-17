@@ -15,7 +15,7 @@ export const maxDuration = 60 // 60 seconds for auto-sync
 export const dynamic = 'force-dynamic'
 
 const SYNC_API_KEY = process.env.SYNC_API_KEY || ''
-const SYNC_SECRET = process.env.SYNC_SECRET || ''
+const CRON_SECRET = process.env.CRON_SECRET || process.env.SYNC_SECRET || ''
 const LINVIX_USER = process.env.LINVIX_USER || ''
 const LINVIX_PASSWORD = process.env.LINVIX_PASSWORD || ''
 
@@ -43,9 +43,9 @@ function validateSyncSecret(request: NextRequest): boolean {
   if (request.headers.get('x-vercel-cron') === 'true') return true
 
   // If SYNC_SECRET is not configured, allow all (for development)
-  if (!SYNC_SECRET) return true
-  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || ''
-  return secret === SYNC_SECRET
+  if (!CRON_SECRET) return true
+  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || request.nextUrl.searchParams.get('cron-secret') || ''
+  return secret === CRON_SECRET
 }
 
 // ─── Types ─────────────────────────────────────────────

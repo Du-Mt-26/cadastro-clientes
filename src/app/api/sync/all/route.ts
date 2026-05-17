@@ -12,14 +12,14 @@ import { db } from '@/lib/db'
 export const maxDuration = 300 // 5 minutes
 export const dynamic = 'force-dynamic'
 
-const SYNC_SECRET = process.env.SYNC_SECRET || ''
+const CRON_SECRET = process.env.CRON_SECRET || process.env.SYNC_SECRET || ''
 const LINVIX_USER = process.env.LINVIX_PASSWORD || ''
 
 function validateSyncSecret(request: NextRequest): boolean {
   if (request.headers.get('x-vercel-cron') === 'true') return true
-  if (!SYNC_SECRET) return true
-  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || ''
-  return secret === SYNC_SECRET
+  if (!CRON_SECRET) return true
+  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || request.nextUrl.searchParams.get('cron-secret') || ''
+  return secret === CRON_SECRET
 }
 
 export async function GET(request: NextRequest) {
