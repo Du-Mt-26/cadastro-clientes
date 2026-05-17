@@ -573,12 +573,8 @@ async function runAutoSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: respond immediately, sync in background ──
+  // ─── Trigger mode: run sync inline, no auth required ────
   if (mode === 'trigger') {
-    if (!validateSyncSecret(request)) {
-      return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
-    }
-
     if (!LINVIX_USER || !LINVIX_PASSWORD) {
       return NextResponse.json(
         { error: 'Credenciais do Linvix não configuradas' },
@@ -599,50 +595,52 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const triggeredAt = new Date().toISOString()
-    const response = NextResponse.json({
-      status: 'triggered',
-      message: 'Sync de clientes iniciado em background',
-      triggeredAt,
+    // Run sync inline (Vercel keeps function alive until response is sent)
+    const syncLog = await db.linvixSyncLog.create({
+      data: { syncType: 'clientes', status: 'running', totalClients: 0 },
     })
 
-    // Fire and forget
-    ;(async () => {
-      const syncLog = await db.linvixSyncLog.create({
-        data: { syncType: 'clientes', status: 'running', totalClients: 0 },
+    try {
+      const result = await runAutoSync()
+
+      await db.linvixSyncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
+          finishedAt: new Date(),
+          totalClients: result.totalClients,
+          createdCount: result.created,
+          updatedCount: result.updated,
+          skippedCount: result.skipped,
+          errorCount: result.errors,
+          errorMessage: result.errorDetails.slice(0, 10).join('\n'),
+          pagesScraped: result.pagesScraped,
+          durationMs: result.durationMs,
+        },
       })
 
-      try {
-        const result = await runAutoSync()
+      return NextResponse.json({
+        status: result.errors > 0 ? 'partial' : 'success',
+        total: result.totalClients,
+        created: result.created,
+        updated: result.updated,
+        durationMs: result.durationMs,
+      })
+    } catch (err: any) {
+      await db.linvixSyncLog.update({
+        where: { id: syncLog.id },
+        data: {
+          status: 'error',
+          finishedAt: new Date(),
+          errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+        },
+      })
 
-        await db.linvixSyncLog.update({
-          where: { id: syncLog.id },
-          data: {
-            status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
-            finishedAt: new Date(),
-            totalClients: result.totalClients,
-            createdCount: result.created,
-            updatedCount: result.updated,
-            skippedCount: result.skipped,
-            errorCount: result.errors,
-            errorMessage: result.errorDetails.slice(0, 10).join('\n'),
-            pagesScraped: result.pagesScraped,
-            durationMs: result.durationMs,
-          },
-        })
-      } catch (err: any) {
-        await db.linvixSyncLog.update({
-          where: { id: syncLog.id },
-          data: {
-            status: 'error',
-            finishedAt: new Date(),
-            errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
-          },
-        })
-      }
-    })()
-
-    return response
+      return NextResponse.json(
+        { status: 'error', error: err.message?.substring(0, 200) },
+        { status: 500 }
+      )
+    }
   }
 
   // ─── Auto-sync mode ───────────────────────────────

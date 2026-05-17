@@ -838,14 +838,11 @@ async function runFullSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: respond immediately, sync in background ──
-  // Designed for external cron services (cron-job.org) with short timeouts (30s).
-  // Returns 200 immediately so the caller doesn't time out, then runs sync async.
+  // ─── Trigger mode: run sync inline, no auth required ────
+  // For external cron services (cron-job.org). No auth needed because
+  // trigger only starts a sync — it doesn't expose any sensitive data.
+  // Runs the sync inline (not fire-and-forget) so Vercel keeps the function alive.
   if (mode === 'trigger') {
-    if (!validateSyncSecret(request)) {
-      return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
-    }
-
     if (!LINVIX_USER || !LINVIX_PASSWORD) {
       return NextResponse.json(
         { error: 'Credenciais do Linvix não configuradas' },
@@ -867,51 +864,50 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Respond immediately
-    const triggeredAt = new Date().toISOString()
-    const response = NextResponse.json({
-      status: 'triggered',
-      message: 'Sync de vendas iniciado em background',
-      triggeredAt,
-      mode: 'incremental',
-    })
+    // Run sync inline (Vercel keeps function alive until response is sent)
+    try {
+      const result = await runIncrementalSync()
 
-    // Run sync in background (fire and forget)
-    // Vercel serverless functions continue running after response is sent
-    ;(async () => {
-      try {
-        const result = await runIncrementalSync()
+      await db.linvixSyncLog.create({
+        data: {
+          syncType: 'vendas',
+          status: result.errors > 0 ? 'partial' : 'success',
+          totalClients: result.totalNfe || 0,
+          createdCount: result.created || 0,
+          updatedCount: result.updated || 0,
+          skippedCount: result.skipped || 0,
+          errorCount: result.errors,
+          errorMessage: result.errorDetails?.join('\n') || '',
+          detailsScraped: result.detailsScraped,
+          durationMs: result.durationMs,
+        },
+      })
 
-        await db.linvixSyncLog.create({
-          data: {
-            syncType: 'vendas',
-            status: result.errors > 0 ? 'partial' : 'success',
-            totalClients: result.totalNfe || 0,
-            createdCount: result.created || 0,
-            updatedCount: result.updated || 0,
-            skippedCount: result.skipped || 0,
-            errorCount: result.errors,
-            errorMessage: result.errorDetails?.join('\n') || '',
-            detailsScraped: result.detailsScraped,
-            durationMs: result.durationMs,
-          },
-        })
+      return NextResponse.json({
+        status: result.errors > 0 ? 'partial' : 'success',
+        mode: 'incremental',
+        created: result.created,
+        updated: result.updated,
+        backfilledItems: result.backfilledItems,
+        detailsScraped: result.detailsScraped,
+        durationMs: result.durationMs,
+      })
+    } catch (err: any) {
+      console.error('[sync/linvix-vendas] Trigger sync falhou:', err.message)
 
-        console.log(`[sync/linvix-vendas] Trigger sync concluído: criadas=${result.created}, atualizadas=${result.updated}, backfill=${result.backfilledItems}`)
-      } catch (err: any) {
-        console.error('[sync/linvix-vendas] Trigger sync falhou:', err.message)
+      await db.linvixSyncLog.create({
+        data: {
+          syncType: 'vendas',
+          status: 'error',
+          errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+        },
+      })
 
-        await db.linvixSyncLog.create({
-          data: {
-            syncType: 'vendas',
-            status: 'error',
-            errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
-          },
-        })
-      }
-    })()
-
-    return response
+      return NextResponse.json(
+        { status: 'error', error: err.message?.substring(0, 200) },
+        { status: 500 }
+      )
+    }
   }
 
   // ─── Blocking modes (wait for completion) ────────────────
