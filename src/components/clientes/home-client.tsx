@@ -206,7 +206,7 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isEmail, isObserv
   const displayValue = isPhone ? formatPhone(value) : (isObservacoes ? (value ? (value.length > 30 ? value.slice(0, 30) + '…' : value) : '—') : (value || '—'))
   const emailDisplay = isEmail && value ? value.toLowerCase() : null
   return (
-    <span className="cursor-pointer group flex items-center gap-1" onClick={(e) => { e.stopPropagation(); setEditing(true) }} title={isObservacoes && value ? value : "Clique para editar"}>
+    <span className="cursor-pointer group flex items-center gap-1 min-w-0" onClick={(e) => { e.stopPropagation(); setEditing(true) }} title={isObservacoes && value ? value : (isEmail && value ? value : "Clique para editar")}>
       {isPhone && value && (
         <a
           href={`https://wa.me/55${value.replace(/\D/g, '').replace(/^0+/, '')}`}
@@ -222,7 +222,7 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isEmail, isObserv
       {emailDisplay ? (
         <a
           href={`mailto:${emailDisplay}`}
-          className="text-xs text-teal-700 hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300 underline underline-offset-2 decoration-teal-300 dark:decoration-teal-700"
+          className="text-xs text-teal-700 hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300 underline underline-offset-2 decoration-teal-300 dark:decoration-teal-700 truncate"
           onClick={(e) => e.stopPropagation()}
           title={`Enviar email para ${emailDisplay}`}
         >
@@ -1185,7 +1185,7 @@ export default function HomeClient() {
                             const isPhone = PHONE_FIELDS.has(col.key)
                             const isEmailCell = EMAIL_FIELDS.has(col.key)
                             const isObs = col.key === 'observacoes'
-                            return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></div>
+                            return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap truncate px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()} title={val || undefined}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></div>
                           }
 
                           if (isSticky) {
