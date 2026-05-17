@@ -607,7 +607,7 @@ export async function GET(request: NextRequest) {
     }
 
     const syncLog = await db.linvixSyncLog.create({
-      data: { status: 'running', totalClients: 0 },
+      data: { syncType: 'clientes', status: 'running', totalClients: 0 },
     })
 
     console.log(`[sync/linvix] Iniciando auto-sync #${syncLog.id}`)
@@ -737,7 +737,7 @@ export async function POST(request: NextRequest) {
     console.log(`[sync/linvix] Recebidos ${clients.length} clientes do Linvix (fullSync=${isFullSync})`)
 
     const syncLog = await db.linvixSyncLog.create({
-      data: { status: 'running', totalClients: clients.length },
+      data: { syncType: 'clientes', status: 'running', totalClients: clients.length },
     })
 
     const result = await batchUpsertClients(clients)

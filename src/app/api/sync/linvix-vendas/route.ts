@@ -4,8 +4,15 @@ import { db } from '@/lib/db'
 // ─── Linvix Vendas (NF-e) Sync API ──────────────────
 // Syncs NF-e/sales data from Linvix ERP → M-Tech
 // Unidirectional: Linvix → M-Tech only
+//
+// Modes:
+//   ?mode=incremental  → Only fetch NEW NF-e (stops at known IDs) + backfill missing items
+//   ?mode=backfill     → Only fetch details for vendas with 0 items
+//   ?mode=full         → Fetch ALL NF-e (original behavior, may timeout on large datasets)
+//   ?mode=auto         → Same as incremental (used by cron)
+//   (default)          → Return sync status
 
-export const maxDuration = 300 // 5 minutes for full NF-e sync
+export const maxDuration = 300 // 5 minutes for Vercel
 export const dynamic = 'force-dynamic'
 
 const SYNC_SECRET = process.env.SYNC_SECRET || ''
@@ -18,7 +25,12 @@ const LINVIX_NFE_LIST_URL = `${LINVIX_BASE}/nota-fiscal-eletronica/ajax/ajax-not
 const LINVIX_NFE_DETAIL_URL = `${LINVIX_BASE}/nota-fiscal-eletronica/ajax/ajax-pega-nota.php`
 const PAGE_SIZE = 350
 const PAGE_DELAY_MS = 2000
-const DETAIL_DELAY_MS = 1500
+const DETAIL_DELAY_MS = 1200
+
+// Safety: max time we spend fetching details (leave 30s buffer for upserts)
+const MAX_DETAIL_TIME_MS = 4 * 60 * 1000 // 4 minutes
+// Max details to fetch per run (even if time allows)
+const MAX_DETAILS_PER_RUN = 200
 
 // ─── Auth helpers ──────────────────────────────────────
 
@@ -38,16 +50,8 @@ function stripHtml(html: string | null | undefined): string {
   return html.replace(/<[^>]*>/g, '').trim()
 }
 
-function parseValorTotal(raw: string): number {
-  if (!raw) return 0
-  const cleaned = raw.replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')
-  const num = parseFloat(cleaned)
-  return isNaN(num) ? 0 : num
-}
-
 function parseDateTime(raw: string): Date | null {
   if (!raw) return null
-  // Format: "15/05/2026 20:19:45" or "2026-05-15 20:19:45"
   const brMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/)
   if (brMatch) {
     const d = new Date(
@@ -124,7 +128,6 @@ async function fetchNfeListPage(phpsessid: string, draw: number, start: number, 
   params.set('length', String(length))
   params.set('search[value]', '')
   params.set('search[regex]', 'false')
-  // Required order/column parameters for Linvix DataTable v2
   params.set('order[0][column]', '0')
   params.set('order[0][dir]', 'desc')
   const columns = ['ID', 'NUMERO', 'STATUS', 'CLIENTE', 'VALOR', 'DATA', 'OPERADOR', 'EMITENTE', 'ACOES']
@@ -182,8 +185,76 @@ async function fetchNfeDetail(phpsessid: string, nfeId: number): Promise<any> {
   return await response.json()
 }
 
+/**
+ * Fetch NF-e list pages, stopping early if all records on a page are already known.
+ * Returns: { nfeList, pagesScraped, stoppedEarly }
+ */
+async function fetchNewNfeFromLinvix(phpsessid: string, knownIds: Set<number>): Promise<{
+  nfeList: any[]
+  pagesScraped: number
+  stoppedEarly: boolean
+}> {
+  console.log('[sync/linvix-vendas] Buscando lista de NF-e (incremental)...')
+
+  const allNfe: any[] = []
+  let draw = 1
+  let start = 0
+  let stoppedEarly = false
+
+  const firstPage = await fetchNfeListPage(phpsessid, draw, start)
+  const totalRecords = firstPage.recordsTotal || 0
+
+  // Check first page for known IDs
+  const firstPageData = firstPage.data || []
+  const allKnown = firstPageData.every((row: any) => knownIds.has(parseInt(row.ID, 10)))
+
+  if (allKnown && firstPageData.length > 0) {
+    console.log(`[sync/linvix-vendas] Primeira página já totalmente conhecida — nenhum dado novo`)
+    return { nfeList: [], pagesScraped: 1, stoppedEarly: true }
+  }
+
+  // Filter out already-known records from this page
+  const newFromFirstPage = firstPageData.filter((row: any) => !knownIds.has(parseInt(row.ID, 10)))
+  allNfe.push(...newFromFirstPage)
+  console.log(`[sync/linvix-vendas] Página 1: ${newFromFirstPage.length} novas NF-e (total no Linvix: ${totalRecords})`)
+
+  // If all records on the first page are new, continue to next pages
+  // Stop when a page is entirely known
+  draw++
+  start += PAGE_SIZE
+
+  while (start < totalRecords && !stoppedEarly) {
+    await sleep(PAGE_DELAY_MS)
+    const page = await fetchNfeListPage(phpsessid, draw, start)
+    const pageData = page.data || []
+
+    // Check if entire page is known
+    const pageAllKnown = pageData.every((row: any) => knownIds.has(parseInt(row.ID, 10)))
+
+    if (pageAllKnown && pageData.length > 0) {
+      console.log(`[sync/linvix-vendas] Página ${draw} totalmente conhecida — parando paginação`)
+      stoppedEarly = true
+      break
+    }
+
+    // Add only new records
+    const newFromPage = pageData.filter((row: any) => !knownIds.has(parseInt(row.ID, 10)))
+    allNfe.push(...newFromPage)
+    console.log(`[sync/linvix-vendas] Página ${draw}: ${newFromPage.length} novas NF-e`)
+
+    draw++
+    start += PAGE_SIZE
+  }
+
+  console.log(`[sync/linvix-vendas] Total: ${allNfe.length} NF-e novas para sincronizar`)
+  return { nfeList: allNfe, pagesScraped: draw - 1, stoppedEarly }
+}
+
+/**
+ * Fetch ALL NF-e list (for full mode)
+ */
 async function fetchAllNfeFromLinvix(phpsessid: string): Promise<any[]> {
-  console.log('[sync/linvix-vendas] Buscando lista de NF-e...')
+  console.log('[sync/linvix-vendas] Buscando lista completa de NF-e...')
 
   const allNfe: any[] = []
   let draw = 1
@@ -249,9 +320,9 @@ async function upsertVenda(nfeDetail: any): Promise<{ created: boolean; updated:
     valorTotal: nfeDetail.VALOR_TOTAL_NOTA || 0,
     dataEmissao,
     dataSaida,
-    operador: '', // filled from list data if available
+    operador: '',
     naturezaOperacao: nfeDetail.DADOS_NOTA?.NATUREZA_OPERACAO || '',
-    emitente: '', // filled from list data
+    emitente: '',
     chave: nfeDetail.NFE_CHAVE || '',
     transportadora: nfeDetail.TRANSPORTE?.TRANSPORTADORA || '',
     devolvido: false,
@@ -267,20 +338,15 @@ async function upsertVenda(nfeDetail: any): Promise<{ created: boolean; updated:
     syncedAt: new Date(),
   }
 
-  // Check if venda already exists
   const existing = await db.venda.findUnique({ where: { linvixId } })
 
   if (existing) {
-    // Update existing venda (mainly situacao might change)
     await db.venda.update({
       where: { linvixId },
       data: vendaData,
     })
-
-    // Delete old items and re-insert (simpler than diffing)
     await db.vendaItem.deleteMany({ where: { vendaId: existing.id } })
 
-    // Insert new items
     const produtos = nfeDetail.PRODUTOS || []
     for (const p of produtos) {
       const tributacao = p.TRIBUTACAO
@@ -302,10 +368,8 @@ async function upsertVenda(nfeDetail: any): Promise<{ created: boolean; updated:
         },
       })
     }
-
     return { created: false, updated: true }
   } else {
-    // Create new venda with items
     const produtos = nfeDetail.PRODUTOS || []
     const itensData = produtos.map((p: any) => ({
       item: p.ITEM || 0,
@@ -328,7 +392,6 @@ async function upsertVenda(nfeDetail: any): Promise<{ created: boolean; updated:
         itens: { create: itensData },
       },
     })
-
     return { created: true, updated: false }
   }
 }
@@ -361,9 +424,324 @@ async function updateUltimaVendaForClients(clienteCodigos: string[]): Promise<vo
   }
 }
 
-// ─── Main Sync Function ──────────────────────────────
+// ─── Get known linvixIds from our DB ──────────────────
 
-async function runVendasSync(): Promise<{
+async function getKnownLinvixIds(): Promise<Set<number>> {
+  const existing = await db.venda.findMany({
+    select: { linvixId: true },
+  })
+  return new Set(existing.map(v => v.linvixId))
+}
+
+// ─── Get vendas missing items (need detail backfill) ──
+
+async function getVendasMissingItems(limit: number = MAX_DETAILS_PER_RUN): Promise<{ id: string; linvixId: number }[]> {
+  // Find vendas that have 0 items
+  const vendas = await db.venda.findMany({
+    where: { itens: { none: {} } },
+    select: { id: true, linvixId: true },
+    take: limit,
+  })
+  return vendas
+}
+
+// ─── Sync Modes ──────────────────────────────────────
+
+/**
+ * Incremental sync: Only fetch NEW NF-e + backfill missing items
+ * This is the recommended mode for daily/hourly cron runs.
+ */
+async function runIncrementalSync(): Promise<{
+  success: boolean
+  totalNfe: number
+  created: number
+  updated: number
+  skipped: number
+  errors: number
+  errorDetails: string[]
+  durationMs: number
+  detailsScraped: number
+  pagesScraped: number
+  backfilledItems: number
+  newNfeFound: number
+}> {
+  const startTime = Date.now()
+
+  // 1. Get known IDs from our DB
+  const knownIds = await getKnownLinvixIds()
+  console.log(`[sync/linvix-vendas] Incremental: ${knownIds.size} NF-e já conhecidas no banco`)
+
+  // 2. Login
+  const phpsessid = await loginToLinvix()
+
+  // 3. Fetch only new NF-e from list (stops at known IDs)
+  const { nfeList, pagesScraped, stoppedEarly } = await fetchNewNfeFromLinvix(phpsessid, knownIds)
+  const newNfeFound = nfeList.length
+
+  // Build map of list data for enrichment
+  const listMap = new Map<string, any>()
+  for (const row of nfeList) {
+    const id = row.ID
+    if (id) listMap.set(String(id), row)
+  }
+
+  // 4. Fetch details and upsert each NEW NF-e (with time limit)
+  let created = 0
+  let updated = 0
+  let skipped = 0
+  let errors = 0
+  let detailsScraped = 0
+  const errorDetails: string[] = []
+  const affectedClientes = new Set<string>()
+
+  const detailStartTime = Date.now()
+
+  for (let i = 0; i < nfeList.length; i++) {
+    // Check time limit
+    if (Date.now() - detailStartTime > MAX_DETAIL_TIME_MS) {
+      console.log(`[sync/linvix-vendas] Limite de tempo atingido após ${detailsScraped} detalhes. Restantes: ${nfeList.length - i}`)
+      skipped += nfeList.length - i
+      break
+    }
+
+    // Check count limit
+    if (detailsScraped >= MAX_DETAILS_PER_RUN) {
+      console.log(`[sync/linvix-vendas] Limite de ${MAX_DETAILS_PER_RUN} detalhes atingido. Restantes: ${nfeList.length - i}`)
+      skipped += nfeList.length - i
+      break
+    }
+
+    const nfeRow = nfeList[i]
+    const nfeId = parseInt(nfeRow.ID, 10)
+
+    if (!nfeId) { skipped++; continue }
+
+    try {
+      await sleep(DETAIL_DELAY_MS)
+      const detail = await fetchNfeDetail(phpsessid, nfeId)
+      detailsScraped++
+
+      // Enrich with list data
+      const listData = listMap.get(String(nfeId))
+      if (listData) {
+        if (!detail.OPERADOR) detail.OPERADOR = stripHtml(listData.OPERADOR)
+        if (!detail.EMITENTE_NOME && listData.EMITENTE_NOME) {
+          detail.emitente = stripHtml(listData.EMITENTE_NOME)
+        }
+      }
+
+      const result = await upsertVenda(detail)
+      if (result.created) { created++; affectedClientes.add(detail.CLIENTE?.CODIGO) }
+      else if (result.updated) { updated++; affectedClientes.add(detail.CLIENTE?.CODIGO) }
+      else skipped++
+
+      if ((detailsScraped) % 10 === 0) {
+        console.log(`[sync/linvix-vendas] Progresso: ${detailsScraped} detalhes buscados (criadas=${created}, atualizadas=${updated})`)
+      }
+    } catch (err: any) {
+      errors++
+      if (errorDetails.length < 10) errorDetails.push(`NF-e ${nfeId}: ${err.message?.substring(0, 100)}`)
+      console.error(`[sync/linvix-vendas] Erro na NF-e ${nfeId}:`, err.message)
+    }
+  }
+
+  // 5. Backfill missing items for existing vendas (if time allows)
+  let backfilledItems = 0
+  const timeRemaining = MAX_DETAIL_TIME_MS - (Date.now() - detailStartTime)
+  if (timeRemaining > 30000) { // Only if at least 30s left
+    const vendasMissingItems = await getVendasMissingItems(MAX_DETAILS_PER_RUN - detailsScraped)
+    if (vendasMissingItems.length > 0) {
+      console.log(`[sync/linvix-vendas] Backfill: ${vendasMissingItems.length} vendas sem itens, buscando detalhes...`)
+      for (const v of vendasMissingItems) {
+        if (Date.now() - detailStartTime > MAX_DETAIL_TIME_MS) break
+        if (detailsScraped >= MAX_DETAILS_PER_RUN) break
+
+        try {
+          await sleep(DETAIL_DELAY_MS)
+          const detail = await fetchNfeDetail(phpsessid, v.linvixId)
+          detailsScraped++
+
+          if (detail.PRODUTOS && detail.PRODUTOS.length > 0) {
+            // Delete any leftover items and re-create
+            await db.vendaItem.deleteMany({ where: { vendaId: v.id } })
+            for (const p of detail.PRODUTOS) {
+              await db.vendaItem.create({
+                data: {
+                  vendaId: v.id,
+                  item: p.ITEM || 0,
+                  codigoProduto: p.CODIGO || '',
+                  descricao: p.DESCRICAO || '',
+                  unidade: p.UND || '',
+                  quantidade: p.QTD || 0,
+                  precoVenda: p.PRECO_VENDA || 0,
+                  valorDesconto: p.VALOR_DESCONTO_TOTAL || 0,
+                  valorCusto: p.VALOR_CUSTO_UNITARIO || 0,
+                  valorTotal: p.VALOR_TOTAL || 0,
+                  vendedor: p.VENDEDOR || '',
+                  ncm: p.TRIBUTACAO?.COD_NCM || '',
+                  cfop: p.TRIBUTACAO?.ICMS?.CFOP || '',
+                },
+              })
+            }
+            backfilledItems++
+            affectedClientes.add(detail.CLIENTE?.CODIGO)
+          }
+
+          // Also update the venda record itself with any missing data
+          const situacao = stripHtml(detail.STATUS) || ''
+          const dataEmissao = parseDateTime(detail.DATA_EMISSAO)
+          const pagamento = detail.PAGAMENTO_NOVO
+          await db.venda.update({
+            where: { id: v.id },
+            data: {
+              situacao,
+              dataEmissao,
+              valorVenda: pagamento?.valor_venda || undefined,
+              valorPago: pagamento?.valor_pago || undefined,
+              valorProdutos: pagamento?.valor_prod || undefined,
+              valorFrete: pagamento?.valor_frete || undefined,
+              valorDesconto: pagamento?.valor_desconto || undefined,
+              valorFinal: pagamento?.valor_final || undefined,
+              formaPagamento: pagamento?.config_parcelamento_nome || undefined,
+              syncedAt: new Date(),
+            },
+          })
+        } catch (err: any) {
+          errors++
+          if (errorDetails.length < 10) errorDetails.push(`Backfill NF-e ${v.linvixId}: ${err.message?.substring(0, 100)}`)
+        }
+      }
+    }
+  }
+
+  // 6. Update ultimaVenda for affected clients
+  if (affectedClientes.size > 0) {
+    console.log(`[sync/linvix-vendas] Atualizando ultimaVenda para ${affectedClientes.size} clientes...`)
+    await updateUltimaVendaForClients([...affectedClientes].filter(Boolean))
+  }
+
+  const totalMs = Date.now() - startTime
+  console.log(`[sync/linvix-vendas] Incremental sync completo: ${totalMs}ms (novas=${created}, atualizadas=${updated}, backfill=${backfilledItems}, erros=${errors})`)
+
+  return {
+    success: errors === 0,
+    totalNfe: nfeList.length,
+    created,
+    updated,
+    skipped,
+    errors,
+    errorDetails,
+    durationMs: totalMs,
+    detailsScraped,
+    pagesScraped,
+    backfilledItems,
+    newNfeFound,
+  }
+}
+
+/**
+ * Backfill-only mode: Only fetch details for vendas that have 0 items
+ * Used to gradually fill in missing product data without fetching the whole list
+ */
+async function runBackfillSync(): Promise<{
+  success: boolean
+  backfilledItems: number
+  errors: number
+  errorDetails: string[]
+  durationMs: number
+  detailsScraped: number
+}> {
+  const startTime = Date.now()
+
+  const vendasMissingItems = await getVendasMissingItems()
+  console.log(`[sync/linvix-vendas] Backfill: ${vendasMissingItems.length} vendas sem itens`)
+
+  if (vendasMissingItems.length === 0) {
+    return { success: true, backfilledItems: 0, errors: 0, errorDetails: [], durationMs: 0, detailsScraped: 0 }
+  }
+
+  const phpsessid = await loginToLinvix()
+
+  let backfilledItems = 0
+  let errors = 0
+  let detailsScraped = 0
+  const errorDetails: string[] = []
+  const affectedClientes = new Set<string>()
+
+  for (const v of vendasMissingItems) {
+    if (Date.now() - startTime > MAX_DETAIL_TIME_MS) break
+    if (detailsScraped >= MAX_DETAILS_PER_RUN) break
+
+    try {
+      await sleep(DETAIL_DELAY_MS)
+      const detail = await fetchNfeDetail(phpsessid, v.linvixId)
+      detailsScraped++
+
+      if (detail.PRODUTOS && detail.PRODUTOS.length > 0) {
+        await db.vendaItem.deleteMany({ where: { vendaId: v.id } })
+        for (const p of detail.PRODUTOS) {
+          await db.vendaItem.create({
+            data: {
+              vendaId: v.id,
+              item: p.ITEM || 0,
+              codigoProduto: p.CODIGO || '',
+              descricao: p.DESCRICAO || '',
+              unidade: p.UND || '',
+              quantidade: p.QTD || 0,
+              precoVenda: p.PRECO_VENDA || 0,
+              valorDesconto: p.VALOR_DESCONTO_TOTAL || 0,
+              valorCusto: p.VALOR_CUSTO_UNITARIO || 0,
+              valorTotal: p.VALOR_TOTAL || 0,
+              vendedor: p.VENDEDOR || '',
+              ncm: p.TRIBUTACAO?.COD_NCM || '',
+              cfop: p.TRIBUTACAO?.ICMS?.CFOP || '',
+            },
+          })
+        }
+        backfilledItems++
+        affectedClientes.add(detail.CLIENTE?.CODIGO)
+
+        // Update venda record
+        const situacao = stripHtml(detail.STATUS) || ''
+        const dataEmissao = parseDateTime(detail.DATA_EMISSAO)
+        const pagamento = detail.PAGAMENTO_NOVO
+        await db.venda.update({
+          where: { id: v.id },
+          data: {
+            situacao,
+            dataEmissao,
+            valorVenda: pagamento?.valor_venda || undefined,
+            valorPago: pagamento?.valor_pago || undefined,
+            valorProdutos: pagamento?.valor_prod || undefined,
+            valorFrete: pagamento?.valor_frete || undefined,
+            valorDesconto: pagamento?.valor_desconto || undefined,
+            valorFinal: pagamento?.valor_final || undefined,
+            formaPagamento: pagamento?.config_parcelamento_nome || undefined,
+            syncedAt: new Date(),
+          },
+        })
+      }
+    } catch (err: any) {
+      errors++
+      if (errorDetails.length < 10) errorDetails.push(`Backfill NF-e ${v.linvixId}: ${err.message?.substring(0, 100)}`)
+    }
+  }
+
+  if (affectedClientes.size > 0) {
+    await updateUltimaVendaForClients([...affectedClientes].filter(Boolean))
+  }
+
+  const totalMs = Date.now() - startTime
+  console.log(`[sync/linvix-vendas] Backfill completo: ${totalMs}ms (itens preenchidos=${backfilledItems}, erros=${errors})`)
+
+  return { success: errors === 0, backfilledItems, errors, errorDetails, durationMs: totalMs, detailsScraped }
+}
+
+/**
+ * Full sync: Fetch ALL NF-e (original behavior)
+ * WARNING: Will timeout for large datasets on Vercel
+ */
+async function runFullSync(): Promise<{
   success: boolean
   totalNfe: number
   created: number
@@ -376,21 +754,16 @@ async function runVendasSync(): Promise<{
 }> {
   const startTime = Date.now()
 
-  // 1. Login
   const phpsessid = await loginToLinvix()
-
-  // 2. Fetch all NF-e list data
   const nfeList = await fetchAllNfeFromLinvix(phpsessid)
   const totalNfe = nfeList.length
 
-  // Build a map of list data for enrichment (operador, emitente, etc.)
   const listMap = new Map<string, any>()
   for (const row of nfeList) {
     const id = row.ID
     if (id) listMap.set(String(id), row)
   }
 
-  // 3. Fetch details and upsert each NF-e
   let created = 0
   let updated = 0
   let skipped = 0
@@ -400,18 +773,23 @@ async function runVendasSync(): Promise<{
   const affectedClientes = new Set<string>()
 
   for (let i = 0; i < nfeList.length; i++) {
+    // Safety: time limit for full mode too
+    if (Date.now() - startTime > MAX_DETAIL_TIME_MS) {
+      console.log(`[sync/linvix-vendas] Tempo limite atingido. ${nfeList.length - i} NF-e restantes.`)
+      skipped += nfeList.length - i
+      break
+    }
+
     const nfeRow = nfeList[i]
     const nfeId = parseInt(nfeRow.ID, 10)
 
     if (!nfeId) { skipped++; continue }
 
     try {
-      // Fetch detail
       await sleep(DETAIL_DELAY_MS)
       const detail = await fetchNfeDetail(phpsessid, nfeId)
       detailsScraped++
 
-      // Enrich with list data
       const listData = listMap.get(String(nfeId))
       if (listData) {
         if (!detail.OPERADOR) detail.OPERADOR = stripHtml(listData.OPERADOR)
@@ -435,12 +813,12 @@ async function runVendasSync(): Promise<{
     }
   }
 
-  // 4. Update ultimaVenda for affected clients
-  console.log(`[sync/linvix-vendas] Atualizando ultimaVenda para ${affectedClientes.size} clientes...`)
-  await updateUltimaVendaForClients([...affectedClientes])
+  if (affectedClientes.size > 0) {
+    await updateUltimaVendaForClients([...affectedClientes].filter(Boolean))
+  }
 
   const totalMs = Date.now() - startTime
-  console.log(`[sync/linvix-vendas] Sync completo: ${totalMs}ms (criadas=${created}, atualizadas=${updated}, erros=${errors})`)
+  console.log(`[sync/linvix-vendas] Full sync completo: ${totalMs}ms (criadas=${created}, atualizadas=${updated}, erros=${errors})`)
 
   return {
     success: errors === 0,
@@ -460,7 +838,7 @@ async function runVendasSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  if (mode === 'auto') {
+  if (mode === 'auto' || mode === 'incremental' || mode === 'backfill' || mode === 'full') {
     if (!validateSyncSecret(request)) {
       return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
     }
@@ -472,21 +850,32 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const startTime = Date.now()
-
     try {
-      const result = await runVendasSync()
+      let result: any
+      let syncType = 'vendas'
 
-      // Log to LinvixSyncLog (reuse existing model)
+      if (mode === 'auto' || mode === 'incremental') {
+        result = await runIncrementalSync()
+        syncType = 'vendas'
+      } else if (mode === 'backfill') {
+        result = await runBackfillSync()
+        syncType = 'vendas-backfill'
+      } else {
+        result = await runFullSync()
+        syncType = 'vendas-full'
+      }
+
+      // Log to LinvixSyncLog
       await db.linvixSyncLog.create({
         data: {
+          syncType,
           status: result.errors > 0 ? 'partial' : 'success',
-          totalClients: result.totalNfe,
-          createdCount: result.created,
-          updatedCount: result.updated,
-          skippedCount: result.skipped,
+          totalClients: result.totalNfe || result.backfilledItems || 0,
+          createdCount: result.created || 0,
+          updatedCount: result.updated || 0,
+          skippedCount: result.skipped || 0,
           errorCount: result.errors,
-          errorMessage: result.errorDetails.join('\n'),
+          errorMessage: result.errorDetails?.join('\n') || '',
           detailsScraped: result.detailsScraped,
           durationMs: result.durationMs,
         },
@@ -494,13 +883,8 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         status: result.success ? 'success' : 'partial',
-        total: result.totalNfe,
-        created: result.created,
-        updated: result.updated,
-        skipped: result.skipped,
-        errors: result.errors,
-        detailsScraped: result.detailsScraped,
-        durationMs: result.durationMs,
+        mode,
+        ...result,
       })
     } catch (err: any) {
       console.error('[sync/linvix-vendas] Sync falhou:', err)
@@ -512,8 +896,24 @@ export async function GET(request: NextRequest) {
   }
 
   // Default: return sync status
+  const lastVendasSync = await db.linvixSyncLog.findFirst({
+    where: { syncType: { startsWith: 'vendas' } },
+    orderBy: { startedAt: 'desc' },
+  })
+
   return NextResponse.json({
     message: 'Linvix Vendas Sync API',
-    mode: 'Use ?mode=auto to trigger sync',
+    modes: {
+      incremental: 'Only new NF-e + backfill missing items (recommended for cron)',
+      backfill: 'Only fetch details for vendas with 0 items',
+      full: 'Fetch ALL NF-e (may timeout)',
+      auto: 'Same as incremental',
+    },
+    lastSync: lastVendasSync ? {
+      status: lastVendasSync.status,
+      startedAt: lastVendasSync.startedAt,
+      finishedAt: lastVendasSync.finishedAt,
+      durationMs: lastVendasSync.durationMs,
+    } : null,
   })
 }

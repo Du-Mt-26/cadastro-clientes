@@ -214,13 +214,14 @@ model RolePermission {
 
 model LinvixSyncLog {
   id              String   @id @default(cuid())
+  syncType        String   @default("clientes")  // "clientes" | "vendas" | "all"
   status          String   @default("running")    // "running" | "success" | "error" | "partial"
   startedAt       DateTime @default(now())
   finishedAt      DateTime?
-  totalClients    Int      @default(0)            // Total clients found in Linvix
-  createdCount    Int      @default(0)            // New clients created in M-Tech
-  updatedCount    Int      @default(0)            // Existing clients updated in M-Tech
-  skippedCount    Int      @default(0)            // Clients skipped (no changes)
+  totalClients    Int      @default(0)            // Total records found in Linvix (clients or NF-e)
+  createdCount    Int      @default(0)            // New records created in M-Tech
+  updatedCount    Int      @default(0)            // Existing records updated in M-Tech
+  skippedCount    Int      @default(0)            // Records skipped (no changes / already synced)
   errorCount      Int      @default(0)            // Errors during sync
   errorMessage    String   @default("")  @db.Text
   pagesScraped    Int      @default(0)            // Number of Linvix pages scraped
@@ -229,6 +230,7 @@ model LinvixSyncLog {
 
   @@index([startedAt])
   @@index([status])
+  @@index([syncType])
 }
 
 // ─── Venda (NF-e) ────────────────────────────────
