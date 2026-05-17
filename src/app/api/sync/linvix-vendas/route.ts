@@ -838,6 +838,83 @@ async function runFullSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
+  // ─── Trigger mode: respond immediately, sync in background ──
+  // Designed for external cron services (cron-job.org) with short timeouts (30s).
+  // Returns 200 immediately so the caller doesn't time out, then runs sync async.
+  if (mode === 'trigger') {
+    if (!validateSyncSecret(request)) {
+      return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
+    }
+
+    if (!LINVIX_USER || !LINVIX_PASSWORD) {
+      return NextResponse.json(
+        { error: 'Credenciais do Linvix não configuradas' },
+        { status: 500 }
+      )
+    }
+
+    // Check if a vendas sync is already running
+    const runningSync = await db.linvixSyncLog.findFirst({
+      where: { syncType: { startsWith: 'vendas' }, status: 'running' },
+      orderBy: { startedAt: 'desc' },
+    })
+
+    if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
+      return NextResponse.json({
+        status: 'already_running',
+        message: 'Um sync de vendas já está em andamento',
+        startedAt: runningSync.startedAt,
+      })
+    }
+
+    // Respond immediately
+    const triggeredAt = new Date().toISOString()
+    const response = NextResponse.json({
+      status: 'triggered',
+      message: 'Sync de vendas iniciado em background',
+      triggeredAt,
+      mode: 'incremental',
+    })
+
+    // Run sync in background (fire and forget)
+    // Vercel serverless functions continue running after response is sent
+    ;(async () => {
+      try {
+        const result = await runIncrementalSync()
+
+        await db.linvixSyncLog.create({
+          data: {
+            syncType: 'vendas',
+            status: result.errors > 0 ? 'partial' : 'success',
+            totalClients: result.totalNfe || 0,
+            createdCount: result.created || 0,
+            updatedCount: result.updated || 0,
+            skippedCount: result.skipped || 0,
+            errorCount: result.errors,
+            errorMessage: result.errorDetails?.join('\n') || '',
+            detailsScraped: result.detailsScraped,
+            durationMs: result.durationMs,
+          },
+        })
+
+        console.log(`[sync/linvix-vendas] Trigger sync concluído: criadas=${result.created}, atualizadas=${result.updated}, backfill=${result.backfilledItems}`)
+      } catch (err: any) {
+        console.error('[sync/linvix-vendas] Trigger sync falhou:', err.message)
+
+        await db.linvixSyncLog.create({
+          data: {
+            syncType: 'vendas',
+            status: 'error',
+            errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+          },
+        })
+      }
+    })()
+
+    return response
+  }
+
+  // ─── Blocking modes (wait for completion) ────────────────
   if (mode === 'auto' || mode === 'incremental' || mode === 'backfill' || mode === 'full') {
     if (!validateSyncSecret(request)) {
       return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
@@ -904,7 +981,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     message: 'Linvix Vendas Sync API',
     modes: {
-      incremental: 'Only new NF-e + backfill missing items (recommended for cron)',
+      trigger: 'Fire and forget — responds immediately, syncs in background (for cron-job.org)',
+      incremental: 'Only new NF-e + backfill missing items (waits for completion)',
       backfill: 'Only fetch details for vendas with 0 items',
       full: 'Fetch ALL NF-e (may timeout)',
       auto: 'Same as incremental',
