@@ -471,7 +471,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"observacoes" = COALESCE(NULLIF(EXCLUDED."observacoes", \'\'), "Cliente"."observacoes")',
         '"source" = EXCLUDED."source"',
         '"tipo" = EXCLUDED."tipo"',
-        '"carteira" = EXCLUDED."carteira"',
+        '"carteira" = CASE WHEN "Cliente"."carteira" = \'SEM_VENDEDOR\'::"Carteira" THEN EXCLUDED."carteira" ELSE "Cliente"."carteira" END',
         '"updatedAt" = NOW()',
       ].join(',\n          ')
 
@@ -507,6 +507,86 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
 
   console.log(`[sync/linvix] Batch upsert completo: criados=${created}, atualizados=${updated}, erros=${errors}`)
   return { created, updated, skipped, errors, errorDetails }
+}
+
+// ─── Auto-assign vendedor ──────────────────────────────
+// After upserting clients from Linvix, this function maps the
+// Linvix vendedor name (text field) to the corresponding system User
+// and sets carteira = COM_VENDEDOR + vendedorId accordingly.
+// Clients with "M-TECH DISTRIBUIDORA" as vendedor get carteira = FORNECEDOR.
+
+async function autoAssignVendedores(): Promise<{ assigned: number; fornecedor: number; unchanged: number }> {
+  console.log('[sync/linvix] Auto-assign vendedores...')
+
+  // Get all system users
+  const users = await db.user.findMany({
+    select: { id: true, name: true, role: true },
+  })
+
+  // Build mapping: lowercase name parts → user ID
+  // We match by checking if the Linvix vendedor name is contained in the user name
+  // or vice versa (handles cases like "ALICE" matching "ALICE - Supervisora")
+  const userMap = new Map<string, { id: string; role: string }>()
+  for (const user of users) {
+    // Normalize: uppercase, remove accents for matching
+    const normalized = user.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    userMap.set(normalized, { id: user.id, role: user.role })
+  }
+
+  // Find all clients that need assignment
+  const clientsNeedingAssignment = await db.cliente.findMany({
+    where: {
+      vendedor: { not: '' },
+      carteira: 'SEM_VENDEDOR',
+    },
+    select: { id: true, codigo: true, vendedor: true },
+  })
+
+  let assigned = 0
+  let fornecedor = 0
+  let unchanged = 0
+
+  for (const client of clientsNeedingAssignment) {
+    const vendedorNorm = client.vendedor.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+    // Check if this is M-TECH DISTRIBUIDORA → set as FORNECEDOR
+    if (vendedorNorm.includes('M-TECH') || vendedorNorm.includes('MTECH')) {
+      await db.cliente.update({
+        where: { id: client.id },
+        data: { carteira: 'FORNECEDOR', vendedorId: null },
+      })
+      fornecedor++
+      continue
+    }
+
+    // Try to find matching user
+    let matchedUserId: string | null = null
+    for (const [userName, userInfo] of userMap) {
+      // Exact match
+      if (userName === vendedorNorm) {
+        matchedUserId = userInfo.id
+        break
+      }
+      // Partial match: vendedor name is contained in user name (e.g. "ALICE" in "ALICE - SUPERVISORA")
+      if (userName.includes(vendedorNorm) || vendedorNorm.includes(userName)) {
+        matchedUserId = userInfo.id
+        break
+      }
+    }
+
+    if (matchedUserId) {
+      await db.cliente.update({
+        where: { id: client.id },
+        data: { carteira: 'COM_VENDEDOR', vendedorId: matchedUserId },
+      })
+      assigned++
+    } else {
+      unchanged++
+    }
+  }
+
+  console.log(`[sync/linvix] Auto-assign: ${assigned} atribuídos, ${fornecedor} fornecedores, ${unchanged} sem match`)
+  return { assigned, fornecedor, unchanged }
 }
 
 // ─── Auto-Sync (Full Daily Sync) ───────────────────────
@@ -548,6 +628,12 @@ async function runAutoSync(): Promise<{
   const result = await batchUpsertClients(clients)
   const upsertMs = Date.now() - upsertStart
   console.log(`[sync/linvix] Upsert: ${upsertMs}ms`)
+
+  // 5. Auto-assign vendedores (map Linvix vendedor name → system User)
+  const assignStart = Date.now()
+  const assignResult = await autoAssignVendedores()
+  const assignMs = Date.now() - assignStart
+  console.log(`[sync/linvix] Auto-assign: ${assignMs}ms`)
 
   const totalMs = Date.now() - startTime
   console.log(`[sync/linvix] Sync completo: ${totalMs}ms (login=${loginMs}, fetch=${fetchMs}, upsert=${upsertMs})`)
