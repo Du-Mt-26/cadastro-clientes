@@ -36,6 +36,7 @@ model Cliente {
   nomeFantasia      String  @default("")
   situacaoCadastral String  @default("")
   cnpj              String  @default("")
+  cnpjBase          String  @default("")         // Primeiros 8 dígitos do CNPJ (identifica a empresa base para filiais)
   endereco          String  @default("")
   numero            String  @default("")
   complemento       String  @default("")
@@ -89,6 +90,7 @@ model Cliente {
   vendas      Venda[]
 
   @@index([cnpj])
+  @@index([cnpjBase])
   @@index([cidade])
   @@index([uf])
   @@index([vendedor])
