@@ -134,12 +134,12 @@ export async function GET(request: NextRequest) {
     // ── Enrich with filial info ──
     // For clients that share the same cnpjBase, add filial count and type
     const cnpjBases = [...new Set(dataResult.records.map(r => r.cnpj_base).filter(Boolean))]
-    let filialMap: Record<string, { count: number; filiais: { codigo: string; razaoSocial: string; cidade: string; filialNumero: number; cnpj: string }[] }> = {}
+    let filialMap: Record<string, { count: number; filiais: { codigo: string; razaoSocial: string; nomeFantasia: string; cidade: string; uf: string; filialNumero: number; cnpj: string; situacaoCadastral: string; ultimaVenda: string; vendedor: string }[] }> = {}
 
     if (cnpjBases.length > 0) {
       const filiais = await db.cliente.findMany({
         where: { cnpjBase: { in: cnpjBases } },
-        select: { codigo: true, razaoSocial: true, cidade: true, cnpj: true, cnpjBase: true },
+        select: { codigo: true, razaoSocial: true, nomeFantasia: true, cidade: true, uf: true, cnpj: true, cnpjBase: true, situacaoCadastral: true, ultimaVenda: true, vendedor: true },
       })
       for (const f of filiais) {
         const base = f.cnpjBase
@@ -147,7 +147,11 @@ export async function GET(request: NextRequest) {
         const d = f.cnpj.replace(/\D/g, '')
         const filialNumero = d.length === 14 ? parseInt(d.slice(8, 12), 10) : 0
         filialMap[base].count++
-        filialMap[base].filiais.push({ codigo: f.codigo, razaoSocial: f.razaoSocial, cidade: f.cidade, filialNumero, cnpj: f.cnpj })
+        filialMap[base].filiais.push({
+          codigo: f.codigo, razaoSocial: f.razaoSocial, nomeFantasia: f.nomeFantasia,
+          cidade: f.cidade, uf: f.uf, filialNumero, cnpj: f.cnpj,
+          situacaoCadastral: f.situacaoCadastral, ultimaVenda: f.ultimaVenda, vendedor: f.vendedor,
+        })
       }
     }
 
@@ -353,6 +357,14 @@ export async function PATCH(request: NextRequest) {
           updateData[field] = newValue;
           auditEntries.push({ field, oldValue, newValue });
         }
+      }
+    }
+
+    // Auto-update cnpjBase when cnpj is changed
+    if (updateData['cnpj']) {
+      const newCnpjDigits = String(updateData['cnpj']).replace(/\D/g, '')
+      if (newCnpjDigits.length === 14) {
+        updateData['cnpjBase'] = newCnpjDigits.slice(0, 8)
       }
     }
 
