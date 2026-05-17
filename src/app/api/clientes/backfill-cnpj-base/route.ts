@@ -6,19 +6,26 @@ import { authOptions, type Role } from '@/lib/auth'
 // ─── POST /api/clientes/backfill-cnpj-base ────────────────
 // Backfill cnpjBase for all clients that have a CNPJ but empty cnpjBase
 // Also updates cnpjBase when the value is inconsistent with the current CNPJ
+// Supports secret-based auth for automated runs via ?secret=CRON_SECRET
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
-    if (!session?.user) {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    }
-    const role = (session.user as any).role as Role
-    if (role !== 'ADMIN' && role !== 'DIRETOR_COMERCIAL' && role !== 'GERENTE_COMERCIAL') {
-      return NextResponse.json({ error: 'Permissão negada' }, { status: 403 })
+    // Allow secret-based auth (for automated/curl runs)
+    const secret = request.nextUrl.searchParams.get('secret')
+    const isSecretAuth = secret && secret === process.env.CRON_SECRET
+
+    if (!isSecretAuth) {
+      const session = await getServerSession(authOptions)
+      if (!session?.user) {
+        return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+      }
+      const role = (session.user as any).role as Role
+      if (role !== 'ADMIN' && role !== 'DIRETOR_COMERCIAL' && role !== 'GERENTE_COMERCIAL') {
+        return NextResponse.json({ error: 'Permissão negada' }, { status: 403 })
+      }
     }
 
-    // Find all clients with a valid CNPJ (14 digits) but empty or inconsistent cnpjBase
+    // Find all clients with a CNPJ but empty or inconsistent cnpjBase
     const clientes = await db.cliente.findMany({
       where: {
         cnpj: { not: '' },
@@ -54,7 +61,7 @@ export async function POST(request: NextRequest) {
       totalClients: clientes.length,
       updatedCount,
       skippedCount,
-      updates: updates.slice(0, 50), // Limit to first 50 for response size
+      updates: updates.slice(0, 50),
     })
   } catch (error) {
     console.error('Error backfilling cnpjBase:', error)
