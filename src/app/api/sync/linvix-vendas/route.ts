@@ -124,6 +124,18 @@ async function fetchNfeListPage(phpsessid: string, draw: number, start: number, 
   params.set('length', String(length))
   params.set('search[value]', '')
   params.set('search[regex]', 'false')
+  // Required order/column parameters for Linvix DataTable v2
+  params.set('order[0][column]', '0')
+  params.set('order[0][dir]', 'desc')
+  const columns = ['ID', 'NUMERO', 'STATUS', 'CLIENTE', 'VALOR', 'DATA', 'OPERADOR', 'EMITENTE', 'ACOES']
+  columns.forEach((col, i) => {
+    params.set(`columns[${i}][data]`, String(i))
+    params.set(`columns[${i}][name]`, col)
+    params.set(`columns[${i}][searchable]`, 'true')
+    params.set(`columns[${i}][orderable]`, 'true')
+    params.set(`columns[${i}][search][value]`, '')
+    params.set(`columns[${i}][search][regex]`, 'false')
+  })
 
   const url = `${LINVIX_NFE_LIST_URL}?${params}`
 
@@ -141,7 +153,13 @@ async function fetchNfeListPage(phpsessid: string, draw: number, start: number, 
     throw new Error(`Erro ao buscar NF-e lista página ${draw}: HTTP ${response.status}`)
   }
 
-  return await response.json()
+  const text = await response.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    console.error('[sync/linvix-vendas] Invalid JSON from list API (first 200 chars):', text.substring(0, 200))
+    throw new Error(`Invalid JSON from NF-e list API`)
+  }
 }
 
 async function fetchNfeDetail(phpsessid: string, nfeId: number): Promise<any> {
