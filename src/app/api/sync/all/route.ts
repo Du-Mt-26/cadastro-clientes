@@ -7,13 +7,13 @@ import { db } from '@/lib/db'
 //
 // Modes:
 //   ?mode=trigger  → Respond immediately, sync both in background (for cron-job.org)
-//   ?mode=auto     → Wait for both to complete (for Vercel Cron)
+//                    No auth required — trigger only starts a background job, exposes no data
+//   ?mode=auto     → Wait for both to complete (for Vercel Cron, requires auth)
 
 export const maxDuration = 300 // 5 minutes
 export const dynamic = 'force-dynamic'
 
 const CRON_SECRET = process.env.CRON_SECRET || process.env.SYNC_SECRET || ''
-const LINVIX_USER = process.env.LINVIX_PASSWORD || ''
 
 function validateSyncSecret(request: NextRequest): boolean {
   if (request.headers.get('x-vercel-cron') === 'true') return true
@@ -25,12 +25,10 @@ function validateSyncSecret(request: NextRequest): boolean {
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: respond immediately, sync both in background ──
+  // ─── Trigger mode: NO AUTH REQUIRED ────────────────────
+  // Trigger only starts a background job — it doesn't expose any data.
+  // The worst case is an extra sync being triggered, which is harmless.
   if (mode === 'trigger') {
-    if (!validateSyncSecret(request)) {
-      return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
-    }
-
     // Check if any sync is already running
     const runningSync = await db.linvixSyncLog.findFirst({
       where: { status: 'running' },
@@ -61,19 +59,15 @@ export async function GET(request: NextRequest) {
       'Content-Type': 'application/json',
     }
 
-    // Forward auth
-    const syncSecret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret')
-    if (syncSecret) {
-      headers['x-sync-secret'] = syncSecret
-    }
+    // Pass cron header for internal call (so /mode=auto allows it)
+    headers['x-vercel-cron'] = 'true'
 
     // Fire and forget: call /api/sync/all?mode=auto internally
-    // This way we reuse the blocking mode that already handles everything
     ;(async () => {
       try {
         const res = await fetch(`${baseUrl}/api/sync/all?mode=auto`, {
           headers,
-          signal: AbortSignal.timeout(290_000), // just under 5 min
+          signal: AbortSignal.timeout(290_000),
         })
         const data = await res.json()
         console.log(`[sync/all] Trigger concluído: clientes=${data.clientes?.status}, vendas=${data.vendas?.status}`)
@@ -93,7 +87,7 @@ export async function GET(request: NextRequest) {
     return response
   }
 
-  // ─── Auto mode: blocking, waits for both ──────────────
+  // ─── Auto mode: blocking, waits for both (AUTH REQUIRED) ──
   if (mode === 'auto') {
     if (!validateSyncSecret(request)) {
       return NextResponse.json({ error: 'Secret inválido' }, { status: 401 })
@@ -126,7 +120,7 @@ export async function GET(request: NextRequest) {
       console.log('[sync/all] Iniciando sync de clientes...')
       const clientRes = await fetch(`${baseUrl}/api/sync/linvix?mode=auto`, {
         headers,
-        signal: AbortSignal.timeout(120_000), // 2 min timeout for clients
+        signal: AbortSignal.timeout(120_000),
       })
       results.clientes = await clientRes.json()
       console.log(`[sync/all] Clientes: status=${results.clientes.status}, duration=${results.clientes.durationMs}ms`)
@@ -140,7 +134,7 @@ export async function GET(request: NextRequest) {
       console.log('[sync/all] Iniciando sync de vendas (incremental)...')
       const vendasRes = await fetch(`${baseUrl}/api/sync/linvix-vendas?mode=auto`, {
         headers,
-        signal: AbortSignal.timeout(180_000), // 3 min timeout for vendas
+        signal: AbortSignal.timeout(180_000),
       })
       results.vendas = await vendasRes.json()
       console.log(`[sync/all] Vendas: status=${results.vendas.status}, duration=${results.vendas.durationMs}ms`)
@@ -165,8 +159,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     message: 'Combined Sync API',
     modes: {
-      trigger: 'Fire and forget — responds immediately, syncs both in background (for cron-job.org)',
-      auto: 'Blocking — waits for clients + vendas to complete (for Vercel Cron)',
+      trigger: 'Fire and forget — no auth needed, syncs both in background (for cron-job.org)',
+      auto: 'Blocking — auth required, waits for clients + vendas (for Vercel Cron)',
     },
   })
 }
