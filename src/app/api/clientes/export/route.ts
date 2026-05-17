@@ -3,6 +3,14 @@ import * as XLSX from "xlsx";
 import { formatPhone, calcDiasSemVenda } from "@/lib/clientes";
 import { dbToRecord } from "@/lib/clientes-cache";
 import { db } from "@/lib/db";
+
+/** Format CNPJ (14 digits) or CPF (11 digits) for export */
+function formatDocumento(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.length === 14) return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`
+  return raw
+}
 import { getServerSession } from "next-auth";
 import { authOptions, canSeeListaFria, canSeeFornecedor, CARTEIRA_LABELS, type Role } from "@/lib/auth";
 import {
@@ -20,7 +28,7 @@ import type { ClienteRecord } from "@/lib/types";
 const EXPORT_COLUMNS: { key: string; label: string; value: (r: ClienteRecord) => string }[] = [
   { key: 'codigo',            label: 'Código',            value: r => r.parsed.codigo },
   { key: 'razao_social',      label: 'Razão Social',      value: r => r.razao_social },
-  { key: 'cnpj',              label: 'CNPJ',              value: r => r.cnpj },
+  { key: 'cnpj',              label: 'CNPJ/CPF',          value: r => formatDocumento(r.cnpj) },
   { key: 'dias_sem_venda',    label: 'Dias S/ Venda',     value: r => { const d = calcDiasSemVenda(r.parsed.ultima_venda); return d !== null ? String(d) : '' } },
   { key: 'pessoa_contato',    label: 'Contato',           value: r => r.pessoa_contato },
   { key: 'telefone1',         label: 'Tel. 1',            value: r => formatPhone(r.telefone1) },
