@@ -8,8 +8,8 @@ export async function middleware(request: NextRequest) {
   // Skip auth for these paths
   if (
     pathname.startsWith('/api/auth') ||  // NextAuth routes
-    pathname.startsWith('/api/sync/linvix') ||  // Linvix sync (API key auth)
-    pathname.startsWith('/api/sync/linvix-auto') ||  // Linvix auto-sync (cron/HTTP)
+    pathname.startsWith('/api/sync/linvix') ||  // Linvix sync (API key auth) — covers linvix, linvix-auto, linvix-vendas
+    pathname.startsWith('/api/sync/all') ||  // Combined sync (cron-job.org + Vercel Cron)
     pathname.startsWith('/login') ||       // Login page
     pathname.startsWith('/_next') ||       // Next.js internals
     pathname.includes('favicon') ||        // Favicon
