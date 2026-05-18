@@ -147,6 +147,7 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
   const lower = value.toLowerCase()
   if (lower === 'ativa') return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-300 dark:border-emerald-700 text-xs"><CheckCircle2 className="size-3 mr-1" />ATIVA</Badge>
   if (lower === 'baixada') return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-700 text-xs"><FileX2 className="size-3 mr-1" />BAIXADA</Badge>
+  if (lower === 'excluído' || lower === 'excluido') return <Badge className="bg-red-200 text-red-900 hover:bg-red-200 border-red-300 dark:bg-red-900/70 dark:text-red-200 dark:border-red-800 text-xs font-bold"><XCircle className="size-3 mr-1" />EXCLUÍDO</Badge>
   if (lower === 'inapta') return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100 border-amber-200 dark:bg-amber-900/50 dark:text-amber-300 dark:border-amber-700 text-xs"><AlertTriangle className="size-3 mr-1" />INAPTA</Badge>
   if (lower === 'suspensa') return <Badge className="bg-orange-100 text-orange-800 hover:bg-orange-100 border-orange-200 dark:bg-orange-900/50 dark:text-orange-300 dark:border-orange-700 text-xs"><PauseCircle className="size-3 mr-1" />SUSPENSA</Badge>
   return <Badge variant="outline" className="text-xs">{value}</Badge>
@@ -971,6 +972,7 @@ export default function HomeClient() {
                 </button>
                 <span className="text-slate-300 dark:text-slate-600">│</span>
                 <span className="flex items-center gap-1.5 text-red-600 dark:text-red-400"><AlertTriangle className="size-3.5" />Irreg. <span className="font-bold">{((scStats['BAIXADA'] ?? 0) + (scStats['INAPTA'] ?? 0) + (scStats['SUSPENSA'] ?? 0)).toLocaleString('pt-BR')}</span></span>
+                {(scStats['EXCLUÍDO'] ?? 0) > 0 && (<><span className="text-slate-300 dark:text-slate-600">│</span><button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${situacaoCadastral === 'EXCLUÍDO' ? 'bg-red-200 dark:bg-red-900/50 ring-1 ring-red-500' : 'hover:bg-red-50 dark:hover:bg-red-950/30'}`} onClick={() => { setSituacaoCadastral(situacaoCadastral === 'EXCLUÍDO' ? 'all' : 'EXCLUÍDO'); setPage(1) }} title="Filtrar Excluídos (Receita Federal)"><XCircle className="size-3 text-red-600 dark:text-red-400" /><span className="text-red-700 dark:text-red-400">Excl.</span> <span className="font-bold text-red-700 dark:text-red-400">{(scStats['EXCLUÍDO'] ?? 0).toLocaleString('pt-BR')}</span></button></>)}
                 <span className="text-slate-300 dark:text-slate-600">│</span>
                 <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Tipos</span>
                 <button className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 transition-all ${tipoFilter === 'CORPORATIVO' ? 'bg-purple-100 dark:bg-purple-900/40 ring-1 ring-purple-400' : 'hover:bg-purple-50 dark:hover:bg-purple-950/20'}`} onClick={() => { setTipoFilter(tipoFilter === 'CORPORATIVO' ? 'all' : 'CORPORATIVO'); setPage(1) }} title="Filtrar Corporativo">
@@ -1206,6 +1208,17 @@ export default function HomeClient() {
                             const isPhone = PHONE_FIELDS.has(col.key)
                             const isEmailCell = EMAIL_FIELDS.has(col.key)
                             const isObs = col.key === 'observacoes'
+                            // Observações: click opens detail modal on 'obs' tab instead of inline editing
+                            if (isObs) {
+                              return (
+                                <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center whitespace-nowrap truncate px-3 py-2 cursor-pointer hover:bg-teal-50 dark:hover:bg-teal-900/20 ${cellFocus}`} onClick={(e) => { e.stopPropagation(); setDetailClient(r); setDetailTab('obs'); setDetailObs(r.editable.observacoes); setAuditLogs([]); setShowNewClient(false) }} title={val || 'Clique para ver/editar observações'}>
+                                  <span className="flex items-center gap-1 text-xs">
+                                    <StickyNote className="size-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                                    {val ? (val.length > 25 ? val.slice(0, 25) + '…' : val) : <span className="text-slate-400 italic">—</span>}
+                                  </span>
+                                </div>
+                              )
+                            }
                             return <div key={col.key} data-cell={`${idx}-${colIdx}`} className={`flex items-center bg-teal-50/30 dark:bg-teal-900/20 whitespace-nowrap truncate px-3 py-2 ${cellFocus}`} onClick={(e) => e.stopPropagation()} title={val || undefined}><EditableCell value={val} codigo={r.parsed.codigo} field={editableKey} onSave={handleSave} isPhone={isPhone} isEmail={isEmailCell} isObservacoes={isObs} /></div>
                           }
 

@@ -468,7 +468,12 @@ export async function handleComputedSort(params: {
     ;(record as any).cidade = c.cidade
     ;(record as any).uf = c.uf
     ;(record as any).carteira = c.carteira
-    ;(record as any).ativo = c.ativo
+    // ativo: use DB field if exists, otherwise compute from situacaoCadastral
+    const situacaoUpper = (c as any).situacaoCadastral?.toUpperCase?.() || ''
+    const isAtivo = (c as any).ativo !== undefined
+      ? (c as any).ativo
+      : !['EXCLUÍDO', 'BAIXADA'].includes(situacaoUpper)
+    ;(record as any).ativo = isAtivo
     ;(record as any).filial = c.cnpjBase || ''
     return record
   })

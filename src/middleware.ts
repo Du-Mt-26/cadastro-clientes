@@ -12,6 +12,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/api/sync/all') ||  // Combined sync (cron-job.org + Vercel Cron)
     pathname.startsWith('/api/clientes/backfill') ||  // Backfill endpoints (secret-based auth)
     pathname.startsWith('/api/clientes/diagnostic') ||  // Diagnostic (secret-based auth)
+    pathname.startsWith('/api/clientes/migrate-ativo') ||  // Migration (secret-based auth)
     pathname.startsWith('/api/clientes/auto-assign') ||  // Auto-assign vendedor (secret-based auth)
     pathname.startsWith('/api/clientes/remove-debora') ||  // Sync sem-vendedor from Linvix (secret-based auth)
     pathname.startsWith('/api/admin/reset-password') ||  // Password reset (secret-based auth)

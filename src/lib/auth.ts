@@ -116,12 +116,13 @@ export const authOptions: NextAuthOptions = {
 
 // ─── Role Hierarchy & Labels ──────────────────────
 
-export type Role = 'ADMIN' | 'DIRETOR_COMERCIAL' | 'GERENTE_COMERCIAL' | 'VENDEDOR'
+export type Role = 'ADMIN' | 'DIRETOR_COMERCIAL' | 'GERENTE_COMERCIAL' | 'SUPERVISORA' | 'VENDEDOR'
 
 export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'Administrador',
   DIRETOR_COMERCIAL: 'Diretor(a) Comercial',
   GERENTE_COMERCIAL: 'Gerente Comercial',
+  SUPERVISORA: 'Supervisora',
   VENDEDOR: 'Vendedor(a)',
 }
 
@@ -129,13 +130,15 @@ export const ROLE_COLORS: Record<Role, string> = {
   ADMIN: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   DIRETOR_COMERCIAL: 'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
   GERENTE_COMERCIAL: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
+  SUPERVISORA: 'bg-pink-100 text-pink-800 dark:bg-pink-900/40 dark:text-pink-300',
   VENDEDOR: 'bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300',
 }
 
 export const ROLE_PRIORITY: Record<Role, number> = {
   ADMIN: 100,
   DIRETOR_COMERCIAL: 75,
-  GERENTE_COMERCIAL: 50,
+  GERENTE_COMERCIAL: 60,
+  SUPERVISORA: 55,
   VENDEDOR: 25,
 }
 
@@ -195,6 +198,15 @@ export const FALLBACK_PERMISSIONS: Record<string, Record<string, boolean>> = {
     'clients.view_reports': true, 'bolsao.check': true, 'bolsao.pull': true,
     'bolsao.move': true, 'bolsao.abordar': true, 'users.manage': false,
     'users.assign_clients': true, 'sheets.manage': false, 'favorites.use': true,
+    'permissions.manage': false,
+  },
+  SUPERVISORA: {
+    'clients.view_all': true, 'clients.edit_all_fields': true, 'clients.edit_contact': true,
+    'clients.export': true, 'clients.receita': true, 'clients.audit': true,
+    'clients.bulk_import': true, 'clients.create': true, 'clients.edit_commercial': true,
+    'clients.view_reports': true, 'bolsao.check': true, 'bolsao.pull': true,
+    'bolsao.move': true, 'bolsao.abordar': true, 'users.manage': false,
+    'users.assign_clients': true, 'sheets.manage': true, 'favorites.use': true,
     'permissions.manage': false,
   },
   VENDEDOR: {

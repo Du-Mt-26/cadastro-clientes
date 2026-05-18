@@ -77,7 +77,7 @@ const CATEGORY_CONFIG: Record<string, { label: string; icon: React.ElementType; 
 
 const CATEGORY_ORDER = ['clientes', 'bolsao', 'users', 'sheets', 'geral']
 
-const ROLE_OPTIONS: Role[] = ['ADMIN', 'DIRETOR_COMERCIAL', 'GERENTE_COMERCIAL', 'VENDEDOR']
+const ROLE_OPTIONS: Role[] = ['ADMIN', 'DIRETOR_COMERCIAL', 'GERENTE_COMERCIAL', 'SUPERVISORA', 'VENDEDOR']
 
 // ─── Component ────────────────────────────────────────
 
