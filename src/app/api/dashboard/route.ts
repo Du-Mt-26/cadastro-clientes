@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
@@ -11,6 +11,7 @@ export async function GET() {
     }
 
     // Dashboard stats
+    // Note: `ativo` field may not exist yet (migration pending), so we use situacaoCadastral as fallback
     const [
       totalClientes,
       ativos,
@@ -24,13 +25,18 @@ export async function GET() {
       topUfs,
     ] = await Promise.all([
       db.cliente.count(),
-      db.cliente.count({ where: { ativo: true } }),
+      // Count active = total - (EXCLUÍDO + BAIXADA)
+      db.cliente.count({
+        where: {
+          situacaoCadastral: { notIn: ['EXCLUÍDO', 'BAIXADA'] }
+        }
+      }),
       db.cliente.count({ where: { carteira: 'SEM_VENDEDOR' } }),
       db.cliente.count({ where: { carteira: 'COM_VENDEDOR' } }),
       db.cliente.count({ where: { carteira: 'LISTA_FRIA' } }),
       db.cliente.count({ where: { carteira: 'BOLSAO' } }),
       db.cliente.count({ where: { carteira: 'FORNECEDOR' } }),
-      db.syncLog.findMany({ take: 5, orderBy: { iniciadoEm: 'desc' } }),
+      db.linvixSyncLog.findMany({ take: 5, orderBy: { startedAt: 'desc' } }),
       db.cliente.groupBy({
         by: ['vendedorId'],
         _count: { id: true },

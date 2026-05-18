@@ -49,7 +49,7 @@ interface Cliente {
   vendedorId: string | null
   carteira: string
   filial: string | null
-  ativo: boolean
+  ativo: boolean | undefined
   vendedorUser: {
     id: string
     name: string | null

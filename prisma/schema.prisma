@@ -35,6 +35,7 @@ model Cliente {
   razaoSocial       String  @default("")
   nomeFantasia      String  @default("")
   situacaoCadastral String  @default("")
+  ativo             Boolean @default(true)        // Derivado de situacaoCadastral: EXCLUÍDO/BAIXADA = false
   cnpj              String  @default("")
   cnpjBase          String  @default("")         // Primeiros 8 dígitos do CNPJ (identifica a empresa base para filiais)
   endereco          String  @default("")

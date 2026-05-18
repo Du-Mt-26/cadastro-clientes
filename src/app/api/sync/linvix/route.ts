@@ -439,6 +439,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
           'linvix',         // source
           'REVENDA',         // tipo
           'SEM_VENDEDOR',    // carteira
+          !['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'].includes(client.situacaoCadastral || '') ? true : false,  // ativo
         ]
 
         values.push(...params)
@@ -462,7 +463,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"endereco"', '"numero"', '"complemento"', '"bairro"', '"cidade"', '"cep"', '"uf"',
         '"situacaoCadastral"', '"dataSituacao"', '"dataAbertura"',
         '"cnaePrincipal"', '"naturezaJuridica"', '"porte"', '"regSimples"',
-        '"vendedor"', '"observacoes"', '"source"', '"tipo"', '"carteira"', '"updatedAt"', '"createdAt"'
+        '"vendedor"', '"observacoes"', '"source"', '"tipo"', '"carteira"', '"ativo"', '"updatedAt"', '"createdAt"'
       ]
 
       // ON CONFLICT DO UPDATE SET:
@@ -505,6 +506,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"source" = EXCLUDED."source"',
         '"tipo" = EXCLUDED."tipo"',
         '"carteira" = CASE WHEN "Cliente"."carteira" = \'SEM_VENDEDOR\'::"Carteira" THEN EXCLUDED."carteira" ELSE "Cliente"."carteira" END',
+        '"ativo" = EXCLUDED."ativo"',
         '"updatedAt" = NOW()',
       ].join(',\n          ')
 

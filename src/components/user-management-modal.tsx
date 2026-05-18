@@ -74,6 +74,7 @@ const ROLE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: 'ADMIN', label: ROLE_LABELS.ADMIN },
   { value: 'DIRETOR_COMERCIAL', label: ROLE_LABELS.DIRETOR_COMERCIAL },
   { value: 'GERENTE_COMERCIAL', label: ROLE_LABELS.GERENTE_COMERCIAL },
+  { value: 'SUPERVISORA', label: ROLE_LABELS.SUPERVISORA },
   { value: 'VENDEDOR', label: ROLE_LABELS.VENDEDOR },
 ]
 

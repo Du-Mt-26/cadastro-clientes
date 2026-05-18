@@ -47,15 +47,6 @@ export async function GET(request: NextRequest) {
       LIMIT 20
     `
 
-    // ─── Clients with same phone1 and phone2 ─────────────────
-    const dupPhoneCount = await db.cliente.count({
-      where: {
-        telefone1: { not: '' },
-        telefone2: { not: '' },
-        telefone1: '', // This won't work in Prisma, need raw
-      }
-    })
-
     // ─── Observacoes with "Cadastrado via API" ─────────────────
     const obsComApi = await db.cliente.count({
       where: {
