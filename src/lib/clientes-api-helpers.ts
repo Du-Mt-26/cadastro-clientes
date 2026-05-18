@@ -96,6 +96,7 @@ export function buildVisibilityWhere(
 export function buildFilterWhere(params: {
   situacaoCadastral: string
   vendedor: string
+  vendedorId: string
   cidade: string
   uf: string
   carteira: string
@@ -103,7 +104,7 @@ export function buildFilterWhere(params: {
   role: Role
 }): Prisma.ClienteWhereInput {
   const {
-    situacaoCadastral, vendedor, cidade, uf,
+    situacaoCadastral, vendedor, vendedorId, cidade, uf,
     carteira, tipo, role,
   } = params
 
@@ -116,6 +117,11 @@ export function buildFilterWhere(params: {
   // For VENDEDOR role, skip vendedor filter — visibility already controls it
   if (vendedor && role !== 'VENDEDOR') {
     and.push({ vendedor: { equals: vendedor, mode: 'insensitive' } })
+  }
+
+  // Filter by vendedorId (system user ID)
+  if (vendedorId) {
+    and.push({ vendedorId })
   }
 
   if (cidade) {
@@ -432,9 +438,14 @@ export async function handleComputedSort(params: {
     return { records: [], total }
   }
 
-  // Fetch full records for just the page
+  // Fetch full records for just the page (include vendedorUser relation)
   const fullRecords = await db.cliente.findMany({
     where: { id: { in: pageIds } },
+    include: {
+      vendedorUser: {
+        select: { id: true, name: true, email: true, role: true }
+      }
+    },
   })
 
   // Restore the computed sort order
@@ -445,6 +456,19 @@ export async function handleComputedSort(params: {
   const records = fullRecords.map((c) => {
     const record = dbToRecord(c)
     record.carteira = c.carteira
+    ;(record as any).vendedorUser = c.vendedorUser
+    ;(record as any).vendedorId = c.vendedorId
+    ;(record as any).vendedor = c.vendedor
+    ;(record as any).id = c.id
+    ;(record as any).codigo = c.codigo
+    ;(record as any).razaoSocial = c.razaoSocial
+    ;(record as any).nomeFantasia = c.nomeFantasia
+    ;(record as any).cnpj = c.cnpj
+    ;(record as any).cidade = c.cidade
+    ;(record as any).uf = c.uf
+    ;(record as any).carteira = c.carteira
+    ;(record as any).ativo = c.ativo
+    ;(record as any).filial = c.cnpjBase || ''
     return record
   })
 

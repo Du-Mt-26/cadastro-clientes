@@ -42,18 +42,20 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || "";
     const situacaoCadastral = searchParams.get("situacao_cadastral") || "";
     const vendedor = searchParams.get("vendedor") || "";
+    const vendedorIdParam = searchParams.get("vendedorId") || "";
     const cidade = searchParams.get("cidade") || "";
     const uf = searchParams.get("uf") || "";
     const carteira = searchParams.get("carteira") || "";
     const tipoFilter = searchParams.get("tipo") || "";
-    const sortBy = searchParams.get("sort_by") || "";
-    const sortOrder = searchParams.get("sort_order") || "asc";
+    const sortBy = searchParams.get("sort_by") || searchParams.get("sortBy") || "";
+    const sortOrder = searchParams.get("sort_order") || searchParams.get("sortOrder") || "asc";
 
     // ── Build where clauses ──
     const visibilityWhere = buildVisibilityWhere(role, userId, userEmail);
     const filterWhere = buildFilterWhere({
       situacaoCadastral,
       vendedor,
+      vendedorId: vendedorIdParam,
       cidade,
       uf,
       carteira,
@@ -120,6 +122,8 @@ export async function GET(request: NextRequest) {
             (record as any).cidade = c.cidade;
             (record as any).uf = c.uf;
             (record as any).carteira = c.carteira;
+            (record as any).ativo = c.ativo;
+            (record as any).filial = c.cnpjBase || '';
             return record;
           }),
         };
