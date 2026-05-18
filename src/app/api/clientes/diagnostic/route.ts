@@ -4,6 +4,9 @@ import { db } from '@/lib/db'
 // ─── GET /api/clientes/diagnostic ────────────────────────
 // Diagnostic: various database checks
 // Uses simple hardcoded secret for one-time diagnostic use
+//
+// POST /api/clientes/diagnostic?secret=...&mode=backfill-ativo
+// Backfill: set ativo=false for EXCLUÍDO/BAIXADA clients
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,16 +40,6 @@ export async function GET(request: NextRequest) {
     // ─── BOLSAO clients (could be moved to LISTA_FRIA) ─────────────────
     const bolsaoCount = await db.cliente.count({ where: { carteira: 'BOLSAO' } })
 
-    // ─── Duplicate phone numbers ─────────────────
-    const duplicatePhones = await db.$queryRaw<Array<{ telefone: string; count: bigint }>>`
-      SELECT telefone1 as telefone, COUNT(*) as count
-      FROM "Cliente"
-      WHERE telefone1 != '' AND telefone1 = telefone2
-      GROUP BY telefone1
-      ORDER BY count DESC
-      LIMIT 20
-    `
-
     // ─── Observacoes with "Cadastrado via API" ─────────────────
     const obsComApi = await db.cliente.count({
       where: {
@@ -63,14 +56,9 @@ export async function GET(request: NextRequest) {
       orderBy: { name: 'asc' },
     })
 
-    // ─── Check if 'ativo' column exists (it doesn't in schema) ─────────────────
-    let ativoColumnExists = false
-    try {
-      await db.$queryRaw`SELECT ativo FROM "Cliente" LIMIT 1`
-      ativoColumnExists = true
-    } catch {
-      ativoColumnExists = false
-    }
+    // ─── ativo stats ─────────────────
+    const ativoTrue = await db.cliente.count({ where: { ativo: true } })
+    const ativoFalse = await db.cliente.count({ where: { ativo: false } })
 
     // ─── Clients by situacaoCadastral that are "irregular" ─────────────────
     const baixada = situacaoGroup.find(g => g.situacaoCadastral.toUpperCase() === 'BAIXADA')?._count ?? 0
@@ -81,7 +69,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       totalClientes,
-      ativoColumnExists,
+      ativoStats: { ativos: ativoTrue, inativos: ativoFalse },
       situacaoCadastral: situacaoGroup.map(g => ({ valor: g.situacaoCadastral || '(vazio)', count: g._count })),
       resumoSituacao: { ativa, baixada, inapta, suspensa, semInfo: nula },
       carteiraCounts: carteiraCounts.map(c => ({ carteira: c.carteira, count: c._count })),
@@ -89,10 +77,55 @@ export async function GET(request: NextRequest) {
       bolsaoCount,
       obsComApi,
       usuarios: users.map(u => ({ nome: u.name, email: u.email, role: u.role, ativo: u.active })),
-      duplicatePhoneExamples: duplicatePhones.map(d => ({ telefone: d.telefone, count: Number(d.count) })),
     })
   } catch (error) {
     console.error('Error in diagnostic:', error)
+    return NextResponse.json({ error: String(error) }, { status: 500 })
+  }
+}
+
+// ─── POST for backfill operations ─────────────────
+export async function POST(request: NextRequest) {
+  try {
+    const secret = request.nextUrl.searchParams.get('secret')
+    if (secret !== 'mtech-diag-2026') {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+
+    const mode = request.nextUrl.searchParams.get('mode') || ''
+    const results: string[] = []
+
+    if (mode === 'backfill-ativo') {
+      // Set ativo=false for EXCLUÍDO and BAIXADA clients
+      const updateResult = await db.cliente.updateMany({
+        where: {
+          situacaoCadastral: { in: ['EXCLUÍDO', 'BAIXADA'] }
+        },
+        data: { ativo: false }
+      })
+      results.push(`${updateResult.count} clientes marcados como inativos`)
+
+      // Ensure all others are ativo=true
+      const updateResult2 = await db.cliente.updateMany({
+        where: {
+          situacaoCadastral: { notIn: ['EXCLUÍDO', 'BAIXADA'] },
+          ativo: false
+        },
+        data: { ativo: true }
+      })
+      results.push(`${updateResult2.count} clientes reativados`)
+
+      // Verify
+      const ativoTrue = await db.cliente.count({ where: { ativo: true } })
+      const ativoFalse = await db.cliente.count({ where: { ativo: false } })
+      results.push(`Verificação: ${ativoTrue} ativos, ${ativoFalse} inativos`)
+    } else {
+      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo' }, { status: 400 })
+    }
+
+    return NextResponse.json({ success: true, results })
+  } catch (error) {
+    console.error('Error in diagnostic POST:', error)
     return NextResponse.json({ error: String(error) }, { status: 500 })
   }
 }
