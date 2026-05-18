@@ -129,6 +129,24 @@ function stripHtml(html: string | null | undefined): string {
   return html.replace(/<[^>]*>/g, '').trim()
 }
 
+/**
+ * Decodes HTML entities in a string (e.g., &amp; → &, &lt; → <, &gt; → >).
+ * Linvix ERP returns HTML-encoded text in fields like NOME, FANTASIA, etc.
+ */
+function decodeHtmlEntities(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&nbsp;/g, ' ')
+    .trim()
+}
+
 function cleanPhone(raw: string | null | undefined): string {
   if (!raw) return ''
   return raw.trim()
@@ -184,10 +202,10 @@ function mapLinvixRowToMtech(row: LinvixDataRow): LinvixClientData {
 
   return {
     codigo: row.CODIGO || '',
-    razaoSocial: (row.NOME || '').trim(),
-    nomeFantasia: (row.FANTASIA || '').trim(),
+    razaoSocial: decodeHtmlEntities(row.NOME),
+    nomeFantasia: decodeHtmlEntities(row.FANTASIA),
     cnpj: normalizeCnpj(row.CNPJ_CNPF),
-    ieRg: stripHtml(row.IE_RG),
+    ieRg: decodeHtmlEntities(stripHtml(row.IE_RG)),
     telefone1: cleanPhone(row.TELEFONE),
     telefone2: cleanPhone(row.CELULAR),
     telefone3: cleanPhone(row.FAX),
@@ -199,10 +217,10 @@ function mapLinvixRowToMtech(row: LinvixDataRow): LinvixClientData {
     endereco: '',
     numero: '',
     complemento: '',
-    bairro: (row.BAIRRO || '').trim(),
-    cidade: (row.CIDADE || '').trim(),
+    bairro: decodeHtmlEntities(row.BAIRRO),
+    cidade: decodeHtmlEntities(row.CIDADE),
     cep: '',
-    uf: (row.UF || '').trim(),
+    uf: decodeHtmlEntities(row.UF),
     situacaoCadastral: '',
     dataSituacao: '',
     dataAbertura: '',
@@ -210,8 +228,8 @@ function mapLinvixRowToMtech(row: LinvixDataRow): LinvixClientData {
     naturezaJuridica: '',
     porte: '',
     regSimples: '',
-    vendedor: (row.VENDEDOR_NOME || '').trim(),
-    observacoes: (row.OBSERVACOES || '').trim(),
+    vendedor: decodeHtmlEntities(row.VENDEDOR_NOME),
+    observacoes: decodeHtmlEntities(row.OBSERVACOES),
   }
 }
 
@@ -528,18 +546,21 @@ async function autoAssignVendedores(): Promise<{ assigned: number; unchanged: nu
 
   // Get all system users for dynamic matching
   const users = await db.user.findMany({
+    where: { active: true },
     select: { id: true, name: true, role: true },
   })
 
-  // Find ALL clients with SEM_VENDEDOR (including those with empty vendedor)
+  // Find clients with SEM_VENDEDOR that have a non-empty vendedor text from Linvix
+  // Clients with empty vendedor stay as SEM_VENDEDOR (no auto-assignment)
   const clientsNeedingAssignment = await db.cliente.findMany({
     where: {
       carteira: 'SEM_VENDEDOR',
+      vendedor: { not: '' },
     },
     select: { id: true, codigo: true, vendedor: true },
   })
 
-  console.log(`[sync/linvix] ${clientsNeedingAssignment.length} clientes com SEM_VENDEDOR para atribuir`)
+  console.log(`[sync/linvix] ${clientsNeedingAssignment.length} clientes com SEM_VENDEDOR e vendedor não-vazio para atribuir`)
 
   let assigned = 0
   let unchanged = 0

@@ -85,6 +85,24 @@ function stripHtml(html: string | null | undefined): string {
   return html.replace(/<[^>]*>/g, '').trim()
 }
 
+/**
+ * Decodes HTML entities in a string (e.g., &amp; → &, &lt; → <, &gt; → >).
+ * Linvix ERP returns HTML-encoded text in fields like NOME, FANTASIA, etc.
+ */
+function decodeHtmlEntities(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#x2F;/g, '/')
+    .replace(/&nbsp;/g, ' ')
+    .trim()
+}
+
 /** Clean phone number: keep digits, parens, spaces, hyphens, plus sign */
 function cleanPhone(raw: string | null | undefined): string {
   if (!raw) return ''
@@ -169,20 +187,20 @@ function mapLinvixToMtech(row: LinvixDataRow): {
 
   return {
     codigo: row.CODIGO || '',
-    razaoSocial: (row.NOME || '').trim(),
-    nomeFantasia: (row.FANTASIA || '').trim(),
+    razaoSocial: decodeHtmlEntities(row.NOME),
+    nomeFantasia: decodeHtmlEntities(row.FANTASIA),
     cnpj: normalizeCnpj(row.CNPJ_CNPF),
-    ieRg: stripHtml(row.IE_RG),
+    ieRg: decodeHtmlEntities(stripHtml(row.IE_RG)),
     telefone1: cleanPhone(row.TELEFONE),
     telefone2: cleanPhone(row.CELULAR),
     telefone3: cleanPhone(row.FAX), // Fax/WhatsApp in Linvix
     telefone4: '',
     email1: allEmails[0] || '',
-    bairro: (row.BAIRRO || '').trim(),
-    cidade: (row.CIDADE || '').trim(),
-    uf: (row.UF || '').trim(),
-    vendedor: (row.VENDEDOR_NOME || '').trim(),
-    observacoes: (row.OBSERVACOES || '').trim(),
+    bairro: decodeHtmlEntities(row.BAIRRO),
+    cidade: decodeHtmlEntities(row.CIDADE),
+    uf: decodeHtmlEntities(row.UF),
+    vendedor: decodeHtmlEntities(row.VENDEDOR_NOME),
+    observacoes: decodeHtmlEntities(row.OBSERVACOES),
   }
 }
 

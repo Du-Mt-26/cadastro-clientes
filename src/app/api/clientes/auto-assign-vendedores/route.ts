@@ -9,9 +9,10 @@ export const dynamic = 'force-dynamic'
  * Protected by a secret query parameter.
  *
  * Regras (centralizadas em vendedor-mapping.ts):
- * - Clientes com vendedor M-TECH DISTRIBUIDORA, RAFAEL DE SOUZA, WILLIAN LUIZ PEREIRA → DEBORA
- * - Clientes com vendedor vazio → DEBORA
- * - Clientes com vendedor não mapeado → DEBORA (fallback)
+ * - Clientes com vendedor RAFAEL DE SOUZA, WILLIAN LUIZ PEREIRA → DEBORA
+ * - Clientes com vendedor M-TECH DISTRIBUIDORA → FORNECEDOR (Débora)
+ * - Clientes com vendedor vazio → ficam SEM_VENDEDOR (não são atribuídos)
+ * - Clientes com vendedor não mapeado → ficam SEM_VENDEDOR
  * - Clientes com vendedor que existe no sistema → atribuir ao vendedor correspondente
  *
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026
@@ -37,7 +38,8 @@ export async function GET(request: Request) {
     // Get all clients with SEM_VENDEDOR
     const clientesSemVendedor = await db.cliente.findMany({
       where: {
-        carteira: 'SEM_VENDEDOR'
+        carteira: 'SEM_VENDEDOR',
+        vendedor: { not: '' },  // Only clients with a non-empty vendedor name
       },
       select: {
         id: true,
@@ -187,12 +189,34 @@ export async function GET(request: Request) {
 
     console.log(`[AutoAssign] Concluído: ${updated} atualizados, ${toSkip.length} pulados, ${errors} erros`)
 
+    // Revert: clients with empty vendedor that were assigned to Débora should be SEM_VENDEDOR
+    let revertedCount = 0
+    if (!dryRun) {
+      const revertResult = await db.cliente.updateMany({
+        where: {
+          vendedor: '',
+          vendedorId: getDeboraId(),
+          carteira: 'COM_VENDEDOR',
+        },
+        data: {
+          vendedorId: null,
+          carteira: 'SEM_VENDEDOR',
+          dataAtribuicaoVendedor: null,
+        },
+      })
+      revertedCount = revertResult.count
+      if (revertedCount > 0) {
+        console.log(`[AutoAssign] Revertidos ${revertedCount} clientes com vendedor vazio de volta para SEM_VENDEDOR`)
+      }
+    }
+
     return NextResponse.json({
       success: true,
       dryRun,
       totalClientes: clientesSemVendedor.length,
       updated,
       skipped: toSkip.length,
+      revertedToSemVendedor: revertedCount,
       errors,
       assignmentGroups: details,
       skippedClients: toSkip.slice(0, 50), // Show up to 50 skipped for brevity

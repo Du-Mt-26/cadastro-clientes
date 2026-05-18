@@ -6,11 +6,11 @@
  *
  * Regras de mapeamento:
  * - Vendedores que existem no sistema → mapeiam para o ID do usuário correspondente
- * - M-TECH DISTRIBUIDORA → DEBORA (empresa, não é vendedor)
- * - RAFAEL DE SOUZA → DEBORA (não existe no sistema)
- * - WILLIAN LUIZ PEREIRA → DEBORA (não existe no sistema)
- * - (vazio) → DEBORA — clientes sem vendedor no Linvix vão para Débora
- * - Vendedores não mapeados → DEBORA — fallback para Débora
+ * - M-TECH DISTRIBUIDORA → FORNECEDOR (empresa, não é vendedor)
+ * - RAFAEL DE SOUZA → DEBORA (não existe no sistema como vendedor)
+ * - WILLIAN LUIZ PEREIRA → DEBORA (não existe no sistema como vendedor)
+ * - (vazio) → SEM_VENDEDOR — clientes sem vendedor no Linvix ficam sem vendedor
+ * - Vendedores não mapeados → SEM_VENDEDOR — ficam sem vendedor até serem mapeados
  */
 
 // Mapeamento fixo de nomes do Linvix → ID do usuário no sistema
@@ -23,9 +23,10 @@ const VENDEDOR_NAME_TO_ID: Record<string, string> = {
   'MALU FERREIRA JARDIM': 'cmoxqd3bk0001wxvnm8u5logs',
   'MARIA EDUARDA': 'cmoxqd44i0002wxvnzgqx3s7e',
   // Vendedores que NÃO existem no sistema → atribuir à DEBORA
-  'M-TECH DISTRIBUIDORA': 'cmoxe1srn0004wxwfyzyde247',  // Empresa → DEBORA
   'RAFAEL DE SOUZA': 'cmoxe1srn0004wxwfyzyde247',        // Não existe → DEBORA
   'WILLIAN LUIZ PEREIRA': 'cmoxe1srn0004wxwfyzyde247',   // Não existe → DEBORA
+  // M-TECH DISTRIBUIDORA → tratamento especial (FORNECEDOR, não vendedor)
+  'M-TECH DISTRIBUIDORA': 'MTECH_FORNECEDOR',
 }
 
 interface SystemUser {
@@ -47,21 +48,29 @@ export function mapVendedorToUser(
 ): { userId: string | null; carteira: string } {
   const DEBORA_ID = 'cmoxe1srn0004wxwfyzyde247'
 
-  // Se não tem nome de vendedor, vai para Débora
+  // Se não tem nome de vendedor, fica SEM vendedor
   if (!linvixVendedorNome || linvixVendedorNome.trim() === '') {
-    return { userId: DEBORA_ID, carteira: 'COM_VENDEDOR' }
+    return { userId: null, carteira: 'SEM_VENDEDOR' }
   }
 
   const nomeUpper = linvixVendedorNome.trim().toUpperCase()
 
   // 1. Tentar match exato no mapa fixo
   if (VENDEDOR_NAME_TO_ID[nomeUpper]) {
-    return { userId: VENDEDOR_NAME_TO_ID[nomeUpper], carteira: 'COM_VENDEDOR' }
+    const mappedId = VENDEDOR_NAME_TO_ID[nomeUpper]
+    // M-TECH DISTRIBUIDORA é tratado como fornecedor
+    if (mappedId === 'MTECH_FORNECEDOR') {
+      return { userId: DEBORA_ID, carteira: 'FORNECEDOR' }
+    }
+    return { userId: mappedId, carteira: 'COM_VENDEDOR' }
   }
 
   // 2. Tentar match parcial no mapa fixo (ex: "ALICE" contido em outro nome)
   for (const [key, id] of Object.entries(VENDEDOR_NAME_TO_ID)) {
     if (nomeUpper.includes(key) || key.includes(nomeUpper)) {
+      if (id === 'MTECH_FORNECEDOR') {
+        return { userId: DEBORA_ID, carteira: 'FORNECEDOR' }
+      }
       return { userId: id, carteira: 'COM_VENDEDOR' }
     }
   }
@@ -84,9 +93,9 @@ export function mapVendedorToUser(
     }
   }
 
-  // 4. Vendedor não mapeado → vai para Débora (fallback)
-  console.warn(`[VendedorMapping] Vendedor não mapeado: "${linvixVendedorNome}" → atribuindo à DEBORA`)
-  return { userId: DEBORA_ID, carteira: 'COM_VENDEDOR' }
+  // 4. Vendedor não mapeado → fica SEM_VENDEDOR
+  console.warn(`[VendedorMapping] Vendedor não mapeado: "${linvixVendedorNome}" → ficando SEM_VENDEDOR`)
+  return { userId: null, carteira: 'SEM_VENDEDOR' }
 }
 
 /**
@@ -101,7 +110,7 @@ export function getVendedorMap() {
  * (útil para o backfill saber quais clientes atualizar)
  */
 export function getDeboraVendedorNames(): string[] {
-  return ['M-TECH DISTRIBUIDORA', 'RAFAEL DE SOUZA', 'WILLIAN LUIZ PEREIRA']
+  return ['RAFAEL DE SOUZA', 'WILLIAN LUIZ PEREIRA']
 }
 
 /**
