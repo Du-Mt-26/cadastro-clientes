@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic'
  *
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026&mode=sync-sem-vendedor
+ * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026&mode=clean-obs
  */
 export async function GET(request: Request) {
   try {
@@ -33,6 +34,11 @@ export async function GET(request: Request) {
     // Mode: sync-sem-vendedor — Remove vendedor de clientes que estão sem vendedor no Linvix
     if (mode === 'sync-sem-vendedor') {
       return await syncSemVendedor(dryRun)
+    }
+
+    // Mode: clean-obs — Remove observações "Cadastrado via API"
+    if (mode === 'clean-obs') {
+      return await cleanObservacoes(dryRun)
     }
 
     console.log(`[AutoAssign] Iniciando atribuição automática de vendedores...${dryRun ? ' (DRY RUN)' : ''}`)
@@ -274,6 +280,76 @@ const LINVIX_SEM_VENDEDOR_CODIGOS = [
  * Regra: O Mtech deve espelhar o Linvix. Se no Linvix o cliente está sem vendedor,
  * no Mtech também deve estar SEM_VENDEDOR, independente de quem está atribuído.
  */
+async function cleanObservacoes(dryRun: boolean): Promise<Response> {
+  console.log(`[CleanObs] Limpando observações "Cadastrado via API"...${dryRun ? ' (DRY RUN)' : ''}`)
+
+  // Buscar clientes com observação "Cadastrado via API"
+  const clientesComObs = await db.cliente.findMany({
+    where: {
+      observacoes: { contains: 'Cadastrado via API' },
+    },
+    select: {
+      id: true,
+      codigo: true,
+      razaoSocial: true,
+      observacoes: true,
+    },
+  })
+
+  console.log(`[CleanObs] ${clientesComObs.length} clientes com "Cadastrado via API"`)
+
+  if (clientesComObs.length === 0) {
+    return NextResponse.json({
+      success: true,
+      message: 'Nenhum cliente com observação "Cadastrado via API"',
+      cleaned: 0,
+    })
+  }
+
+  if (dryRun) {
+    return NextResponse.json({
+      success: true,
+      dryRun: true,
+      message: 'DRY RUN — nenhuma alteração foi feita',
+      toClean: clientesComObs.length,
+      clientes: clientesComObs.slice(0, 20).map(c => ({
+        codigo: c.codigo,
+        razaoSocial: c.razaoSocial,
+        observacoes: c.observacoes,
+      })),
+    })
+  }
+
+  // Limpar: remover "Cadastrado via API" das observações
+  // Se a observação é APENAS "Cadastrado via API", deixar vazio
+  // Se tem mais texto, remover apenas a parte do "Cadastrado via API"
+  let cleaned = 0
+  for (const cliente of clientesComObs) {
+    const obs = cliente.observacoes || ''
+    let newObs = obs.replace(/Cadastrado via API/gi, '').trim()
+    // Remover vírgulas/pontos soltos no início/fim
+    newObs = newObs.replace(/^[,\s.]+|[,\s.]+$/g, '').trim()
+
+    try {
+      await db.cliente.update({
+        where: { id: cliente.id },
+        data: { observacoes: newObs },
+      })
+      cleaned++
+    } catch (err) {
+      console.error(`[CleanObs] Erro ao atualizar cliente ${cliente.codigo}:`, err)
+    }
+  }
+
+  console.log(`[CleanObs] ${cleaned} clientes atualizados`)
+
+  return NextResponse.json({
+    success: true,
+    message: `${cleaned} clientes tiveram "Cadastrado via API" removido das observações`,
+    cleaned,
+  })
+}
+
 async function syncSemVendedor(dryRun: boolean): Promise<Response> {
   console.log(`[SyncSemVendedor] Iniciando sync...${dryRun ? ' (DRY RUN)' : ''}`)
   console.log(`[SyncSemVendedor] ${LINVIX_SEM_VENDEDOR_CODIGOS.length} códigos sem vendedor no Linvix`)
