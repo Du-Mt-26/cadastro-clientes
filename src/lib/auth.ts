@@ -146,7 +146,7 @@ export const CARTEIRA_LABELS: Record<string, string> = {
   BOLSAO: 'BOLSÃO',
   LISTA_FRIA: 'LISTA FRIA',
   FORNECEDOR: 'FORNECEDOR',
-  SEM_VENDEDOR: 'SEM USUÁRIO',
+  SEM_VENDEDOR: 'SEM VENDEDOR',
 }
 
 export const CARTEIRA_COLORS: Record<string, string> = {
