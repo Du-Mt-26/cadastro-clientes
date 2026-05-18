@@ -1222,6 +1222,10 @@ export default function HomeClient() {
                           const isTruncate = !noTruncateKeys.has(col.key) && !col.editable && !isSticky
 
                           let displayVal = val || '—'
+                          // For vendedor column: if Linvix text is empty but vendedorUser exists, use system user name
+                          if (col.key === 'vendedor' && (!val || val === '—') && (r as any).vendedorUser?.name) {
+                            displayVal = (r as any).vendedorUser.name
+                          }
                           let docTipo: 'CNPJ' | 'CPF' | 'INVALIDO' | null = null
                           if (col.key === 'cnpj' && val) {
                             const doc = formatDocumento(val)
@@ -1612,7 +1616,7 @@ export default function HomeClient() {
                                 </SelectContent>
                               </Select>
                             ) : (
-                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || session?.user?.name || '—'}</span>
+                              <span className="font-medium text-slate-800 dark:text-slate-200">{r.parsed.vendedor || (r as any).vendedorUser?.name || session?.user?.name || '—'}</span>
                             )}
                           </div>
                           {/* Carteira badge (read-only, computed) */}
