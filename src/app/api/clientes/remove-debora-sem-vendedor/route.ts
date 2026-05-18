@@ -47,7 +47,7 @@ export async function GET(request: Request) {
     const secret = searchParams.get('secret')
 
     if (secret !== 'mtech-sync-2026') {
-      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+      return NextResponse.json({ error: 'Rota sync-sem-vendedor: secret inválido' }, { status: 401 })
     }
 
     const dryRun = searchParams.get('dryRun') === 'true'
