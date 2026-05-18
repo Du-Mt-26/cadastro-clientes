@@ -19,7 +19,9 @@ export async function GET() {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
+    // Only return active users — inactive users cannot be assigned as vendedores
     const users = await db.user.findMany({
+      where: { active: true },
       orderBy: { name: 'asc' },
       select: {
         id: true,

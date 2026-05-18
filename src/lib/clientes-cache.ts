@@ -19,6 +19,23 @@ import { db } from '@/lib/db'
 import type { ClienteRecord, EditableFields } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
+// Decode HTML entities that may be stored in the DB from Linvix sync
+// (e.g., &amp; → &). Future syncs will decode before saving, but this
+// ensures existing data displays correctly.
+// ---------------------------------------------------------------------------
+function decodeHtmlEntities(text: string | null | undefined): string {
+  if (!text) return ''
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+}
+
+// ---------------------------------------------------------------------------
 // Convert a DB Cliente record to ClienteRecord format
 // Carteira is now read directly from the DB carteira field.
 // ---------------------------------------------------------------------------
@@ -73,8 +90,8 @@ export function dbToRecord(c: {
   }
 
   return {
-    razao_social: c.razaoSocial,
-    nome_fantasia: c.nomeFantasia,
+    razao_social: decodeHtmlEntities(c.razaoSocial),
+    nome_fantasia: decodeHtmlEntities(c.nomeFantasia),
     situacao_cadastral: c.situacaoCadastral,
     cnpj: c.cnpj,
     cnpj_base: c.cnpjBase || '',
@@ -86,8 +103,8 @@ export function dbToRecord(c: {
     endereco: c.endereco,
     numero: c.numero,
     complemento: c.complemento,
-    bairro: c.bairro,
-    cidade: c.cidade,
+    bairro: decodeHtmlEntities(c.bairro),
+    cidade: decodeHtmlEntities(c.cidade),
     cep: c.cep,
     uf: c.uf,
     telefone1: c.telefone1,
@@ -115,7 +132,7 @@ export function dbToRecord(c: {
       cadastro: c.cadastro,
       ultima_venda: c.ultimaVenda,
       reg_simples: c.regSimples,
-      vendedor: c.vendedor,
+      vendedor: decodeHtmlEntities(c.vendedor),
       data_atribuicao_vendedor: dataAtribuicaoStr,
     },
     editable: {
