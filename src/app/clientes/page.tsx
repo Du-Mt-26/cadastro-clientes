@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AppLayout } from '@/components/layout/app-layout'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -59,12 +59,15 @@ interface Cliente {
 }
 
 interface ClientesResponse {
-  clientes: Cliente[]
+  data: Cliente[]
   pagination: {
     page: number
     limit: number
     total: number
     totalPages: number
+  }
+  filters: {
+    vendedorUsers: { id: string; name: string; role: string; email: string }[]
   }
 }
 
@@ -91,8 +94,8 @@ function ClientesContent() {
   const [vendedorFilter, setVendedorFilter] = useState(searchParams.get('vendedorId') || '')
   const [ufFilter, setUfFilter] = useState(searchParams.get('uf') || '')
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'))
-  const [sortBy, setSortBy] = useState(searchParams.get('sortBy') || 'razaoSocial')
-  const [sortOrder, setSortOrder] = useState(searchParams.get('sortOrder') || 'asc')
+  const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || 'codigo')
+  const [sortOrder, setSortOrder] = useState(searchParams.get('sort_order') || 'desc')
 
   const { data, isLoading } = useQuery<ClientesResponse>({
     queryKey: ['clientes', search, carteira, vendedorFilter, ufFilter, page, sortBy, sortOrder],
@@ -104,8 +107,8 @@ function ClientesContent() {
         ...(carteira && { carteira }),
         ...(vendedorFilter && { vendedorId: vendedorFilter }),
         ...(ufFilter && { uf: ufFilter }),
-        sortBy,
-        sortOrder,
+        sort_by: sortBy,
+        sort_order: sortOrder,
       })
       const res = await fetch(`/api/clientes?${params}`)
       if (!res.ok) throw new Error('Failed to fetch clientes')
@@ -201,7 +204,7 @@ function ClientesContent() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos</SelectItem>
-                {usersData?.users?.map((user: { id: string; name: string | null }) => (
+                {(data?.filters?.vendedorUsers || usersData?.users || []).map((user: { id: string; name: string | null }) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.name || user.id}
                   </SelectItem>
@@ -248,7 +251,7 @@ function ClientesContent() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : !data?.clientes.length ? (
+          ) : !data?.data?.length ? (
             <div className="p-12 text-center">
               <Users className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-semibold">Nenhum cliente encontrado</h3>
@@ -264,8 +267,8 @@ function ClientesContent() {
                     <TableHead className="cursor-pointer" onClick={() => handleSort('codigo')}>
                       Código <SortIcon column="codigo" sortBy={sortBy} />
                     </TableHead>
-                    <TableHead className="cursor-pointer min-w-[200px]" onClick={() => handleSort('razaoSocial')}>
-                      Razão Social <SortIcon column="razaoSocial" sortBy={sortBy} />
+                    <TableHead className="cursor-pointer min-w-[200px]" onClick={() => handleSort('razao_social')}>
+                      Razão Social <SortIcon column="razao_social" sortBy={sortBy} />
                     </TableHead>
                     <TableHead>CNPJ</TableHead>
                     <TableHead className="cursor-pointer" onClick={() => handleSort('cidade')}>
@@ -279,7 +282,7 @@ function ClientesContent() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {data.clientes.map((cliente) => {
+                  {data.data.map((cliente) => {
                     const carteiraInfo = CARTEIRA_LABELS[cliente.carteira] || {
                       label: cliente.carteira,
                       variant: 'outline' as const,
