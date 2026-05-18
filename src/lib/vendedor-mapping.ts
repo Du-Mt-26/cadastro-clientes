@@ -9,8 +9,8 @@
  * - M-TECH DISTRIBUIDORA → DEBORA (empresa, não é vendedor)
  * - RAFAEL DE SOUZA → DEBORA (não existe no sistema)
  * - WILLIAN LUIZ PEREIRA → DEBORA (não existe no sistema)
- * - (vazio) → (vazio) — clientes sem vendedor ficam sem vendedor
- * - Vendedores não mapeados → ficam sem vendedor (SEM_VENDEDOR)
+ * - (vazio) → DEBORA — clientes sem vendedor no Linvix vão para Débora
+ * - Vendedores não mapeados → DEBORA — fallback para Débora
  */
 
 // Mapeamento fixo de nomes do Linvix → ID do usuário no sistema
@@ -45,9 +45,11 @@ export function mapVendedorToUser(
   linvixVendedorNome: string | null | undefined,
   systemUsers?: SystemUser[]
 ): { userId: string | null; carteira: string } {
-  // Se não tem nome de vendedor, fica SEM vendedor
+  const DEBORA_ID = 'cmoxe1srn0004wxwfyzyde247'
+
+  // Se não tem nome de vendedor, vai para Débora
   if (!linvixVendedorNome || linvixVendedorNome.trim() === '') {
-    return { userId: null, carteira: 'SEM_VENDEDOR' }
+    return { userId: DEBORA_ID, carteira: 'COM_VENDEDOR' }
   }
 
   const nomeUpper = linvixVendedorNome.trim().toUpperCase()
@@ -82,9 +84,9 @@ export function mapVendedorToUser(
     }
   }
 
-  // 4. Vendedor não mapeado → fica SEM vendedor
-  console.warn(`[VendedorMapping] Vendedor não mapeado: "${linvixVendedorNome}" → ficando SEM_VENDEDOR`)
-  return { userId: null, carteira: 'SEM_VENDEDOR' }
+  // 4. Vendedor não mapeado → vai para Débora (fallback)
+  console.warn(`[VendedorMapping] Vendedor não mapeado: "${linvixVendedorNome}" → atribuindo à DEBORA`)
+  return { userId: DEBORA_ID, carteira: 'COM_VENDEDOR' }
 }
 
 /**

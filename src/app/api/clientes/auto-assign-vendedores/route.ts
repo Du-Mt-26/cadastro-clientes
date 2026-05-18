@@ -8,9 +8,10 @@ export const dynamic = 'force-dynamic'
  * Auto-assign vendedores to clients that don't have one.
  * Protected by a secret query parameter.
  *
- * Regras:
+ * Regras (centralizadas em vendedor-mapping.ts):
  * - Clientes com vendedor M-TECH DISTRIBUIDORA, RAFAEL DE SOUZA, WILLIAN LUIZ PEREIRA → DEBORA
- * - Clientes com vendedor vazio → ficam SEM_VENDEDOR (não atribuir a ninguém)
+ * - Clientes com vendedor vazio → DEBORA
+ * - Clientes com vendedor não mapeado → DEBORA (fallback)
  * - Clientes com vendedor que existe no sistema → atribuir ao vendedor correspondente
  *
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026
