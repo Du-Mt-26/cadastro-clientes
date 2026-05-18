@@ -39,6 +39,7 @@ export const SORT_FIELD_MAP: Record<string, string> = {
   telefone2: 'telefone2',
   telefone3: 'telefone3',
   telefone4: 'telefone4',
+  whatsapp: 'whatsapp',
   email1: 'email1',
   email2: 'email2',
   email3: 'email3',

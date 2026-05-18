@@ -48,6 +48,7 @@ model Cliente {
   telefone2         String  @default("")
   telefone3         String  @default("")
   telefone4         String  @default("")
+  whatsapp          String  @default("")
   email1            String  @default("")
   email2            String  @default("")
   email3            String  @default("")

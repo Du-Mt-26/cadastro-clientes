@@ -60,6 +60,7 @@ export function dbToRecord(c: {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -111,6 +112,7 @@ export function dbToRecord(c: {
     telefone2: c.telefone2,
     telefone3: c.telefone3,
     telefone4: c.telefone4,
+    whatsapp: c.whatsapp,
     email1: c.email1,
     email2: c.email2,
     email3: c.email3,
@@ -140,6 +142,7 @@ export function dbToRecord(c: {
       telefone2: c.telefone2,
       telefone3: c.telefone3,
       telefone4: c.telefone4,
+      whatsapp: c.whatsapp || '',
       email1: c.email1,
       email2: c.email2,
       email3: c.email3,

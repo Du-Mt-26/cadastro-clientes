@@ -172,6 +172,7 @@ function mapLinvixToMtech(row: LinvixDataRow): {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   bairro: string
   cidade: string
@@ -185,16 +186,27 @@ function mapLinvixToMtech(row: LinvixDataRow): {
   // Linvix sometimes has "email1;email2" format too
   const allEmails = emails.flatMap(e => e.split(';').map(e2 => e2.trim())).filter(Boolean)
 
+  // Clean phone numbers and deduplicate: if CELULAR == TELEFONE, keep only in telefone1
+  const tel1 = cleanPhone(row.TELEFONE)
+  const cel = cleanPhone(row.CELULAR)
+  const fax = cleanPhone(row.FAX)
+
+  // Deduplicate: if celular equals telefone, don't duplicate in telefone2
+  const tel2 = (cel && cel !== tel1) ? cel : ''
+  // Map FAX (WhatsApp in Linvix) to the dedicated whatsapp field
+  const whatsappNum = fax
+
   return {
     codigo: row.CODIGO || '',
     razaoSocial: decodeHtmlEntities(row.NOME),
     nomeFantasia: decodeHtmlEntities(row.FANTASIA),
     cnpj: normalizeCnpj(row.CNPJ_CNPF),
     ieRg: decodeHtmlEntities(stripHtml(row.IE_RG)),
-    telefone1: cleanPhone(row.TELEFONE),
-    telefone2: cleanPhone(row.CELULAR),
-    telefone3: cleanPhone(row.FAX), // Fax/WhatsApp in Linvix
+    telefone1: tel1,
+    telefone2: tel2,
+    telefone3: '',
     telefone4: '',
+    whatsapp: whatsappNum,
     email1: allEmails[0] || '',
     bairro: decodeHtmlEntities(row.BAIRRO),
     cidade: decodeHtmlEntities(row.CIDADE),
@@ -374,7 +386,7 @@ async function upsertClients(clients: LinvixDataRow[]): Promise<{
 
           const fieldsToCheck = [
             'razaoSocial', 'nomeFantasia', 'cnpj', 'ieRg',
-            'telefone1', 'telefone2', 'telefone3', 'telefone4',
+            'telefone1', 'telefone2', 'telefone3', 'telefone4', 'whatsapp',
             'email1',
             'bairro', 'cidade', 'uf',
             'vendedor', 'observacoes',
@@ -413,6 +425,7 @@ async function upsertClients(clients: LinvixDataRow[]): Promise<{
               telefone2: mapped.telefone2,
               telefone3: mapped.telefone3,
               telefone4: mapped.telefone4,
+              whatsapp: mapped.whatsapp,
               email1: mapped.email1,
               email2: '',
               email3: '',

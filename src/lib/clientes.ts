@@ -107,7 +107,7 @@ export function getRecordValue(r: ClienteRecord, key: string): string {
     nome_fantasia: r.nome_fantasia, situacao_cadastral: r.situacao_cadastral, cnpj: r.cnpj,
     endereco: r.endereco, numero: r.numero, complemento: r.complemento, bairro: r.bairro,
     cidade: r.cidade, cep: r.cep, uf: r.uf, telefone1: r.telefone1, telefone2: r.telefone2,
-    telefone3: r.telefone3, telefone4: r.telefone4, email1: r.email1, email2: r.email2,
+    telefone3: r.telefone3, telefone4: r.telefone4, whatsapp: r.whatsapp, email1: r.email1, email2: r.email2,
     email3: r.email3, pessoa_contato: r.pessoa_contato, data_situacao: r.data_situacao,
     data_abertura: r.data_abertura, cnae_principal: r.cnae_principal, natureza_juridica: r.natureza_juridica,
     porte: r.porte, cadastro: r.parsed.cadastro, ultima_venda: r.parsed.ultima_venda,
@@ -123,6 +123,7 @@ export function getRecordValue(r: ClienteRecord, key: string): string {
 export function toEditableKey(key: string): keyof EditableFields | null {
   const map: Record<string, keyof EditableFields> = {
     telefone1: 'telefone1', telefone2: 'telefone2', telefone3: 'telefone3', telefone4: 'telefone4',
+    whatsapp: 'whatsapp',
     email1: 'email1', email2: 'email2', email3: 'email3', pessoa_contato: 'pessoaContato',
     observacoes: 'observacoes',
   }
