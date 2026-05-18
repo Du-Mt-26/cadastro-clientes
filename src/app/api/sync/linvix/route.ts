@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { mapVendedorToUser } from '@/lib/vendedor-mapping'
 
 // ─── Linvix Sync API Endpoint ───────────────────────
 // Daily full sync from Linvix ERP → M-Tech
@@ -512,72 +513,48 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
 // ─── Auto-assign vendedor ──────────────────────────────
 // After upserting clients from Linvix, this function maps the
 // Linvix vendedor name (text field) to the corresponding system User
-// and sets carteira = COM_VENDEDOR + vendedorId accordingly.
-// Clients with "M-TECH DISTRIBUIDORA" as vendedor get carteira = FORNECEDOR.
+// and sets carteira + vendedorId accordingly using the centralized
+// mapVendedorToUser() function from vendedor-mapping.ts.
+//
+// Regras (definidas em vendedor-mapping.ts):
+// - Vendedor vazio → Débora
+// - Vendedor não mapeado → Débora (fallback)
+// - M-TECH DISTRIBUIDORA → Débora
+// - RAFAEL/WILLIAN → Débora
+// - Vendedores conhecidos → seu respectivo usuário
 
-async function autoAssignVendedores(): Promise<{ assigned: number; fornecedor: number; unchanged: number }> {
+async function autoAssignVendedores(): Promise<{ assigned: number; unchanged: number }> {
   console.log('[sync/linvix] Auto-assign vendedores...')
 
-  // Get all system users
+  // Get all system users for dynamic matching
   const users = await db.user.findMany({
     select: { id: true, name: true, role: true },
   })
 
-  // Build mapping: lowercase name parts → user ID
-  // We match by checking if the Linvix vendedor name is contained in the user name
-  // or vice versa (handles cases like "ALICE" matching "ALICE - Supervisora")
-  const userMap = new Map<string, { id: string; role: string }>()
-  for (const user of users) {
-    // Normalize: uppercase, remove accents for matching
-    const normalized = user.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    userMap.set(normalized, { id: user.id, role: user.role })
-  }
-
-  // Find all clients that need assignment
+  // Find ALL clients with SEM_VENDEDOR (including those with empty vendedor)
   const clientsNeedingAssignment = await db.cliente.findMany({
     where: {
-      vendedor: { not: '' },
       carteira: 'SEM_VENDEDOR',
     },
     select: { id: true, codigo: true, vendedor: true },
   })
 
+  console.log(`[sync/linvix] ${clientsNeedingAssignment.length} clientes com SEM_VENDEDOR para atribuir`)
+
   let assigned = 0
-  let fornecedor = 0
   let unchanged = 0
 
   for (const client of clientsNeedingAssignment) {
-    const vendedorNorm = client.vendedor.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    const { userId, carteira } = mapVendedorToUser(client.vendedor, users)
 
-    // Check if this is M-TECH DISTRIBUIDORA → set as FORNECEDOR
-    if (vendedorNorm.includes('M-TECH') || vendedorNorm.includes('MTECH')) {
+    if (userId) {
       await db.cliente.update({
         where: { id: client.id },
-        data: { carteira: 'FORNECEDOR', vendedorId: null },
-      })
-      fornecedor++
-      continue
-    }
-
-    // Try to find matching user
-    let matchedUserId: string | null = null
-    for (const [userName, userInfo] of userMap) {
-      // Exact match
-      if (userName === vendedorNorm) {
-        matchedUserId = userInfo.id
-        break
-      }
-      // Partial match: vendedor name is contained in user name (e.g. "ALICE" in "ALICE - SUPERVISORA")
-      if (userName.includes(vendedorNorm) || vendedorNorm.includes(userName)) {
-        matchedUserId = userInfo.id
-        break
-      }
-    }
-
-    if (matchedUserId) {
-      await db.cliente.update({
-        where: { id: client.id },
-        data: { carteira: 'COM_VENDEDOR', vendedorId: matchedUserId },
+        data: {
+          carteira: carteira as any,
+          vendedorId: userId,
+          dataAtribuicaoVendedor: new Date(),
+        },
       })
       assigned++
     } else {
@@ -585,8 +562,8 @@ async function autoAssignVendedores(): Promise<{ assigned: number; fornecedor: n
     }
   }
 
-  console.log(`[sync/linvix] Auto-assign: ${assigned} atribuídos, ${fornecedor} fornecedores, ${unchanged} sem match`)
-  return { assigned, fornecedor, unchanged }
+  console.log(`[sync/linvix] Auto-assign: ${assigned} atribuídos, ${unchanged} sem alteração`)
+  return { assigned, unchanged }
 }
 
 // ─── Auto-Sync (Full Daily Sync) ───────────────────────
