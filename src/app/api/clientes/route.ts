@@ -94,6 +94,11 @@ export async function GET(request: NextRequest) {
           db.cliente.findMany({
             where: fullWhere,
             orderBy,
+            include: {
+              vendedorUser: {
+                select: { id: true, name: true, email: true, role: true }
+              }
+            },
             ...(showAll ? {} : { skip: (page - 1) * limit, take: limit }),
           }),
           db.cliente.count({ where: fullWhere }),
@@ -104,6 +109,17 @@ export async function GET(request: NextRequest) {
           records: clientes.map((c) => {
             const record = dbToRecord(c);
             record.carteira = c.carteira;
+            (record as any).vendedorUser = c.vendedorUser;
+            (record as any).vendedorId = c.vendedorId;
+            (record as any).vendedor = c.vendedor;
+            (record as any).id = c.id;
+            (record as any).codigo = c.codigo;
+            (record as any).razaoSocial = c.razaoSocial;
+            (record as any).nomeFantasia = c.nomeFantasia;
+            (record as any).cnpj = c.cnpj;
+            (record as any).cidade = c.cidade;
+            (record as any).uf = c.uf;
+            (record as any).carteira = c.carteira;
             return record;
           }),
         };
