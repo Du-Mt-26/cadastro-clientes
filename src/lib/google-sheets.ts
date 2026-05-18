@@ -156,8 +156,10 @@ const HEADER_TO_FIELD: Record<string, string> = {
   'complemento': 'complemento', 'bairro': 'bairro', 'cidade': 'cidade', 'cep': 'cep', 'uf': 'uf', 'estado': 'uf',
   'telefone 1': 'telefone1', 'telefone1': 'telefone1', 'tel. 1': 'telefone1', 'tel 1': 'telefone1',
   'telefone 2': 'telefone2', 'telefone2': 'telefone2', 'tel. 2': 'telefone2', 'tel 2': 'telefone2',
-  'telefone 3': 'telefone3', 'telefone3': 'telefone3', 'tel. 3': 'telefone3', 'tel 3': 'telefone3', 'celular': 'telefone3',
-  'telefone 4': 'telefone4', 'telefone4': 'telefone4', 'tel. 4': 'telefone4', 'tel 4': 'telefone4', 'fax': 'telefone4',
+  'telefone 3': 'telefone3', 'telefone3': 'telefone3', 'tel. 3': 'telefone3', 'tel 3': 'telefone3',
+  'telefone 4': 'telefone4', 'telefone4': 'telefone4', 'tel. 4': 'telefone4', 'tel 4': 'telefone4',
+  'whatsapp': 'whatsapp', 'whats': 'whatsapp',
+  'celular': 'telefone2', 'fax': 'whatsapp',
   'email 1': 'email1', 'email1': 'email1', 'email. 1': 'email1',
   'email 2': 'email2', 'email2': 'email2', 'email. 2': 'email2',
   'email 3': 'email3', 'email3': 'email3', 'email. 3': 'email3',
@@ -249,6 +251,7 @@ export async function pullFromSheet(spreadsheetId: string, _sheetName: string, h
               cidade: record.cidade || '', cep: record.cep || '', uf: record.uf || '',
               telefone1: record.telefone1 || '', telefone2: record.telefone2 || '',
               telefone3: record.telefone3 || '', telefone4: record.telefone4 || '',
+              whatsapp: record.whatsapp || '',
               email1: (record.email1 || '').toLowerCase().trim(), email2: (record.email2 || '').toLowerCase().trim(), email3: (record.email3 || '').toLowerCase().trim(),
               pessoaContato: record.pessoaContato || '', dataSituacao: record.dataSituacao || '',
               dataAbertura: record.dataAbertura || '', cnaePrincipal: record.cnaePrincipal || '',
@@ -277,7 +280,7 @@ export async function pullFromSheet(spreadsheetId: string, _sheetName: string, h
 
 function parseObservacoesFields(obs: string): Record<string, string> {
   const fieldMap: Record<string, string> = {
-    codigo: 'codigo', 'ie/rg': 'ieRg', ie_rg: 'ieRg', celular: 'telefone3', fax: 'telefone4',
+    codigo: 'codigo', 'ie/rg': 'ieRg', ie_rg: 'ieRg', celular: 'telefone2', fax: 'whatsapp',
     cadastro: 'cadastro', 'última venda': 'ultimaVenda', ultima_venda: 'ultimaVenda',
     'ultima venda': 'ultimaVenda', 'reg. simples': 'regSimples', reg_simples: 'regSimples',
     vendedor: 'vendedor', vendedora: 'vendedor',
@@ -353,7 +356,7 @@ const SHEETS_COLUMNS: { key: string; label: string }[] = [
   { key: 'pessoa_contato', label: 'Contato' },
   { key: 'telefone1', label: 'Tel. 1' },
   { key: 'telefone2', label: 'Tel. 2' },
-  { key: 'telefone3', label: 'Tel. 3' },
+  { key: 'whatsapp', label: 'WhatsApp' },
   { key: 'email1', label: 'Email 1' },
   { key: 'email2', label: 'Email 2' },
   { key: 'email3', label: 'Email 3' },
@@ -390,7 +393,7 @@ function clienteToRow(c: {
   codigo: string; ieRg: string; razaoSocial: string; nomeFantasia: string;
   situacaoCadastral: string; cnpj: string; endereco: string; numero: string;
   complemento: string; bairro: string; cidade: string; cep: string; uf: string;
-  telefone1: string; telefone2: string; telefone3: string; telefone4: string;
+  telefone1: string; telefone2: string; telefone3: string; telefone4: string; whatsapp: string;
   email1: string; email2: string; email3: string; pessoaContato: string;
   dataSituacao: string; dataAbertura: string; cnaePrincipal: string;
   naturezaJuridica: string; porte: string; cadastro: string; ultimaVenda: string;
@@ -413,8 +416,7 @@ function clienteToRow(c: {
     uf: c.uf,
     telefone1: c.telefone1,
     telefone2: c.telefone2,
-    telefone3: c.telefone3,
-    telefone4: c.telefone4,
+    whatsapp: c.whatsapp,
     email1: c.email1,
     email2: c.email2,
     email3: c.email3,
@@ -493,7 +495,7 @@ export async function pushToSheet(spreadsheetId: string, _sheetName: string, gid
         codigo: true, ieRg: true, razaoSocial: true, nomeFantasia: true,
         situacaoCadastral: true, cnpj: true, endereco: true, numero: true,
         complemento: true, bairro: true, cidade: true, cep: true, uf: true,
-        telefone1: true, telefone2: true, telefone3: true, telefone4: true,
+        telefone1: true, telefone2: true, telefone3: true, telefone4: true, whatsapp: true,
         email1: true, email2: true, email3: true, pessoaContato: true,
         dataSituacao: true, dataAbertura: true, cnaePrincipal: true,
         naturezaJuridica: true, porte: true, cadastro: true, ultimaVenda: true,

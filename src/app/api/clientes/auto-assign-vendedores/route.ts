@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic'
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026&mode=sync-sem-vendedor
  * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026&mode=clean-obs
+ * GET /api/clientes/auto-assign-vendedores?secret=mtech-assign-2026&mode=migrate-whatsapp
  */
 export async function GET(request: Request) {
   try {
@@ -39,6 +40,11 @@ export async function GET(request: Request) {
     // Mode: clean-obs — Remove observações "Cadastrado via API"
     if (mode === 'clean-obs') {
       return await cleanObservacoes(dryRun)
+    }
+
+    // Mode: migrate-whatsapp — Add whatsapp column and migrate data from telefone3
+    if (mode === 'migrate-whatsapp') {
+      return await migrateWhatsapp(dryRun)
     }
 
     console.log(`[AutoAssign] Iniciando atribuição automática de vendedores...${dryRun ? ' (DRY RUN)' : ''}`)
@@ -436,5 +442,99 @@ async function syncSemVendedor(dryRun: boolean): Promise<Response> {
     toRemove: clientesComVendedorNoMtech.length,
     updated: result.count,
     porVendedor,
+  })
+}
+
+/**
+ * Migração: Adiciona coluna whatsapp ao banco, migra dados de telefone3 → whatsapp,
+ * e remove números duplicados de telefone1/telefone2.
+ */
+async function migrateWhatsapp(dryRun: boolean): Promise<Response> {
+  console.log(`[MigrateWhatsapp] Iniciando migração...${dryRun ? ' (DRY RUN)' : ''}`)
+
+  const results: Record<string, unknown> = {}
+
+  // Step 1: Add whatsapp column if it doesn't exist
+  try {
+    console.log('[MigrateWhatsapp] Verificando se coluna whatsapp existe...')
+    await db.$executeRawUnsafe(`
+      ALTER TABLE "Cliente" ADD COLUMN IF NOT EXISTS "whatsapp" TEXT NOT NULL DEFAULT ''
+    `)
+    results.columnAdded = true
+    console.log('[MigrateWhatsapp] Coluna whatsapp adicionada/verificada')
+  } catch (err) {
+    console.error('[MigrateWhatsapp] Erro ao adicionar coluna whatsapp:', err)
+    results.columnAdded = false
+    results.columnError = err instanceof Error ? err.message : 'Erro desconhecido'
+  }
+
+  if (dryRun) {
+    return NextResponse.json({
+      success: true,
+      dryRun: true,
+      message: 'DRY RUN — nenhuma alteração foi feita',
+      results,
+    })
+  }
+
+  // Step 2: Migrate telefone3 data → whatsapp (only where whatsapp is empty and telefone3 has data)
+  try {
+    const migrateResult = await db.$executeRawUnsafe(`
+      UPDATE "Cliente"
+      SET "whatsapp" = "telefone3"
+      WHERE "whatsapp" = ''
+        AND "telefone3" != ''
+        AND "telefone3" IS NOT NULL
+    `)
+    results.migratedFromTelefone3 = migrateResult
+    console.log(`[MigrateWhatsapp] ${migrateResult} clientes migrados de telefone3 → whatsapp`)
+  } catch (err) {
+    console.error('[MigrateWhatsapp] Erro ao migrar telefone3 → whatsapp:', err)
+    results.migrateError = err instanceof Error ? err.message : 'Erro desconhecido'
+  }
+
+  // Step 3: Remove duplicate phone numbers where telefone1 == telefone2
+  try {
+    const dedupResult = await db.$executeRawUnsafe(`
+      UPDATE "Cliente"
+      SET "telefone2" = ''
+      WHERE "telefone1" != ''
+        AND "telefone2" != ''
+        AND REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+         = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+    `)
+    results.dedupTelefone1Telefone2 = dedupResult
+    console.log(`[MigrateWhatsapp] ${dedupResult} clientes com telefone1=telefone2 deduplicados`)
+  } catch (err) {
+    console.error('[MigrateWhatsapp] Erro ao deduplicar telefones:', err)
+    results.dedupError = err instanceof Error ? err.message : 'Erro desconhecido'
+  }
+
+  // Step 4: Also deduplicate telefone1=whatsapp and telefone2=whatsapp
+  try {
+    const dedupWhatsapp1 = await db.$executeRawUnsafe(`
+      UPDATE "Cliente"
+      SET "whatsapp" = ''
+      WHERE "whatsapp" != ''
+        AND ("telefone1" != '' OR "telefone2" != '')
+        AND (
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+          OR
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+        )
+    `)
+    results.dedupWhatsappTelefone = dedupWhatsapp1
+    console.log(`[MigrateWhatsapp] ${dedupWhatsapp1} clientes com whatsapp=telefone deduplicados`)
+  } catch (err) {
+    console.error('[MigrateWhatsapp] Erro ao deduplicar whatsapp/telefone:', err)
+    results.dedupWhatsappError = err instanceof Error ? err.message : 'Erro desconhecido'
+  }
+
+  return NextResponse.json({
+    success: true,
+    message: 'Migração concluída com sucesso',
+    results,
   })
 }

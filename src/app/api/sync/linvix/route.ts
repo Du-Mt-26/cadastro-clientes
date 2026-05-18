@@ -61,6 +61,7 @@ interface LinvixClientData {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -200,16 +201,27 @@ function mapLinvixRowToMtech(row: LinvixDataRow): LinvixClientData {
   const rawEmail = cleanEmail(row.EMAIL)
   const emails = rawEmail ? rawEmail.split(',').flatMap(e => e.split(';').map(e2 => e2.trim())).filter(Boolean) : []
 
+  // Clean phone numbers and deduplicate: if CELULAR == TELEFONE, keep only in telefone1
+  const tel1 = cleanPhone(row.TELEFONE)
+  const cel = cleanPhone(row.CELULAR)
+  const fax = cleanPhone(row.FAX)
+
+  // Deduplicate: if celular equals telefone, don't duplicate in telefone2
+  const tel2 = (cel && cel !== tel1) ? cel : ''
+  // Map FAX (WhatsApp in Linvix) to the dedicated whatsapp field
+  const whatsappNum = fax
+
   return {
     codigo: row.CODIGO || '',
     razaoSocial: decodeHtmlEntities(row.NOME),
     nomeFantasia: decodeHtmlEntities(row.FANTASIA),
     cnpj: normalizeCnpj(row.CNPJ_CNPF),
     ieRg: decodeHtmlEntities(stripHtml(row.IE_RG)),
-    telefone1: cleanPhone(row.TELEFONE),
-    telefone2: cleanPhone(row.CELULAR),
-    telefone3: cleanPhone(row.FAX),
+    telefone1: tel1,
+    telefone2: tel2,
+    telefone3: '',
     telefone4: '',
+    whatsapp: whatsappNum,
     email1: emails[0] || '',
     email2: emails[1] || '',
     email3: emails[2] || '',
@@ -403,6 +415,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
           client.telefone2 || '',
           client.telefone3 || '',
           client.telefone4 || '',
+          client.whatsapp || '',
           (client.email1 || '').toLowerCase().trim(),
           (client.email2 || '').toLowerCase().trim(),
           (client.email3 || '').toLowerCase().trim(),
@@ -444,7 +457,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
 
       const columns = [
         '"id"', '"codigo"', '"razaoSocial"', '"nomeFantasia"', '"cnpj"', '"cnpjBase"', '"ieRg"',
-        '"telefone1"', '"telefone2"', '"telefone3"', '"telefone4"',
+        '"telefone1"', '"telefone2"', '"telefone3"', '"telefone4"', '"whatsapp"',
         '"email1"', '"email2"', '"email3"', '"pessoaContato"',
         '"endereco"', '"numero"', '"complemento"', '"bairro"', '"cidade"', '"cep"', '"uf"',
         '"situacaoCadastral"', '"dataSituacao"', '"dataAbertura"',
@@ -468,6 +481,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"telefone2" = COALESCE(NULLIF(EXCLUDED."telefone2", \'\'), "Cliente"."telefone2")',
         '"telefone3" = COALESCE(NULLIF(EXCLUDED."telefone3", \'\'), "Cliente"."telefone3")',
         '"telefone4" = COALESCE(NULLIF(EXCLUDED."telefone4", \'\'), "Cliente"."telefone4")',
+        '"whatsapp" = COALESCE(NULLIF(EXCLUDED."whatsapp", \'\'), "Cliente"."whatsapp")',
         '"email1" = COALESCE(NULLIF(EXCLUDED."email1", \'\'), "Cliente"."email1")',
         '"email2" = COALESCE(NULLIF(EXCLUDED."email2", \'\'), "Cliente"."email2")',
         '"email3" = COALESCE(NULLIF(EXCLUDED."email3", \'\'), "Cliente"."email3")',

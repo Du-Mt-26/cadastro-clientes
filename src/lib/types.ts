@@ -33,6 +33,7 @@ export interface EditableFields {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -65,6 +66,7 @@ export interface ClienteRecord {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -149,6 +151,7 @@ export interface NewClientForm {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -184,7 +187,7 @@ export const DEFAULT_COLUMNS: ColumnDef[] = [
   { key: 'pessoa_contato', label: 'Contato', editable: true, minWidth: '140px' },
   { key: 'telefone1', label: 'Tel. 1', editable: true, minWidth: '140px' },
   { key: 'telefone2', label: 'Tel. 2', editable: true, minWidth: '140px' },
-  { key: 'telefone3', label: 'Tel. 3', editable: true, minWidth: '140px' },
+  { key: 'whatsapp', label: 'WhatsApp', editable: true, minWidth: '150px' },
   { key: 'email1', label: 'Email 1', editable: true, minWidth: '160px' },
   { key: 'email2', label: 'Email 2', editable: true, minWidth: '140px' },
   { key: 'email3', label: 'Email 3', editable: true, minWidth: '140px' },
@@ -220,7 +223,7 @@ export const PAGE_SIZE_OPTIONS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
 export const EMPTY_FORM: NewClientForm = {
   cnpj: '', ieRg: '', razaoSocial: '', nomeFantasia: '', situacaoCadastral: '',
   endereco: '', numero: '', complemento: '', bairro: '', cidade: '', cep: '', uf: '',
-  telefone1: '', telefone2: '', telefone3: '', telefone4: '',
+  telefone1: '', telefone2: '', telefone3: '', telefone4: '', whatsapp: '',
   email1: '', email2: '', email3: '', pessoaContato: '',
   dataAbertura: '', cnaePrincipal: '', naturezaJuridica: '', porte: '',
   regSimples: '', vendedor: '', tipo: 'REVENDA',
@@ -242,7 +245,7 @@ export const DETAIL_TABS: { key: DetailTab; label: string; icon: React.ElementTy
 
 // ─── Field constants ──────────────────────────────
 
-export const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4'])
+export const PHONE_FIELDS = new Set(['telefone1', 'telefone2', 'telefone3', 'telefone4', 'whatsapp'])
 
 export const EMAIL_FIELDS = new Set(['email1', 'email2', 'email3'])
 
@@ -251,6 +254,7 @@ export const FIELD_LABELS: Record<string, string> = {
   telefone2: 'Tel. 2',
   telefone3: 'Tel. 3',
   telefone4: 'Tel. 4',
+  whatsapp: 'WhatsApp',
   email1: 'Email 1',
   email2: 'Email 2',
   email3: 'Email 3',

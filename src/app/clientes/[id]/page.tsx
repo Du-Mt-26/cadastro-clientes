@@ -20,6 +20,7 @@ import {
   FileText,
   Package,
   ChevronRight,
+  MessageCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -44,6 +45,7 @@ interface ClienteDetail {
   telefone2: string
   telefone3: string
   telefone4: string
+  whatsapp: string
   email1: string
   email2: string
   email3: string
@@ -235,6 +237,18 @@ function ClienteDetailContent() {
                     <Phone className="h-3 w-3" /> Telefone
                   </p>
                   <p className="text-sm">{cliente.telefone1 || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Telefone 2
+                  </p>
+                  <p className="text-sm">{cliente.telefone2 || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MessageCircle className="h-3 w-3" /> WhatsApp
+                  </p>
+                  <p className="text-sm">{cliente.whatsapp || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">

@@ -271,6 +271,7 @@ export async function POST(request: NextRequest) {
         telefone2: body.telefone2 || "",
         telefone3: body.telefone3 || "",
         telefone4: body.telefone4 || "",
+        whatsapp: body.whatsapp || "",
         email1: (body.email1 || "").toLowerCase().trim(),
         email2: (body.email2 || "").toLowerCase().trim(),
         email3: (body.email3 || "").toLowerCase().trim(),
@@ -339,7 +340,7 @@ export async function PATCH(request: NextRequest) {
       'numero', 'complemento', 'bairro', 'cep', 'cnpj',
       'situacaoCadastral', 'dataSituacao', 'dataAbertura',
       'cnaePrincipal', 'naturezaJuridica', 'porte', 'regSimples',
-      'telefone1', 'telefone2', 'telefone3', 'telefone4',
+      'telefone1', 'telefone2', 'telefone3', 'telefone4', 'whatsapp',
       'email1', 'email2', 'email3',
       'pessoaContato', 'observacoes',
       'ultimaVenda', 'cadastro', 'ieRg',
@@ -366,7 +367,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         // Vendedores can only edit contact/obs fields
-        const isContactOrObs = ['telefone1', 'telefone2', 'telefone3', 'telefone4',
+        const isContactOrObs = ['telefone1', 'telefone2', 'telefone3', 'telefone4', 'whatsapp',
           'email1', 'email2', 'email3', 'pessoaContato', 'observacoes'].includes(field);
 
         if (role === 'VENDEDOR' && !isContactOrObs) {
