@@ -162,8 +162,8 @@ function ClienteDetailContent() {
         <div className="flex-1">
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold">{cliente.razaoSocial}</h1>
-            <Badge variant={(cliente.ativo ?? !['EXCLUÍDO', 'BAIXADA'].includes(cliente.situacaoCadastral?.toUpperCase() || '')) ? 'default' : 'secondary'}>
-              {(cliente.ativo ?? !['EXCLUÍDO', 'BAIXADA'].includes(cliente.situacaoCadastral?.toUpperCase() || '')) ? 'Ativo' : 'Inativo'}
+            <Badge variant={(cliente.ativo !== undefined ? cliente.ativo : !['EXCLUÍDO', 'BAIXADA'].includes(cliente.situacaoCadastral?.toUpperCase() || '')) ? 'default' : 'secondary'}>
+              {(cliente.ativo !== undefined ? cliente.ativo : !['EXCLUÍDO', 'BAIXADA'].includes(cliente.situacaoCadastral?.toUpperCase() || '')) ? 'Ativo' : 'Inativo'}
             </Badge>
             <Badge variant={carteiraInfo.variant}>{carteiraInfo.label}</Badge>
           </div>

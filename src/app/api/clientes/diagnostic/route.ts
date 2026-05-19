@@ -119,8 +119,104 @@ export async function POST(request: NextRequest) {
       const ativoTrue = await db.cliente.count({ where: { ativo: true } })
       const ativoFalse = await db.cliente.count({ where: { ativo: false } })
       results.push(`Verificação: ${ativoTrue} ativos, ${ativoFalse} inativos`)
+    } else if (mode === 'fix-situacao') {
+      // ─── Fix wrong EXCLUÍDO/BAIXADA values ─────────────────
+      // These values came from the original XLSX seed and are INCORRECT.
+      // The user verified on Receita Federal that these CNPJs are ATIVA.
+      // The "EXCLUÍDO" status was from M-Tech's Linvix organization status,
+      // not from the Receita Federal CNPJ status.
+
+      // Step 1: List all clients with wrong situacaoCadastral
+      const wrongClients = await db.cliente.findMany({
+        where: {
+          situacaoCadastral: { in: ['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'] }
+        },
+        select: {
+          id: true,
+          codigo: true,
+          razaoSocial: true,
+          cnpj: true,
+          situacaoCadastral: true,
+          ativo: true,
+        },
+        orderBy: { razaoSocial: 'asc' },
+      })
+
+      results.push(`Encontrados ${wrongClients.length} clientes com situacaoCadastral incorreta:`)
+
+      const excluidos = wrongClients.filter(c => c.situacaoCadastral.toUpperCase() === 'EXCLUÍDO')
+      const baixadas = wrongClients.filter(c => c.situacaoCadastral.toUpperCase() === 'BAIXADA')
+      results.push(`  - ${excluidos.length} com EXCLUÍDO`)
+      results.push(`  - ${baixadas.length} com BAIXADA`)
+
+      // Step 2: Update all to ATIVA and set ativo=true
+      const updateResult = await db.cliente.updateMany({
+        where: {
+          situacaoCadastral: { in: ['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'] }
+        },
+        data: {
+          situacaoCadastral: 'ATIVA',
+          ativo: true,
+        }
+      })
+      results.push(`\nCorrigidos ${updateResult.count} clientes: situacaoCadastral → ATIVA, ativo → true`)
+
+      // Step 3: Verify
+      const remaining = await db.cliente.count({
+        where: {
+          situacaoCadastral: { in: ['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'] }
+        }
+      })
+      const ativaCount = await db.cliente.count({ where: { situacaoCadastral: 'ATIVA' } })
+      const ativoTrue = await db.cliente.count({ where: { ativo: true } })
+      const ativoFalse = await db.cliente.count({ where: { ativo: false } })
+      results.push(`\nVerificação:`)
+      results.push(`  - Restantes com EXCLUÍDO/BAIXADA: ${remaining}`)
+      results.push(`  - Total com ATIVA: ${ativaCount}`)
+      results.push(`  - Ativos: ${ativoTrue}, Inativos: ${ativoFalse}`)
+
+      return NextResponse.json({
+        success: true,
+        results,
+        correctedClients: wrongClients.map(c => ({
+          codigo: c.codigo,
+          razaoSocial: c.razaoSocial,
+          cnpj: c.cnpj,
+          situacaoAnterior: c.situacaoCadastral,
+          ativoAnterior: c.ativo,
+        })),
+      })
+    } else if (mode === 'list-situacao') {
+      // ─── List all distinct situacaoCadastral values with sample clients ─────────────────
+      const situacaoGroup = await db.cliente.groupBy({
+        by: ['situacaoCadastral'],
+        _count: true,
+        orderBy: { _count: { situacaoCadastral: 'desc' } },
+      })
+
+      const details: Record<string, { count: number; samples: Array<{ codigo: string; razaoSocial: string; cnpj: string }> }> = {}
+
+      for (const group of situacaoGroup) {
+        const val = group.situacaoCadastral || '(vazio)'
+        const samples = await db.cliente.findMany({
+          where: { situacaoCadastral: group.situacaoCadastral },
+          select: { codigo: true, razaoSocial: true, cnpj: true },
+          take: 5,
+          orderBy: { razaoSocial: 'asc' },
+        })
+        details[val] = { count: group._count, samples }
+      }
+
+      return NextResponse.json({
+        success: true,
+        situacaoCadastral: situacaoGroup.map(g => ({
+          valor: g.situacaoCadastral || '(vazio)',
+          count: g._count,
+        })),
+        details,
+      })
     } else {
-      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo' }, { status: 400 })
+      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao' }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, results })

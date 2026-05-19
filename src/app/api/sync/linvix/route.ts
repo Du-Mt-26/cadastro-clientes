@@ -506,7 +506,7 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
         '"source" = EXCLUDED."source"',
         '"tipo" = EXCLUDED."tipo"',
         '"carteira" = CASE WHEN "Cliente"."carteira" = \'SEM_VENDEDOR\'::"Carteira" THEN EXCLUDED."carteira" ELSE "Cliente"."carteira" END',
-        '"ativo" = EXCLUDED."ativo"',
+        '"ativo" = CASE WHEN EXCLUDED."situacaoCadastral" = \'\' THEN "Cliente"."ativo" ELSE EXCLUDED."ativo" END',
         '"updatedAt" = NOW()',
       ].join(',\n          ')
 
