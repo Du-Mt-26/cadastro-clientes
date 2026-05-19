@@ -296,8 +296,99 @@ export async function POST(request: NextRequest) {
         success: true,
         results: results_data,
       })
+    } else if (mode === 'fix-phone-order') {
+      // ─── Fix phone order: ensure Tel.1 is filled before Tel.2 ─────────────────
+      // If telefone1 is empty and telefone2 has data, move telefone2 → telefone1
+      // Also cascade: if whatsapp is the only number, move it up
+      const results_data: Record<string, unknown> = {}
+
+      // Count clients with telefone1 empty and telefone2 filled
+      const tel1EmptyTel2Filled = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.tel1VazioTel2Preenchido = Number(tel1EmptyTel2Filled[0]?.count ?? 0)
+
+      // Count clients with telefone1 and telefone2 empty but whatsapp filled
+      const telEmptyWhatsappFilled = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "whatsapp" != '' AND "whatsapp" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.telsVaziosWhatsappPreenchido = Number(telEmptyWhatsappFilled[0]?.count ?? 0)
+
+      // Count clients with telefone1 empty, telefone2 empty, but telefone3 filled
+      const tel1EmptyTel3Filled = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "telefone3" != '' AND "telefone3" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.telsVaziosTel3Preenchido = Number(tel1EmptyTel3Filled[0]?.count ?? 0)
+
+      // Step 1: Move telefone2 → telefone1 when telefone1 is empty
+      const move1 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone1" = "telefone2", "telefone2" = ''
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `)
+      results_data.movidosTel2ParaTel1 = move1
+
+      // Step 2: After step 1, if telefone1 is still empty but whatsapp is filled, move whatsapp → telefone1
+      const move2 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone1" = "whatsapp", "whatsapp" = ''
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "whatsapp" != '' AND "whatsapp" IS NOT NULL
+      `)
+      results_data.movidosWhatsappParaTel1 = move2
+
+      // Step 3: After steps 1&2, if telefone1 is still empty but telefone3 is filled, move telefone3 → telefone1
+      const move3 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone1" = "telefone3", "telefone3" = ''
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone3" != '' AND "telefone3" IS NOT NULL
+      `)
+      results_data.movidosTel3ParaTel1 = move3
+
+      // Step 4: Now cascade - if telefone2 is empty but whatsapp is filled, move whatsapp → telefone2
+      const move4 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone2" = "whatsapp", "whatsapp" = ''
+        WHERE ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "whatsapp" != '' AND "whatsapp" IS NOT NULL
+        AND "telefone1" != '' AND "telefone1" IS NOT NULL
+      `)
+      results_data.movidosWhatsappParaTel2 = move4
+
+      // Step 5: If telefone2 is still empty but telefone3 is filled, move telefone3 → telefone2
+      const move5 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone2" = "telefone3", "telefone3" = ''
+        WHERE ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "telefone3" != '' AND "telefone3" IS NOT NULL
+        AND "telefone1" != '' AND "telefone1" IS NOT NULL
+      `)
+      results_data.movidosTel3ParaTel2 = move5
+
+      // Verify: count remaining clients with telefone1 empty but telefone2 filled
+      const remaining = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.restantesTel1VazioTel2Preenchido = Number(remaining[0]?.count ?? 0)
+
+      return NextResponse.json({
+        success: true,
+        results: results_data,
+      })
     } else {
-      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao, fix-phones' }, { status: 400 })
+      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao, fix-phones, fix-phone-order' }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, results })
