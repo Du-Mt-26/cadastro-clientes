@@ -234,7 +234,7 @@ function ClienteDetailContent() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> Telefone
+                    <Phone className="h-3 w-3" /> Telefone 1
                   </p>
                   <p className="text-sm">{cliente.telefone1 || '-'}</p>
                 </div>
@@ -249,6 +249,18 @@ function ClienteDetailContent() {
                     <MessageCircle className="h-3 w-3" /> WhatsApp
                   </p>
                   <p className="text-sm">{cliente.whatsapp || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Telefone 3
+                  </p>
+                  <p className="text-sm">{cliente.telefone3 || '-'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Phone className="h-3 w-3" /> Telefone 4
+                  </p>
+                  <p className="text-sm">{cliente.telefone4 || '-'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground flex items-center gap-1">

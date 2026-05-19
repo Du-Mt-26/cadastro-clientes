@@ -387,8 +387,161 @@ export async function POST(request: NextRequest) {
         success: true,
         results: results_data,
       })
+    } else if (mode === 'revert-whatsapp-to-tel3') {
+      // ─── Revert the previous telefone3 → whatsapp migration ─────────────────
+      // The previous fix-phones mode migrated telefone3 → whatsapp for 747 clients.
+      // The user confirmed this was wrong: those numbers belong in telefone3, not whatsapp.
+      // This mode moves whatsapp data back to telefone3 where telefone3 is empty,
+      // and clears the whatsapp field for those entries.
+      // Note: whatsapp data from Linvix fax field (where telefone3 already has data)
+      // will NOT be moved — that stays in whatsapp where it belongs.
+      const results_data: Record<string, unknown> = {}
+
+      // Step 1: Count current state
+      const whatsappCount = await db.cliente.count({ where: { whatsapp: { not: '' } } })
+      results_data.clientesComWhatsappAntes = whatsappCount
+
+      const tel3Count = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "telefone3" != '' AND "telefone3" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.clientesComTelefone3Antes = Number(tel3Count[0]?.count ?? 0)
+
+      // Step 2: Move whatsapp → telefone3 where telefone3 is empty and whatsapp has data
+      // This reverses the previous migration that copied telefone3 → whatsapp
+      const move1 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone3" = "whatsapp", "whatsapp" = ''
+        WHERE ("telefone3" = '' OR "telefone3" IS NULL)
+        AND "whatsapp" != '' AND "whatsapp" IS NOT NULL
+      `)
+      results_data.movidosWhatsappParaTel3 = move1
+
+      // Step 3: Verify
+      const whatsappAfter = await db.cliente.count({ where: { whatsapp: { not: '' } } })
+      results_data.clientesComWhatsappApos = whatsappAfter
+
+      const tel3After = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "telefone3" != '' AND "telefone3" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.clientesComTelefone3Apos = Number(tel3After[0]?.count ?? 0)
+
+      // Also apply fix-phone-order to ensure no gaps (tel1 empty but tel2/tel3/whatsapp filled)
+      const move2 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone1" = "telefone2", "telefone2" = ''
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `)
+      results_data.cascadeMovidosTel2ParaTel1 = move2
+
+      const move3 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone1" = "telefone3", "telefone3" = ''
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone3" != '' AND "telefone3" IS NOT NULL
+      `)
+      results_data.cascadeMovidosTel3ParaTel1 = move3
+
+      const move4 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone2" = "telefone3", "telefone3" = ''
+        WHERE ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "telefone3" != '' AND "telefone3" IS NOT NULL
+        AND "telefone1" != '' AND "telefone1" IS NOT NULL
+      `)
+      results_data.cascadeMovidosTel3ParaTel2 = move4
+
+      const move5 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone2" = "whatsapp", "whatsapp" = ''
+        WHERE ("telefone2" = '' OR "telefone2" IS NULL)
+        AND "whatsapp" != '' AND "whatsapp" IS NOT NULL
+        AND "telefone1" != '' AND "telefone1" IS NOT NULL
+      `)
+      results_data.cascadeMovidosWhatsappParaTel2 = move5
+
+      // Final verification
+      const tel1EmptyTel2Filled = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.restantesTel1VazioTel2Preenchido = Number(tel1EmptyTel2Filled[0]?.count ?? 0)
+
+      return NextResponse.json({
+        success: true,
+        results: results_data,
+      })
+    } else if (mode === 'phone-stats') {
+      // ─── Phone field statistics ─────────────────
+      // Diagnostic mode to check current phone field distribution
+      const results_data: Record<string, unknown> = {}
+
+      const total = await db.cliente.count()
+      results_data.totalClientes = total
+
+      const tel1 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente" WHERE "telefone1" != '' AND "telefone1" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.comTelefone1 = Number(tel1[0]?.count ?? 0)
+
+      const tel2 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente" WHERE "telefone2" != '' AND "telefone2" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.comTelefone2 = Number(tel2[0]?.count ?? 0)
+
+      const tel3 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente" WHERE "telefone3" != '' AND "telefone3" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.comTelefone3 = Number(tel3[0]?.count ?? 0)
+
+      const tel4 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente" WHERE "telefone4" != '' AND "telefone4" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.comTelefone4 = Number(tel4[0]?.count ?? 0)
+
+      const wa = await db.cliente.count({ where: { whatsapp: { not: '' } } })
+      results_data.comWhatsapp = wa
+
+      // Overlap: whatsapp = telefone3 (same data in both)
+      const waEqualsTel3 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "whatsapp" != '' AND "telefone3" != ''
+        AND REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+         = REPLACE(REPLACE(REPLACE(REPLACE("telefone3", '(', ''), ')', ''), '-', ''), ' ', '')
+      `) as Array<{ count: bigint }>
+      results_data.whatsappIgualTelefone3 = Number(waEqualsTel3[0]?.count ?? 0)
+
+      // whatsapp with data but telefone3 empty (likely migrated)
+      const waWithEmptyTel3 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "whatsapp" != '' AND ("telefone3" = '' OR "telefone3" IS NULL)
+      `) as Array<{ count: bigint }>
+      results_data.whatsappSemTelefone3 = Number(waWithEmptyTel3[0]?.count ?? 0)
+
+      // telefone3 with data but whatsapp empty (original, not migrated)
+      const tel3WithEmptyWa = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "telefone3" != '' AND ("whatsapp" = '' OR "whatsapp" IS NULL)
+      `) as Array<{ count: bigint }>
+      results_data.telefone3SemWhatsapp = Number(tel3WithEmptyWa[0]?.count ?? 0)
+
+      // Phone order issues
+      const tel1EmptyTel2Filled = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE ("telefone1" = '' OR "telefone1" IS NULL)
+        AND "telefone2" != '' AND "telefone2" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.tel1VazioTel2Preenchido = Number(tel1EmptyTel2Filled[0]?.count ?? 0)
+
+      return NextResponse.json({
+        success: true,
+        results: results_data,
+      })
     } else {
-      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao, fix-phones, fix-phone-order' }, { status: 400 })
+      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao, fix-phones, fix-phone-order, revert-whatsapp-to-tel3, phone-stats' }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, results })
