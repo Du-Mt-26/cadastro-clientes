@@ -25,10 +25,10 @@ export async function GET() {
       topUfs,
     ] = await Promise.all([
       db.cliente.count(),
-      // Count active = total - (EXCLUÍDO + BAIXADA)
+      // Count active clients using the `ativo` boolean field
       db.cliente.count({
         where: {
-          situacaoCadastral: { notIn: ['EXCLUÍDO', 'BAIXADA'] }
+          ativo: true
         }
       }),
       db.cliente.count({ where: { carteira: 'SEM_VENDEDOR' } }),
