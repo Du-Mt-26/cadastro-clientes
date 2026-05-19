@@ -431,9 +431,46 @@ export default function HomeClient() {
     }
   }, [columnOrder])
 
+  // Sync columnOrder state when smart insertion detects missing columns
+  useEffect(() => {
+    const colKeys = new Set(columnOrder)
+    const missing = DEFAULT_COLUMNS.filter(c => !colKeys.has(c.key)).map(c => c.key)
+    if (missing.length > 0) {
+      // Merge missing columns at their DEFAULT_COLUMNS position
+      const defaultOrder = DEFAULT_COLUMNS.map(c => c.key)
+      const existingSet = new Set(columnOrder)
+      const ordered: string[] = []
+      for (const key of defaultOrder) {
+        if (missing.includes(key)) {
+          ordered.push(key)
+        }
+        if (existingSet.has(key)) {
+          ordered.push(key)
+        }
+      }
+      // Add any keys in columnOrder not in DEFAULT_COLUMNS (shouldn't happen, but safety)
+      for (const key of columnOrder) {
+        if (!ordered.includes(key)) ordered.push(key)
+      }
+      setColumnOrder(ordered)
+    }
+  }, []) // Run once on mount to sync localStorage with current DEFAULT_COLUMNS
+
   // Drag handlers
-  const handleDragStart = (_e: React.DragEvent, key: string) => { setDragKey(key) }
-  const handleDragOver = (_e: React.DragEvent, key: string) => { setDragOverKey(key) }
+  const handleDragStart = (e: React.DragEvent, key: string) => {
+    e.dataTransfer.setData('text/plain', key)
+    e.dataTransfer.effectAllowed = 'move'
+    setDragKey(key)
+  }
+  const handleDragOver = (e: React.DragEvent, key: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverKey(key)
+  }
+  const handleDragEnd = () => {
+    setDragKey(null)
+    setDragOverKey(null)
+  }
   const handleDrop = (_e: React.DragEvent, key: string) => {
     if (!dragKey || dragKey === key) { setDragKey(null); setDragOverKey(null); return }
     const targetCol = DEFAULT_COLUMNS.find(c => c.key === key)
@@ -1117,6 +1154,7 @@ export default function HomeClient() {
                       onDragStart={(e) => !isSticky && handleDragStart(e, col.key)}
                       onDragOver={(e) => { e.preventDefault(); if (!isSticky) handleDragOver(e, col.key) }}
                       onDrop={(e) => !isSticky && handleDrop(e, col.key)}
+                      onDragEnd={() => handleDragEnd()}
                     >
                       {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
                       {col.key === 'whatsapp' && <MessageCircle className="size-3 text-green-600 dark:text-green-400 shrink-0" />}
