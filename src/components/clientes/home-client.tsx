@@ -383,13 +383,39 @@ export default function HomeClient() {
     router.replace(`?${params.toString()}`, { scroll: false })
   }, [search, situacaoCadastral, vendedor, cidade, uf, diasSemVendaFilter, carteiraFilter, tipoFilter, page, limit, sortBy, sortOrder, router])
 
-  // Reorder columns
+  // Reorder columns — with smart insertion for new columns
   const columns = useMemo(() => {
     const colMap = new Map(DEFAULT_COLUMNS.map(c => [c.key, c]))
     const stickyKeys = columnOrder.filter(k => { const c = colMap.get(k); return c?.sticky === 'left' })
     const normalKeys = columnOrder.filter(k => { const c = colMap.get(k); return !c?.sticky })
     const allKeys = [...stickyKeys, ...normalKeys]
     const missing = DEFAULT_COLUMNS.filter(c => !allKeys.includes(c.key)).map(c => c.key)
+
+    // Smart insertion: place new columns in their DEFAULT_COLUMNS position instead of at the end
+    if (missing.length > 0) {
+      const defaultOrder = DEFAULT_COLUMNS.map(c => c.key)
+      const allSet = new Set(allKeys)
+      const ordered: string[] = []
+      for (const key of defaultOrder) {
+        if (key === missing[0] || missing.includes(key)) {
+          // Insert missing column(s) at their default position
+          for (const m of missing) {
+            if (defaultOrder.indexOf(m) <= defaultOrder.indexOf(key) && !ordered.includes(m)) {
+              ordered.push(m)
+            }
+          }
+        }
+        if (allSet.has(key)) {
+          ordered.push(key)
+        }
+      }
+      // Add any remaining missing that weren't placed
+      for (const m of missing) {
+        if (!ordered.includes(m)) ordered.push(m)
+      }
+      return ordered.map(k => colMap.get(k)!).filter(Boolean)
+    }
+
     return [...allKeys, ...missing].map(k => colMap.get(k)!).filter(Boolean)
   }, [columnOrder])
 
@@ -1093,6 +1119,7 @@ export default function HomeClient() {
                       onDrop={(e) => !isSticky && handleDrop(e, col.key)}
                     >
                       {!isSticky && <GripVertical className="size-3 text-slate-300 dark:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />}
+                      {col.key === 'whatsapp' && <MessageCircle className="size-3 text-green-600 dark:text-green-400 shrink-0" />}
                       {col.label}
                       {isEditable && <Pencil className="size-2.5 text-teal-600 dark:text-teal-300 shrink-0" />}
                       {sortBy === col.key ? (
