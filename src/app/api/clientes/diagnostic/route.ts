@@ -215,8 +215,89 @@ export async function POST(request: NextRequest) {
         })),
         details,
       })
+    } else if (mode === 'fix-phones') {
+      // ─── Fix duplicate phone numbers ─────────────────
+      // 1. Remove telefone2 when it equals telefone1 (normalized digit comparison)
+      // 2. Remove whatsapp when it equals telefone1 or telefone2
+      const results_data: Record<string, unknown> = {}
+
+      // Count duplicates before fix
+      const dupTel1Tel2 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "telefone1" != '' AND "telefone2" != ''
+        AND REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+         = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+      `) as Array<{ count: bigint }>
+      results_data.dupTelefone1Telefone2 = Number(dupTel1Tel2[0]?.count ?? 0)
+
+      const dupWhatsappTel = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "whatsapp" != '' AND ("telefone1" != '' OR "telefone2" != '')
+        AND (
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+          OR
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+        )
+      `) as Array<{ count: bigint }>
+      results_data.dupWhatsappTelefone = Number(dupWhatsappTel[0]?.count ?? 0)
+
+      // Count clients with whatsapp data
+      const whatsappCount = await db.cliente.count({ where: { whatsapp: { not: '' } } })
+      results_data.clientesComWhatsapp = whatsappCount
+
+      // Count clients with empty whatsapp that have telefone3 data
+      const migrateFromTel3 = await db.$queryRawUnsafe(`
+        SELECT COUNT(*) as count FROM "Cliente"
+        WHERE "whatsapp" = '' AND "telefone3" != '' AND "telefone3" IS NOT NULL
+      `) as Array<{ count: bigint }>
+      results_data.possivelMigracaoTelefone3 = Number(migrateFromTel3[0]?.count ?? 0)
+
+      // Apply fixes
+      // Step 1: Deduplicate telefone1 = telefone2
+      const dedupTel = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "telefone2" = ''
+        WHERE "telefone1" != '' AND "telefone2" != ''
+        AND REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+         = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+      `)
+      results_data.dedupTelefone1Telefone2Applied = dedupTel
+
+      // Step 2: Deduplicate whatsapp = telefone1 or telefone2
+      const dedupWa = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "whatsapp" = ''
+        WHERE "whatsapp" != '' AND ("telefone1" != '' OR "telefone2" != '')
+        AND (
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone1", '(', ''), ')', ''), '-', ''), ' ', '')
+          OR
+          REPLACE(REPLACE(REPLACE(REPLACE("whatsapp", '(', ''), ')', ''), '-', ''), ' ', '')
+          = REPLACE(REPLACE(REPLACE(REPLACE("telefone2", '(', ''), ')', ''), '-', ''), ' ', '')
+        )
+      `)
+      results_data.dedupWhatsappTelefoneApplied = dedupWa
+
+      // Step 3: Migrate telefone3 → whatsapp where whatsapp is empty
+      const migrate3 = await db.$executeRawUnsafe(`
+        UPDATE "Cliente"
+        SET "whatsapp" = "telefone3"
+        WHERE "whatsapp" = '' AND "telefone3" != '' AND "telefone3" IS NOT NULL
+      `)
+      results_data.migratedTelefone3ToWhatsapp = migrate3
+
+      // Verify
+      const whatsappAfter = await db.cliente.count({ where: { whatsapp: { not: '' } } })
+      results_data.clientesComWhatsappApos = whatsappAfter
+
+      return NextResponse.json({
+        success: true,
+        results: results_data,
+      })
     } else {
-      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao' }, { status: 400 })
+      return NextResponse.json({ error: 'Modo inválido. Use: backfill-ativo, fix-situacao, list-situacao, fix-phones' }, { status: 400 })
     }
 
     return NextResponse.json({ success: true, results })
