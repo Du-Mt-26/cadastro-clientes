@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 
 // ─── Linvix Vendas (NF-e) Sync API ──────────────────
@@ -838,10 +838,8 @@ async function runFullSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: run sync inline, no auth required ────
-  // For external cron services (cron-job.org). No auth needed because
-  // trigger only starts a sync — it doesn't expose any sensitive data.
-  // Runs the sync inline (not fire-and-forget) so Vercel keeps the function alive.
+  // ─── Trigger mode: run sync in background, return immediately ─
+  // For cron-job.org. Uses after() to continue running after response.
   if (mode === 'trigger') {
     if (!LINVIX_USER || !LINVIX_PASSWORD) {
       return NextResponse.json(
@@ -865,55 +863,53 @@ export async function GET(request: NextRequest) {
         })
       }
     } catch (dbErr: any) {
-      // If DB is waking up from cold start, the query may fail.
-      // Don't block the trigger — just log and continue.
       console.warn('[sync/linvix-vendas] DB check for running sync failed:', dbErr.message?.substring(0, 100))
     }
 
-    // Run sync inline (Vercel keeps function alive until response is sent)
-    try {
-      const result = await runIncrementalSync()
+    // Run sync in background using after()
+    const syncStartTime = Date.now()
 
-      await db.linvixSyncLog.create({
-        data: {
-          syncType: 'vendas',
-          status: result.errors > 0 ? 'partial' : 'success',
-          totalClients: result.totalNfe || 0,
-          createdCount: result.created || 0,
-          updatedCount: result.updated || 0,
-          skippedCount: result.skipped || 0,
-          errorCount: result.errors,
-          errorMessage: result.errorDetails?.join('\n') || '',
-          detailsScraped: result.detailsScraped,
-          durationMs: result.durationMs,
-        },
-      })
+    after(async () => {
+      try {
+        const result = await runIncrementalSync()
 
-      return NextResponse.json({
-        status: result.errors > 0 ? 'partial' : 'success',
-        mode: 'incremental',
-        created: result.created,
-        updated: result.updated,
-        backfilledItems: result.backfilledItems,
-        detailsScraped: result.detailsScraped,
-        durationMs: result.durationMs,
-      })
-    } catch (err: any) {
-      console.error('[sync/linvix-vendas] Trigger sync falhou:', err.message)
+        await db.linvixSyncLog.create({
+          data: {
+            syncType: 'vendas',
+            status: result.errors > 0 ? 'partial' : 'success',
+            totalClients: result.totalNfe || 0,
+            createdCount: result.created || 0,
+            updatedCount: result.updated || 0,
+            skippedCount: result.skipped || 0,
+            errorCount: result.errors,
+            errorMessage: result.errorDetails?.join('\n') || '',
+            detailsScraped: result.detailsScraped,
+            durationMs: Date.now() - syncStartTime,
+          },
+        })
 
-      await db.linvixSyncLog.create({
-        data: {
-          syncType: 'vendas',
-          status: 'error',
-          errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
-        },
-      })
+        console.log(`[sync/linvix-vendas] Background sync completed: ${result.created} created, ${result.updated} updated in ${Date.now() - syncStartTime}ms`)
+      } catch (err: any) {
+        console.error('[sync/linvix-vendas] Background sync failed:', err.message)
 
-      return NextResponse.json(
-        { status: 'error', error: err.message?.substring(0, 200) },
-        { status: 500 }
-      )
-    }
+        try {
+          await db.linvixSyncLog.create({
+            data: {
+              syncType: 'vendas',
+              status: 'error',
+              errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+              durationMs: Date.now() - syncStartTime,
+            },
+          })
+        } catch {}
+      }
+    })
+
+    return NextResponse.json({
+      status: 'triggered',
+      message: 'Sync de vendas iniciado em background',
+      note: 'O sync roda em background. Verifique o status em /api/sync/linvix-vendas',
+    })
   }
 
   // ─── Blocking modes (wait for completion) ────────────────
