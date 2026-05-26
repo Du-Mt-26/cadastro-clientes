@@ -21,7 +21,7 @@ const LINVIX_PASSWORD = process.env.LINVIX_PASSWORD || ''
 
 const LINVIX_BASE = 'https://rp.erp.linvix.com'
 const LINVIX_LOGIN_URL = `${LINVIX_BASE}/ajax/ajax-login.php`
-const LINVIX_NFE_LIST_URL = `${LINVIX_BASE}/nota-fiscal-eletronica/ajax/ajax-notas-datatable-v2.php`
+const LINVIX_NFE_LIST_URL = `${LINVIX_BASE}/nota-fiscal-eletronica/ajax/ajax-notas-datatable.php`
 const LINVIX_NFE_DETAIL_URL = `${LINVIX_BASE}/nota-fiscal-eletronica/ajax/ajax-pega-nota.php`
 const PAGE_SIZE = 350
 const PAGE_DELAY_MS = 2000
