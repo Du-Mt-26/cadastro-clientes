@@ -851,17 +851,23 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if a vendas sync is already running
-    const runningSync = await db.linvixSyncLog.findFirst({
-      where: { syncType: { startsWith: 'vendas' }, status: 'running' },
-      orderBy: { startedAt: 'desc' },
-    })
-
-    if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
-      return NextResponse.json({
-        status: 'already_running',
-        message: 'Um sync de vendas já está em andamento',
-        startedAt: runningSync.startedAt,
+    try {
+      const runningSync = await db.linvixSyncLog.findFirst({
+        where: { syncType: { startsWith: 'vendas' }, status: 'running' },
+        orderBy: { startedAt: 'desc' },
       })
+
+      if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
+        return NextResponse.json({
+          status: 'already_running',
+          message: 'Um sync de vendas já está em andamento',
+          startedAt: runningSync.startedAt,
+        })
+      }
+    } catch (dbErr: any) {
+      // If DB is waking up from cold start, the query may fail.
+      // Don't block the trigger — just log and continue.
+      console.warn('[sync/linvix-vendas] DB check for running sync failed:', dbErr.message?.substring(0, 100))
     }
 
     // Run sync inline (Vercel keeps function alive until response is sent)

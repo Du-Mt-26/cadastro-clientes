@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { mapVendedorToUser } from '@/lib/vendedor-mapping'
 
@@ -673,7 +673,8 @@ async function runAutoSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: run sync inline, no auth required ────
+  // ─── Trigger mode: run sync in background, return immediately ─
+  // For cron-job.org. Uses after() to continue running after response.
   if (mode === 'trigger') {
     if (!LINVIX_USER || !LINVIX_PASSWORD) {
       return NextResponse.json(
@@ -683,64 +684,75 @@ export async function GET(request: NextRequest) {
     }
 
     // Check if a clientes sync is already running
-    const runningSync = await db.linvixSyncLog.findFirst({
-      where: { syncType: 'clientes', status: 'running' },
-      orderBy: { startedAt: 'desc' },
-    })
-
-    if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
-      return NextResponse.json({
-        status: 'already_running',
-        message: 'Um sync de clientes já está em andamento',
-      })
-    }
-
-    // Run sync inline (Vercel keeps function alive until response is sent)
-    const syncLog = await db.linvixSyncLog.create({
-      data: { syncType: 'clientes', status: 'running', totalClients: 0 },
-    })
-
     try {
-      const result = await runAutoSync()
-
-      await db.linvixSyncLog.update({
-        where: { id: syncLog.id },
-        data: {
-          status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
-          finishedAt: new Date(),
-          totalClients: result.totalClients,
-          createdCount: result.created,
-          updatedCount: result.updated,
-          skippedCount: result.skipped,
-          errorCount: result.errors,
-          errorMessage: result.errorDetails.slice(0, 10).join('\n'),
-          pagesScraped: result.pagesScraped,
-          durationMs: result.durationMs,
-        },
+      const runningSync = await db.linvixSyncLog.findFirst({
+        where: { syncType: 'clientes', status: 'running' },
+        orderBy: { startedAt: 'desc' },
       })
 
-      return NextResponse.json({
-        status: result.errors > 0 ? 'partial' : 'success',
-        total: result.totalClients,
-        created: result.created,
-        updated: result.updated,
-        durationMs: result.durationMs,
-      })
-    } catch (err: any) {
-      await db.linvixSyncLog.update({
-        where: { id: syncLog.id },
-        data: {
-          status: 'error',
-          finishedAt: new Date(),
-          errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
-        },
-      })
-
-      return NextResponse.json(
-        { status: 'error', error: err.message?.substring(0, 200) },
-        { status: 500 }
-      )
+      if (runningSync && (Date.now() - runningSync.startedAt.getTime()) < 300000) {
+        return NextResponse.json({
+          status: 'already_running',
+          message: 'Um sync de clientes já está em andamento',
+          startedAt: runningSync.startedAt,
+        })
+      }
+    } catch (dbErr: any) {
+      // If DB is waking up from cold start, the query may fail.
+      // Don't block the trigger — just log and continue.
+      console.warn('[sync/linvix] DB check for running sync failed:', dbErr.message?.substring(0, 100))
     }
+
+    // Run sync in background using after()
+    const syncStartTime = Date.now()
+
+    after(async () => {
+      const syncLog = await db.linvixSyncLog.create({
+        data: { syncType: 'clientes', status: 'running', totalClients: 0 },
+      })
+
+      try {
+        const result = await runAutoSync()
+
+        await db.linvixSyncLog.update({
+          where: { id: syncLog.id },
+          data: {
+            status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
+            finishedAt: new Date(),
+            totalClients: result.totalClients,
+            createdCount: result.created,
+            updatedCount: result.updated,
+            skippedCount: result.skipped,
+            errorCount: result.errors,
+            errorMessage: result.errorDetails.slice(0, 10).join('\n'),
+            pagesScraped: result.pagesScraped,
+            durationMs: Date.now() - syncStartTime,
+          },
+        })
+
+        console.log(`[sync/linvix] Background sync completed: ${result.created} created, ${result.updated} updated in ${Date.now() - syncStartTime}ms`)
+      } catch (err: any) {
+        console.error('[sync/linvix] Background sync failed:', err.message)
+
+        try {
+          await db.linvixSyncLog.update({
+            where: { id: syncLog.id },
+            data: {
+              status: 'error',
+              finishedAt: new Date(),
+              errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+              durationMs: Date.now() - syncStartTime,
+            },
+          })
+        } catch {}
+      }
+    })
+
+    return NextResponse.json({
+      status: 'triggered',
+      message: 'Sync de clientes iniciado em background',
+      note: 'O sync roda em background. Verifique o status em /api/sync/linvix',
+    })
   }
 
   // ─── Auto-sync mode ───────────────────────────────
