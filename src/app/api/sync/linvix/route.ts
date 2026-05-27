@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse, after } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { waitUntil } from '@vercel/functions'
 import { db } from '@/lib/db'
 import { mapVendedorToUser } from '@/lib/vendedor-mapping'
 
@@ -26,7 +27,71 @@ const LINVIX_BASE = 'https://rp.erp.linvix.com'
 const LINVIX_LOGIN_URL = `${LINVIX_BASE}/ajax/ajax-login.php`
 const LINVIX_DATATABLE_URL = `${LINVIX_BASE}/cadastros/clientes/ajax/ajax-clientes-datatable.php`
 const PAGE_SIZE = 350
-const PAGE_DELAY_MS = 2000 // Safe 2s delay between pages to avoid detection
+// ─── Stealth: randomized delays (jitter) to look like human browsing ──
+// Fixed intervals are a red flag; jitter makes patterns natural.
+// Ranges are tight enough to stay within Vercel's 60s limit.
+const PAGE_DELAY_MIN = 1500
+const PAGE_DELAY_MAX = 3500
+
+function jitterDelay(minMs: number, maxMs: number): Promise<void> {
+  const ms = minMs + Math.random() * (maxMs - minMs)
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// ─── Stealth: rotating User-Agents per session ───────────────
+const USER_AGENTS = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.112 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+]
+
+let sessionUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
+
+// ─── Stealth: realistic browser headers ───────────────────
+function browserHeaders(phpsessid: string): Record<string, string> {
+  return {
+    'Cookie': `PHPSESSID=${phpsessid}`,
+    'User-Agent': sessionUA,
+    'Accept': 'application/json, text/javascript, */*; q=0.01',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'X-Requested-With': 'XMLHttpRequest',
+    'Referer': 'https://rp.erp.linvix.com/',
+    'Origin': 'https://rp.erp.linvix.com',
+    'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'Connection': 'keep-alive',
+  }
+}
+
+function loginHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'User-Agent': sessionUA,
+    'Accept': '*/*',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Origin': 'https://rp.erp.linvix.com',
+    'Referer': 'https://rp.erp.linvix.com/',
+    'Sec-Ch-Ua': '"Not A(Brand";v="99", "Google Chrome";v="122", "Chromium";v="122"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+  }
+}
 
 // ─── Auth helpers ──────────────────────────────────────
 
@@ -250,6 +315,12 @@ function mapLinvixRowToMtech(row: LinvixDataRow): LinvixClientData {
 async function loginToLinvix(): Promise<string> {
   console.log('[sync/linvix] Fazendo login no Linvix...')
 
+  // Rotate User-Agent for each new session
+  sessionUA = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)]
+
+  // Small pre-login delay (simulates page load before typing)
+  await jitterDelay(500, 1500)
+
   const body = new URLSearchParams()
   body.set('login', LINVIX_USER)
   body.set('senha', LINVIX_PASSWORD)
@@ -257,10 +328,7 @@ async function loginToLinvix(): Promise<string> {
 
   const response = await fetch(LINVIX_LOGIN_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    },
+    headers: loginHeaders(),
     body: body.toString(),
     redirect: 'manual',
   })
@@ -308,12 +376,7 @@ async function fetchDataTablePage(phpsessid: string, draw: number, start: number
 
   const response = await fetch(url, {
     method: 'GET',
-    headers: {
-      'Cookie': `PHPSESSID=${phpsessid}`,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'X-Requested-With': 'XMLHttpRequest',
-      'Accept': 'application/json, text/javascript, */*; q=0.01',
-    },
+    headers: browserHeaders(phpsessid),
   })
 
   if (!response.ok) {
@@ -342,7 +405,7 @@ async function fetchAllClientsFromLinvix(phpsessid: string): Promise<LinvixDataR
   start += PAGE_SIZE
 
   while (start < totalRecords) {
-    await sleep(PAGE_DELAY_MS)
+    await jitterDelay(PAGE_DELAY_MIN, PAGE_DELAY_MAX)
     const page = await fetchDataTablePage(phpsessid, draw, start)
     allClients.push(...page.data)
     console.log(`[sync/linvix] Página ${draw}: ${page.data.length} clientes (acumulado: ${allClients.length}/${totalRecords})`)
@@ -673,17 +736,21 @@ async function runAutoSync(): Promise<{
 export async function GET(request: NextRequest) {
   const mode = request.nextUrl.searchParams.get('mode')
 
-  // ─── Trigger mode: run sync in background, return immediately ─
-  // For cron-job.org. Uses after() to continue running after response.
-  if (mode === 'trigger') {
+  // ─── Cron mode: fire-and-forget for external cron services (cron-jobs.org) ─
+  // Uses waitUntil() to return HTTP 200 immediately while the sync
+  // continues running in the background. This solves the 30-second
+  // timeout limit on cron-jobs.org — the response goes out instantly,
+  // and the sync runs for up to maxDuration (60s) on the Vercel side.
+  // Results are saved to LinvixSyncLog for later inspection.
+  if (mode === 'cron') {
     if (!LINVIX_USER || !LINVIX_PASSWORD) {
-      return NextResponse.json(
-        { error: 'Credenciais do Linvix não configuradas' },
-        { status: 500 }
-      )
+      return NextResponse.json({
+        status: 'error',
+        message: 'Credenciais do Linvix não configuradas',
+      })
     }
 
-    // Check if a clientes sync is already running
+    // Check if already running (quick DB check before responding)
     try {
       const runningSync = await db.linvixSyncLog.findFirst({
         where: { syncType: 'clientes', status: 'running' },
@@ -697,61 +764,92 @@ export async function GET(request: NextRequest) {
           startedAt: runningSync.startedAt,
         })
       }
-    } catch (dbErr: any) {
-      // If DB is waking up from cold start, the query may fail.
-      // Don't block the trigger — just log and continue.
-      console.warn('[sync/linvix] DB check for running sync failed:', dbErr.message?.substring(0, 100))
-    }
 
-    // Run sync in background using after()
-    const syncStartTime = Date.now()
-
-    after(async () => {
-      const syncLog = await db.linvixSyncLog.create({
-        data: { syncType: 'clientes', status: 'running', totalClients: 0 },
-      })
-
-      try {
-        const result = await runAutoSync()
-
-        await db.linvixSyncLog.update({
-          where: { id: syncLog.id },
-          data: {
-            status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
-            finishedAt: new Date(),
-            totalClients: result.totalClients,
-            createdCount: result.created,
-            updatedCount: result.updated,
-            skippedCount: result.skipped,
-            errorCount: result.errors,
-            errorMessage: result.errorDetails.slice(0, 10).join('\n'),
-            pagesScraped: result.pagesScraped,
-            durationMs: Date.now() - syncStartTime,
-          },
-        })
-
-        console.log(`[sync/linvix] Background sync completed: ${result.created} created, ${result.updated} updated in ${Date.now() - syncStartTime}ms`)
-      } catch (err: any) {
-        console.error('[sync/linvix] Background sync failed:', err.message)
-
+      // Mark stale running syncs as error
+      if (runningSync && (Date.now() - runningSync.startedAt.getTime()) >= 300000) {
         try {
           await db.linvixSyncLog.update({
-            where: { id: syncLog.id },
-            data: {
-              status: 'error',
-              finishedAt: new Date(),
-              errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
-              durationMs: Date.now() - syncStartTime,
-            },
+            where: { id: runningSync.id },
+            data: { status: 'error', finishedAt: new Date(), errorMessage: 'Sync expirou (stale)', durationMs: Date.now() - runningSync.startedAt.getTime() },
           })
         } catch {}
       }
-    })
+    } catch (dbErr: any) {
+      console.warn('[sync/linvix] DB check failed (cold start?):', dbErr.message?.substring(0, 80))
+    }
 
+    // Create sync log entry
+    const syncStartTime = Date.now()
+    let syncLogId: string | undefined
+
+    try {
+      const syncLog = await db.linvixSyncLog.create({
+        data: { syncType: 'clientes', status: 'running', totalClients: 0 },
+      })
+      syncLogId = syncLog.id
+    } catch (dbErr: any) {
+      console.warn('[sync/linvix] DB create failed (cold start?):', dbErr.message?.substring(0, 80))
+    }
+
+    // ─── Return 200 IMMEDIATELY, run sync in background via waitUntil() ───
+    waitUntil(
+      (async () => {
+        try {
+          const result = await runAutoSync()
+
+          if (syncLogId) {
+            try {
+              await db.linvixSyncLog.update({
+                where: { id: syncLogId },
+                data: {
+                  status: result.errors > 0 ? (result.created + result.updated > 0 ? 'partial' : 'error') : 'success',
+                  finishedAt: new Date(),
+                  totalClients: result.totalClients,
+                  createdCount: result.created,
+                  updatedCount: result.updated,
+                  skippedCount: result.skipped,
+                  errorCount: result.errors,
+                  errorMessage: result.errorDetails.slice(0, 10).join('\n'),
+                  pagesScraped: result.pagesScraped,
+                  durationMs: Date.now() - syncStartTime,
+                },
+              })
+            } catch {}
+          }
+
+          console.log(`[sync/linvix] Cron background sync completed:`, {
+            status: result.success ? 'success' : 'partial',
+            total: result.totalClients,
+            created: result.created,
+            updated: result.updated,
+            durationMs: Date.now() - syncStartTime,
+          })
+        } catch (err: any) {
+          console.error('[sync/linvix] Cron background sync failed:', err.message)
+
+          if (syncLogId) {
+            try {
+              await db.linvixSyncLog.update({
+                where: { id: syncLogId },
+                data: {
+                  status: 'error',
+                  finishedAt: new Date(),
+                  errorMessage: err.message?.substring(0, 500) || 'Erro desconhecido',
+                  durationMs: Date.now() - syncStartTime,
+                },
+              })
+            } catch {}
+          }
+        }
+      })()
+    )
+
+    // Respond immediately — cron-jobs.org gets 200 right away
     return NextResponse.json({
       status: 'triggered',
       message: 'Sync de clientes iniciado em background',
-      note: 'O sync roda em background. Verifique o status em /api/sync/linvix',
+      syncLogId,
+      triggeredAt: new Date().toISOString(),
     })
   }
 
