@@ -105,12 +105,43 @@ function validateApiKey(request: NextRequest): boolean {
 }
 
 function validateSyncSecret(request: NextRequest): boolean {
-  // Vercel Cron jobs send this header automatically
-  if (request.headers.get('x-vercel-cron') === 'true') return true
+  // ─── Auth model for sync endpoints ───────────────
+  // Three valid callers, in order of preference:
+  //
+  // 1. Vercel Cron (recommended)
+  //    Sends `x-vercel-cron: true` AND, when CRON_SECRET is set in the Vercel
+  //    project, also sends `authorization: Bearer <CRON_SECRET>`. We require
+  //    the Bearer token — never trust the header alone, because anyone on
+  //    the internet can forge `x-vercel-cron: true`.
+  //
+  // 2. External cron (cron-jobs.org, EasyCron, etc.) or manual curl
+  //    Caller passes `?secret=<CRON_SECRET>` or `x-sync-secret: <CRON_SECRET>`.
+  //
+  // 3. Development mode (no CRON_SECRET configured)
+  //    Falls through to `true` ONLY when the env var is unset — once you
+  //    deploy, set CRON_SECRET and this hole closes automatically.
 
-  // If SYNC_SECRET is not configured, allow all (for development)
-  if (!CRON_SECRET) return true
-  const secret = request.headers.get('x-sync-secret') || request.nextUrl.searchParams.get('secret') || request.nextUrl.searchParams.get('cron-secret') || ''
+  // Bypass only in development when no secret is configured
+  if (!CRON_SECRET) {
+    console.warn('[sync/linvix] CRON_SECRET não configurado — permitindo requisição sem autenticação (apenas dev)')
+    return true
+  }
+
+  // Vercel Cron: requires BOTH the header AND a Bearer token matching CRON_SECRET
+  if (request.headers.get('x-vercel-cron') === 'true') {
+    const auth = request.headers.get('authorization') || ''
+    if (auth === `Bearer ${CRON_SECRET}`) return true
+    // Vercel Cron misconfigured — header present but no/invalid bearer
+    console.warn('[sync/linvix] x-vercel-cron presente mas authorization inválido — rejeitando')
+    return false
+  }
+
+  // External cron / manual: secret via header or query string
+  const secret =
+    request.headers.get('x-sync-secret') ||
+    request.nextUrl.searchParams.get('secret') ||
+    request.nextUrl.searchParams.get('cron-secret') ||
+    ''
   return secret === CRON_SECRET
 }
 
@@ -502,16 +533,58 @@ async function batchUpsertClients(clients: LinvixClientData[]): Promise<{
           'linvix',         // source
           'REVENDA',         // tipo
           'SEM_VENDEDOR',    // carteira
-          !['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'].includes(client.situacaoCadastral || '') ? true : false,  // ativo
+          !['EXCLUÍDO', 'BAIXADA', 'excluído', 'baixada', 'Excluído', 'Baixada'].includes(client.situacaoCadastral || '') ? true : false,  // ativo (params[34])
         ]
+
+        // ─── Carteira enum sanitization ───────────────
+        // Defensively validate the carteira value (params[33]) against the
+        // known enum set. Any unknown value falls back to SEM_VENDEDOR.
+        // This prevents raw-SQL cast errors if a future code change introduces
+        // an unexpected string.
+        const CARTEIRA_VALIDA = ['SEM_VENDEDOR', 'BOLSAO', 'LISTA_FRIA', 'FORNECEDOR', 'COM_VENDEDOR'] as const
+        type CarteiraValor = typeof CARTEIRA_VALIDA[number]
+        const carteiraIdx = 33 // index of 'SEM_VENDEDOR' in params above
+        const carteiraRaw = params[carteiraIdx] as string
+        const carteiraValue: CarteiraValor = (CARTEIRA_VALIDA as readonly string[]).includes(carteiraRaw)
+          ? (carteiraRaw as CarteiraValor)
+          : 'SEM_VENDEDOR'
+        params[carteiraIdx] = carteiraValue
 
         values.push(...params)
 
-        // Build row: gen_random_uuid()::text for id, $N for params, NOW() for timestamps
+        // ─── Build row placeholders ───────────────────
+        // Column order in the INSERT statement matches the `columns` array below:
+        //   id, codigo(0), razaoSocial(1), nomeFantasia(2), cnpj(3), cnpjBase(4), ieRg(5),
+        //   telefone1(6), telefone2(7), telefone3(8), telefone4(9), whatsapp(10),
+        //   email1(11), email2(12), email3(13), pessoaContato(14),
+        //   endereco(15), numero(16), complemento(17), bairro(18), cidade(19), cep(20), uf(21),
+        //   situacaoCadastral(22), dataSituacao(23), dataAbertura(24),
+        //   cnaePrincipal(25), naturezaJuridica(26), porte(27), regSimples(28),
+        //   vendedor(29), observacoes(30), source(31), tipo(32), carteira(33), ativo(34),
+        //   updatedAt, createdAt
+        //
+        // The `::"Carteira"` cast is applied ONLY to index 33 (carteira).
+        //
+        // ─── Bug being fixed ──────────────────────────
+        // The previous code used `params.slice(0, -1).map(() => \`$${paramIdx++}\`)`
+        // followed by a separate `\`$${paramIdx++}::"Carteira"\``. That mapping
+        // consumed 34 placeholders (params[0..33]) and left paramIdx at 35,
+        // so the next `::"Carteira"` placeholder pointed to params[34] — which
+        // is the boolean `ativo`. PostgreSQL then raised:
+        //
+        //   ERROR: cannot cast type boolean to "Carteira"  (SQLSTATE 42846)
+        //
+        // All 2,309 rows failed on every sync, leaving the M-Tech database
+        // stuck with stale Linvix data. This explicit per-index mapping fixes
+        // the off-by-one and is regression-proof: each placeholder is bound
+        // to its param by position, with the enum cast applied inline.
         const placeholders = [
           'gen_random_uuid()::text',  // id — PostgreSQL 13+ built-in
-          ...params.slice(0, -1).map(() => `$${paramIdx++}`),  // All params except carteira
-          `$${paramIdx++}::"Carteira"`,  // carteira — cast to enum type
+          ...params.map((_, idx) => {
+            // idx 33 = carteira → needs ::"Carteira" cast (Prisma enum)
+            if (idx === carteiraIdx) return `$${paramIdx++}::"Carteira"`
+            return `$${paramIdx++}`
+          }),
           'NOW()',   // updatedAt
           'NOW()',   // createdAt
         ]
