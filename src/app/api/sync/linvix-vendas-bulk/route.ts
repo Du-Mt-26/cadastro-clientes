@@ -398,6 +398,8 @@ export async function GET(request: NextRequest) {
 
   const mode = request.nextUrl.searchParams.get('mode') || 'auto'
   const maxPages = parseInt(request.nextUrl.searchParams.get('pages') || '0', 10)
+  const startPageParam = parseInt(request.nextUrl.searchParams.get('startPage') || '1', 10)
+  const startPage = Math.max(1, startPageParam)
   const dryRun = request.nextUrl.searchParams.get('dryRun') === 'true'
 
   if (mode !== 'auto') {
@@ -419,30 +421,30 @@ export async function GET(request: NextRequest) {
     const phpsessid = await loginToLinvix()
     const loginMs = Date.now() - startTime
 
-    // 2. Fetch all pages
+    // 2. Fetch pages starting from startPage
     const fetchStart = Date.now()
     const allRows: any[] = []
-    let draw = 1
-    let start = 0
+    let draw = startPage
+    let start = (startPage - 1) * PAGE_SIZE
     let totalRecords = 0
 
     // First page
     const firstPage = await fetchNfeListPage(phpsessid, draw, start)
     totalRecords = firstPage.recordsTotal || 0
     allRows.push(...(firstPage.data || []))
-    console.log(`[vendas-bulk] Página 1: ${(firstPage.data || []).length} NF-e (total: ${totalRecords})`)
+    console.log(`[vendas-bulk] Página ${draw}: ${(firstPage.data || []).length} NF-e (total Linvix: ${totalRecords})`)
 
     draw++
     start += PAGE_SIZE
 
     // Remaining pages
     while (start < totalRecords) {
-      if (maxPages > 0 && draw > maxPages) break
-      await sleep(500) // gentle on Linvix
+      if (maxPages > 0 && draw - startPage >= maxPages) break
+      await sleep(400) // gentle on Linvix
       const page = await fetchNfeListPage(phpsessid, draw, start)
       const pageData = page.data || []
       allRows.push(...pageData)
-      console.log(`[vendas-bulk] Página ${draw}: ${pageData.length} NF-e (acumulado: ${allRows.length}/${totalRecords})`)
+      console.log(`[vendas-bulk] Página ${draw}: ${pageData.length} NF-e (acumulado: ${allRows.length})`)
       draw++
       start += PAGE_SIZE
     }
@@ -507,7 +509,9 @@ export async function GET(request: NextRequest) {
       errorDetails: result.errorDetails,
       durationMs: Date.now() - startTime,
       timing: { loginMs, fetchMs, upsertMs },
-      pagesScraped: draw - 1,
+      pagesScraped: draw - startPage,
+      startPage,
+      nextStartPage: draw, // pass this as ?startPage= for the next run
     })
   } catch (err: any) {
     console.error('[vendas-bulk] Erro:', err)
