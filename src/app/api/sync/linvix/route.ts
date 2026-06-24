@@ -286,8 +286,12 @@ function buildDataTableParams(draw: number, start: number, length: number): stri
   params.set('order[0][column]', '2')
   params.set('order[0][dir]', 'asc')
 
-  params.set('filtros_listagem_situacao_todos', 'false')
-  params.set('filtros_listagem_listar_somente_ativos', 'true')
+  // Buscar TODOS os clientes (ativos + inativos) — necessário para que
+  // vendas de clientes inativos não sejam rejeitadas por FK violation.
+  // Antes: listar_somente_ativos=true → 2.309 clientes (faltavam 56)
+  // Agora: situacao_todos=true → 2.365 clientes (cobre todas as NF-e)
+  params.set('filtros_listagem_situacao_todos', 'true')
+  params.set('filtros_listagem_listar_somente_ativos', 'false')
   params.set('filtros_listagem_listar_somente_inativos', 'false')
 
   return params.toString()
