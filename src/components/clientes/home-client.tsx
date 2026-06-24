@@ -223,16 +223,16 @@ function EditableCell({ value, codigo, field, onSave, isPhone, isEmail, isObserv
       {emailDisplay ? (
         <a
           href={`mailto:${emailDisplay}`}
-          className="text-xs text-teal-700 hover:text-teal-900 dark:text-teal-400 dark:hover:text-teal-300 underline underline-offset-2 decoration-teal-300 dark:decoration-teal-700 truncate"
+          className="text-xs text-teal-700 hover:text-teal-900 hover:underline dark:text-teal-400 dark:hover:text-teal-300 underline underline-offset-2 decoration-teal-400 dark:decoration-teal-500 font-medium truncate"
           onClick={(e) => e.stopPropagation()}
           title={`Enviar email para ${emailDisplay}`}
         >
           {emailDisplay}
         </a>
       ) : (
-        <span className="text-xs">{displayValue}</span>
+        <span className="text-xs text-slate-400 dark:text-slate-500">{displayValue}</span>
       )}
-      <Pencil className="size-2.5 text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+      <Pencil className="size-3 text-teal-600 dark:text-teal-400 opacity-60 group-hover:opacity-100 transition-opacity shrink-0" />
     </span>
   )
 }
