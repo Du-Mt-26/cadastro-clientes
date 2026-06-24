@@ -475,6 +475,37 @@ export async function GET(request: NextRequest) {
     const result = await batchUpsertVendas(mapped)
     const upsertMs = Date.now() - upsertStart
 
+    // 4.5. Update ultimaVenda for all affected clients
+    // The frontend's "Dias S/ Venda" column depends on Cliente.ultimaVenda.
+    // Without this, clients show as "151+ dias" even if they bought today.
+    const backfillStart = Date.now()
+    try {
+      const affectedCodigos = [...new Set(mapped.map(v => v.clienteCodigo))]
+      for (const codigo of affectedCodigos) {
+        try {
+          const lastVenda = await db.venda.findFirst({
+            where: {
+              clienteCodigo: codigo,
+              situacao: { contains: 'AUTORIZADO' },
+            },
+            orderBy: { dataEmissao: 'desc' },
+            select: { dataEmissao: true },
+          })
+          const ultimaVendaStr = lastVenda?.dataEmissao
+            ? lastVenda.dataEmissao.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            : ''
+          await db.cliente.update({
+            where: { codigo },
+            data: { ultimaVenda: ultimaVendaStr },
+          })
+        } catch {}
+      }
+      const backfillMs = Date.now() - backfillStart
+      console.log(`[vendas-bulk] ultimaVenda atualizada para ${affectedCodigos.length} clientes (${backfillMs}ms)`)
+    } catch (err: any) {
+      console.warn('[vendas-bulk] Erro ao atualizar ultimaVenda:', err.message?.substring(0, 100))
+    }
+
     // 5. Update sync log
     try {
       await db.linvixSyncLog.create({
