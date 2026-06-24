@@ -288,11 +288,15 @@ function buildDataTableParams(draw: number, start: number, length: number): stri
 
   // Buscar TODOS os clientes (ativos + inativos) — necessário para que
   // vendas de clientes inativos não sejam rejeitadas por FK violation.
+  //
+  // Descoberto em teste direto ao Linvix (24/06/2026):
+  //   - filtros_listagem_listar_somente_ativos=true   → 2.309 clientes
+  //   - filtros_listagem_situacao_todos=true          → 0 clientes (NÃO FUNCIONA)
+  //   - NENHUM filtro de situação enviado             → 2.365 clientes (TODOS) ← usar isso
+  //
   // Antes: listar_somente_ativos=true → 2.309 clientes (faltavam 56)
-  // Agora: situacao_todos=true → 2.365 clientes (cobre todas as NF-e)
-  params.set('filtros_listagem_situacao_todos', 'true')
-  params.set('filtros_listagem_listar_somente_ativos', 'false')
-  params.set('filtros_listagem_listar_somente_inativos', 'false')
+  // Agora: sem filtros de situação → 2.365 clientes (cobre todas as NF-e)
+  // (não setar nenhum dos 3 filtros = Linvix retorna todos por default)
 
   return params.toString()
 }
