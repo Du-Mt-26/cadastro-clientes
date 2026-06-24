@@ -45,6 +45,30 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // ─── Vendas stats (count by situacao, recent vendas) ───
+    const totalVendas = await db.venda.count()
+    const vendasUltimos30d = await db.venda.count({
+      where: {
+        dataEmissao: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      },
+    })
+    const vendasUltimos45d = await db.venda.count({
+      where: {
+        dataEmissao: { gte: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000) },
+      },
+    })
+    const vendasUltimos90d = await db.venda.count({
+      where: {
+        dataEmissao: { gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000) },
+      },
+    })
+    const vendasPorSituacao = await db.venda.groupBy({
+      by: ['situacao'],
+      _count: true,
+      orderBy: { _count: { situacao: 'desc' } },
+    })
+    const totalClientes = await db.cliente.count()
+
     const envHealth = {
       LINVIX_USER: !!process.env.LINVIX_USER,
       LINVIX_PASSWORD: !!process.env.LINVIX_PASSWORD,
@@ -65,6 +89,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       timestamp: new Date().toISOString(),
       envHealth,
+      counts: {
+        totalClientes,
+        totalVendas,
+        vendasUltimos30d,
+        vendasUltimos45d,
+        vendasUltimos90d,
+        vendasPorSituacao: vendasPorSituacao.map(v => ({ situacao: v.situacao || '(vazio)', count: v._count })),
+      },
       summary: {
         last24h: {
           total: last24h.length,
