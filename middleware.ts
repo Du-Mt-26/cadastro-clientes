@@ -14,6 +14,7 @@ const PUBLIC_API_ROUTES = [
   '/api/sync/linvix-auto',
   '/api/sync/linvix-vendas',
   '/api/sync/linvix-vendas-bulk',
+  '/api/sync/linvix-enderecos-backfill',
   '/api/sync/backfill-ultima-venda',
   '/api/sync/all',
   '/api/sync/diagnostic',
