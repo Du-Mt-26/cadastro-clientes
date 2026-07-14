@@ -1,0 +1,3 @@
+0 6 * * * /app/trigger-sync.sh >> /var/log/cron.log 2>&1
+0 4 * * * /app/backup-db.sh >> /var/log/cron.log 2>&1
+0 */6 * * * echo "[-health] cron alive at $(date -u +%Y-%m-%dT%H:%M:%SZ)" >> /var/log/cron.log 2>&1

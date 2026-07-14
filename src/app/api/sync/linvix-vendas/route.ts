@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { waitUntil } from '@vercel/functions'
+import { waitUntil } from '@/lib/wait-until'
 import { db } from '@/lib/db'
 
 // ─── Linvix Vendas (NF-e) Sync API ──────────────────

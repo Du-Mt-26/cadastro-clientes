@@ -10,13 +10,13 @@ import { mapVendedorToUser } from '@/lib/vendedor-mapping'
  */
 export async function GET(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ codigo: string }> }
 ) {
   try {
     const { id } = await params
     
     const cliente = await db.cliente.findUnique({
-      where: { id },
+      where: { codigo },
       include: {
         vendedorUser: {
           select: { id: true, name: true, email: true, role: true }
@@ -37,7 +37,7 @@ export async function GET(
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ codigo: string }> }
 ) {
   try {
     const { id } = await params
@@ -57,7 +57,7 @@ export async function PATCH(
     }
 
     const cliente = await db.cliente.update({
-      where: { id },
+      where: { codigo },
       data: body,
       include: {
         vendedorUser: {

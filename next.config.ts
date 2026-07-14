@@ -6,6 +6,7 @@ import { join } from "path";
 const pkg = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8"));
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },
