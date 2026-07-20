@@ -28,3 +28,6 @@ dev.log
 .vscode
 .idea
 .DS_Store
+*.bak
+tsconfig.tsbuildinfo
+.env.save
