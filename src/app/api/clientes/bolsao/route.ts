@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions, canSeeAllClients, type Role } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { invalidateCache } from '@/lib/clientes-cache'
-import { calcDiasSemVenda } from '@/lib/clientes'
+import { calcDiasSemVendaOuCadastro } from '@/lib/clientes'
 
 /**
  * POST /api/clientes/bolsao
@@ -38,11 +38,13 @@ export async function POST(request: NextRequest) {
       where: {
         fornecedor: false,
         carteira: { notIn: ['BOLSAO', 'LISTA_FRIA', 'FORNECEDOR'] },
+        carteiraLocked: false,
       },
       select: {
         id: true,
         codigo: true,
         ultimaVenda: true,
+        cadastro: true,
         vendedorId: true,
         vendedor: true,
         dataAtribuicaoVendedor: true,
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
 
     for (const c of clientes) {
       // Calculate DSV (days without sale)
-      const dias = calcDiasSemVenda(c.ultimaVenda)
+      const dias = calcDiasSemVendaOuCadastro(c.ultimaVenda, c.cadastro)
       const isDsv151Plus = dias === null || dias >= THRESHOLD_DSV
 
       // Client has recent sales (DSV < 151) → stays with vendor
@@ -133,11 +135,13 @@ export async function POST(request: NextRequest) {
         carteira: 'SEM_VENDEDOR',
         fornecedor: false,
       },
-      select: { id: true },
+      select: { id: true, ultimaVenda: true, cadastro: true },
     })
 
     let movedUnassigned = 0
     for (const c of unassigned) {
+      const diasUnassigned = calcDiasSemVendaOuCadastro(c.ultimaVenda, c.cadastro)
+      if (diasUnassigned === null || diasUnassigned < 151) continue
       await db.cliente.update({
         where: { id: c.id },
         data: {
@@ -217,6 +221,10 @@ export async function PATCH(request: NextRequest) {
           vendedor: vendedor.name,
           dataAtribuicaoVendedor: new Date(), // Start 150-day grace period
           dataEntradaBolsao: null,
+          carteiraLocked: true,
+          lockedAt: new Date(),
+          lockedBy: userId,
+          lockedReason: `Puxado do BOLSÃO por ${(session.user as any).name}`,
         },
       })
 
@@ -239,6 +247,10 @@ export async function PATCH(request: NextRequest) {
             vendedor: 'LISTA FRIA',
             dataAtribuicaoVendedor: null,
             dataEntradaBolsao: null,
+            carteiraLocked: true,
+            lockedAt: new Date(),
+            lockedBy: userId,
+            lockedReason: `Movido para LISTA_FRIA por ${(session.user as any).name}`,
           },
         })
         invalidateCache()
@@ -255,6 +267,10 @@ export async function PATCH(request: NextRequest) {
             fornecedor: true,
             dataAtribuicaoVendedor: null,
             dataEntradaBolsao: null,
+            carteiraLocked: true,
+            lockedAt: new Date(),
+            lockedBy: userId,
+            lockedReason: `Movido para FORNECEDOR por ${(session.user as any).name}`,
           },
         })
         invalidateCache()

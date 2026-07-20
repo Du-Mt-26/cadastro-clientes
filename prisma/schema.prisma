@@ -101,6 +101,15 @@ model Cliente {
   @@index([tipo])
   @@index([vendedorId])
   @@index([carteira])
+
+  carteiraLocked  Boolean   @default(false)
+  vendedorLocked  Boolean   @default(false)
+  lockedAt        DateTime?
+  lockedBy        String?
+  lockedReason    String?
+
+  @@index([carteiraLocked])
+  @@index([vendedorLocked])
 }
 
 // ─── User / Authentication ────────────────────────

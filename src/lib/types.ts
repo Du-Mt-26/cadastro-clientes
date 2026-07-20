@@ -80,6 +80,11 @@ export interface ClienteRecord {
   fornecedor: boolean       // true = fornecedor (não é cliente real, vendedores não veem)
   carteira: string          // explicit DB field: "COM_VENDEDOR" | "BOLSAO" | "LISTA_FRIA" | "FORNECEDOR" | "SEM_VENDEDOR"
   vendedor_id: string       // system-assigned vendor user ID
+  carteira_locked: boolean       // true = carteira travada (sync automático não mexe)
+  vendedor_locked: boolean       // true = vendedor travado
+  locked_at: string | null       // formatted dd/mm/yyyy HH:mm, or null
+  locked_by: string | null       // user id who locked it
+  locked_reason: string | null   // human-readable reason
   parsed: ParsedFields
   editable: EditableFields
 }

@@ -72,6 +72,7 @@ import {
   MessageCircle,
   Star,
   ShoppingCart,
+  Lock,
 } from 'lucide-react'
 import { SheetsSyncModal } from '@/components/clientes/sheets-sync-modal'
 import { useSession } from 'next-auth/react'
@@ -155,7 +156,7 @@ function SituacaoCadastralBadge({ value }: { value: string }) {
 
 function DiasSemVendaBadge({ dias, ultimaVenda }: { dias: number | null; ultimaVenda: string }) {
   if (dias === null) return (
-    <Badge className="bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800 text-xs font-bold border tabular-nums" title="Sem informação de última venda">151+</Badge>
+    <Badge className="bg-red-600 text-white border-red-700 dark:bg-red-700 dark:text-white dark:border-red-800 text-xs font-bold border tabular-nums" title="Cliente ainda não teve nenhuma venda registrada">Sem venda</Badge>
   )
   return (
     <Badge className={`${getDiasSemVendaBg(dias)} text-xs font-bold border tabular-nums`} title={ultimaVenda ? `Última venda: ${ultimaVenda}` : undefined}>{dias}</Badge>
@@ -1701,7 +1702,122 @@ export default function HomeClient() {
                             )}
                           </div>
                           {/* Carteira badge (read-only, computed) */}
-                          <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Carteira</span><Badge variant="outline" className={`text-[11px] ${CARTEIRA_COLORS[r.carteira || 'COM_VENDEDOR'] || ''}`}>{CARTEIRA_LABELS[r.carteira || 'COM_VENDEDOR']}</Badge></div>
+                          <div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 block mb-1">Carteira</span>
+                            <div className="flex items-center gap-1.5">
+                              {(session?.user as any)?.role !== 'VENDEDOR' ? (
+                                <Select
+                                  value={r.carteira || 'SEM_VENDEDOR'}
+                                  onValueChange={async (val) => {
+                                    try {
+                                      const body = val === 'SEM_VENDEDOR'
+                                        ? { clienteCodigo: r.parsed.codigo, vendedorId: null }
+                                        : { clienteCodigo: r.parsed.codigo, carteira: val }
+                                      const res = await fetch('/api/vendedores/assign', {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(body),
+                                      })
+                                      if (!res.ok) throw new Error('Erro ao mover carteira')
+                                      toast({ title: '✓ Atualizado', description: `Carteira movida para: ${CARTEIRA_LABELS[val] || val}` })
+                                      const locks = val === 'SEM_VENDEDOR'
+                                        ? {}
+                                        : { carteira_locked: true, locked_reason: `Movido para ${CARTEIRA_LABELS[val] || val} por ${session?.user?.name}` }
+                                      if (data) {
+                                        setData({
+                                          ...data,
+                                          data: data.data.map(rec => rec.parsed.codigo === r.parsed.codigo
+                                            ? { ...rec, carteira: val, ...locks }
+                                            : rec
+                                          )
+                                        })
+                                      }
+                                      setDetailClient(prev => prev ? { ...prev, carteira: val, ...locks } as any : prev)
+                                    } catch (e) {
+                                      toast({ title: '✗ Erro', description: 'Não foi possível mover a carteira', variant: 'destructive' })
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-sm flex-1 min-w-0"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="SEM_VENDEDOR">SEM VENDEDOR</SelectItem>
+                                    <SelectItem value="BOLSAO">BOLSÃO</SelectItem>
+                                    <SelectItem value="LISTA_FRIA">LISTA FRIA</SelectItem>
+                                    <SelectItem value="FORNECEDOR">FORNECEDOR</SelectItem>
+                                    <SelectItem value="COM_VENDEDOR" disabled>COM VENDEDOR (defina pelo campo Vendedor)</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Badge variant="outline" className={`text-[11px] ${CARTEIRA_COLORS[r.carteira || 'COM_VENDEDOR'] || ''}`}>{CARTEIRA_LABELS[r.carteira || 'COM_VENDEDOR']}</Badge>
+                              )}
+                              {(r as any).carteira_locked && (
+                                <span
+                                  title={`Travado${(r as any).locked_reason ? ': ' + (r as any).locked_reason : ''}${(r as any).locked_at ? ' em ' + (r as any).locked_at : ''}`}
+                                  className="inline-flex shrink-0"
+                                >
+                                  <Lock className="size-3.5 text-amber-600 dark:text-amber-400" />
+                                </span>
+                              )}
+                              {(r as any).carteira_locked && (session?.user as any)?.role === 'ADMIN' && (
+                                <button
+                                  type="button"
+                                  title="Destravar carteira"
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(`/api/clientes/${r.parsed.codigo}/unlock`, { method: 'POST' })
+                                      if (!res.ok) throw new Error('Erro ao destravar')
+                                      toast({ title: '✓ Destravado', description: 'Cliente liberado para o sync automático' })
+                                      const unlocked = { carteira_locked: false, locked_reason: null, locked_at: null, locked_by: null }
+                                      if (data) {
+                                        setData({
+                                          ...data,
+                                          data: data.data.map(rec => rec.parsed.codigo === r.parsed.codigo
+                                            ? { ...rec, ...unlocked }
+                                            : rec
+                                          )
+                                        })
+                                      }
+                                      setDetailClient(prev => prev ? { ...prev, ...unlocked } as any : prev)
+                                    } catch (e) {
+                                      toast({ title: '✗ Erro', description: 'Não foi possível destravar', variant: 'destructive' })
+                                    }
+                                  }}
+                                >
+                                  Destravar
+                                </button>
+                              )}
+                              {!(r as any).carteira_locked && (session?.user as any)?.role !== 'VENDEDOR' && (
+                                <button
+                                  type="button"
+                                  title="Travar carteira manualmente"
+                                  className="text-[10px] px-1.5 py-0.5 rounded border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 shrink-0"
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(`/api/clientes/${r.parsed.codigo}/lock`, { method: 'POST' })
+                                      if (!res.ok) throw new Error('Erro ao travar')
+                                      toast({ title: '✓ Travado', description: 'Cliente protegido contra o sync automático' })
+                                      const locked = { carteira_locked: true, locked_reason: `Travado manualmente por ${session?.user?.name}` }
+                                      if (data) {
+                                        setData({
+                                          ...data,
+                                          data: data.data.map(rec => rec.parsed.codigo === r.parsed.codigo
+                                            ? { ...rec, ...locked }
+                                            : rec
+                                          )
+                                        })
+                                      }
+                                      setDetailClient(prev => prev ? { ...prev, ...locked } as any : prev)
+                                    } catch (e) {
+                                      toast({ title: '✗ Erro', description: 'Não foi possível travar', variant: 'destructive' })
+                                    }
+                                  }}
+                                >
+                                  Travar
+                                </button>
+                              )}
+                            </div>
+                          </div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Reg. Simples</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.reg_simples ? <Badge variant="secondary" className="text-xs">{r.parsed.reg_simples}</Badge> : '—'}</span></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Dias Sem Venda</span><DiasSemVendaBadge dias={diasSemVenda!} ultimaVenda={r.parsed.ultima_venda} /></div>
                           <div><span className="text-xs text-slate-500 dark:text-slate-400 block">Última Venda</span><span className="text-slate-800 dark:text-slate-200">{r.parsed.ultima_venda || '—'}</span></div>

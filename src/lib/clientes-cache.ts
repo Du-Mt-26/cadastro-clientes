@@ -80,6 +80,11 @@ export function dbToRecord(c: {
   fornecedor?: boolean
   carteira?: string
   dataAtribuicaoVendedor?: Date | null
+  carteiraLocked?: boolean
+  vendedorLocked?: boolean
+  lockedAt?: Date | null
+  lockedBy?: string | null
+  lockedReason?: string | null
 }): ClienteRecord {
   // Format dataAtribuicaoVendedor as dd/mm/yyyy
   let dataAtribuicaoStr = ''
@@ -87,6 +92,13 @@ export function dbToRecord(c: {
     const d = new Date(c.dataAtribuicaoVendedor)
     if (!isNaN(d.getTime())) {
       dataAtribuicaoStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`
+    }
+  }
+  let lockedAtStr: string | null = null
+  if (c.lockedAt) {
+    const d = new Date(c.lockedAt)
+    if (!isNaN(d.getTime())) {
+      lockedAtStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     }
   }
 
@@ -126,6 +138,11 @@ export function dbToRecord(c: {
     fornecedor: c.fornecedor || false,
     carteira: c.carteira || 'SEM_VENDEDOR',  // Read directly from DB field
     vendedor_id: c.vendedorId || '',
+    carteira_locked: c.carteiraLocked || false,
+    vendedor_locked: c.vendedorLocked || false,
+    locked_at: lockedAtStr,
+    locked_by: c.lockedBy || null,
+    locked_reason: c.lockedReason || null,
     parsed: {
       codigo: c.codigo,
       ie_rg: c.ieRg,

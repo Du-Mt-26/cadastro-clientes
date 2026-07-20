@@ -1,0 +1,110 @@
+[1mdiff --git a/src/app/api/clientes/bolsao/route.ts b/src/app/api/clientes/bolsao/route.ts[m
+[1mindex 120df7d..c9a1657 100644[m
+[1m--- a/src/app/api/clientes/bolsao/route.ts[m
+[1m+++ b/src/app/api/clientes/bolsao/route.ts[m
+[36m@@ -3,7 +3,7 @@[m [mimport { getServerSession } from 'next-auth'[m
+ import { authOptions, canSeeAllClients, type Role } from '@/lib/auth'[m
+ import { db } from '@/lib/db'[m
+ import { invalidateCache } from '@/lib/clientes-cache'[m
+[31m-import { calcDiasSemVenda } from '@/lib/clientes'[m
+[32m+[m[32mimport { calcDiasSemVendaOuCadastro } from '@/lib/clientes'[m
+ [m
+ /**[m
+  * POST /api/clientes/bolsao[m
+[36m@@ -38,11 +38,13 @@[m [mexport async function POST(request: NextRequest) {[m
+       where: {[m
+         fornecedor: false,[m
+         carteira: { notIn: ['BOLSAO', 'LISTA_FRIA', 'FORNECEDOR'] },[m
+[32m+[m[32m        carteiraLocked: false,[m
+       },[m
+       select: {[m
+         id: true,[m
+         codigo: true,[m
+         ultimaVenda: true,[m
+[32m+[m[32m        cadastro: true,[m
+         vendedorId: true,[m
+         vendedor: true,[m
+         dataAtribuicaoVendedor: true,[m
+[36m@@ -64,7 +66,7 @@[m [mexport async function POST(request: NextRequest) {[m
+ [m
+     for (const c of clientes) {[m
+       // Calculate DSV (days without sale)[m
+[31m-      const dias = calcDiasSemVenda(c.ultimaVenda)[m
+[32m+[m[32m      const dias = calcDiasSemVendaOuCadastro(c.ultimaVenda, c.cadastro)[m
+       const isDsv151Plus = dias === null || dias >= THRESHOLD_DSV[m
+ [m
+       // Client has recent sales (DSV < 151) → stays with vendor[m
+[36m@@ -133,11 +135,13 @@[m [mexport async function POST(request: NextRequest) {[m
+         carteira: 'SEM_VENDEDOR',[m
+         fornecedor: false,[m
+       },[m
+[31m-      select: { id: true },[m
+[32m+[m[32m      select: { id: true, ultimaVenda: true, cadastro: true },[m
+     })[m
+ [m
+     let movedUnassigned = 0[m
+     for (const c of unassigned) {[m
+[32m+[m[32m      const diasUnassigned = calcDiasSemVendaOuCadastro(c.ultimaVenda, c.cadastro)[m
+[32m+[m[32m      if (diasUnassigned === null || diasUnassigned < 151) continue[m
+       await db.cliente.update({[m
+         where: { id: c.id },[m
+         data: {[m
+[36m@@ -217,6 +221,10 @@[m [mexport async function PATCH(request: NextRequest) {[m
+           vendedor: vendedor.name,[m
+           dataAtribuicaoVendedor: new Date(), // Start 150-day grace period[m
+           dataEntradaBolsao: null,[m
+[32m+[m[32m          carteiraLocked: true,[m
+[32m+[m[32m          lockedAt: new Date(),[m
+[32m+[m[32m          lockedBy: userId,[m
+[32m+[m[32m          lockedReason: `Puxado do BOLSÃO por ${(session.user as any).name}`,[m
+         },[m
+       })[m
+ [m
+[36m@@ -239,6 +247,10 @@[m [mexport async function PATCH(request: NextRequest) {[m
+             vendedor: 'LISTA FRIA',[m
+             dataAtribuicaoVendedor: null,[m
+             dataEntradaBolsao: null,[m
+[32m+[m[32m            carteiraLocked: true,[m
+[32m+[m[32m            lockedAt: new Date(),[m
+[32m+[m[32m            lockedBy: userId,[m
+[32m+[m[32m            lockedReason: `Movido para LISTA_FRIA por ${(session.user as any).name}`,[m
+           },[m
+         })[m
+         invalidateCache()[m
+[36m@@ -255,6 +267,10 @@[m [mexport async function PATCH(request: NextRequest) {[m
+             fornecedor: true,[m
+             dataAtribuicaoVendedor: null,[m
+             dataEntradaBolsao: null,[m
+[32m+[m[32m            carteiraLocked: true,[m
+[32m+[m[32m            lockedAt: new Date(),[m
+[32m+[m[32m            lockedBy: userId,[m
+[32m+[m[32m            lockedReason: `Movido para FORNECEDOR por ${(session.user as any).name}`,[m
+           },[m
+         })[m
+         invalidateCache()[m
+[1mdiff --git a/src/lib/clientes.ts b/src/lib/clientes.ts[m
+[1mindex 4a85a33..f611fc3 100755[m
+[1m--- a/src/lib/clientes.ts[m
+[1m+++ b/src/lib/clientes.ts[m
+[36m@@ -100,6 +100,21 @@[m [mexport function calcDiasSemVenda(ultimaVenda: string): number | null {[m
+   return Math.floor((today.getTime() - sale.getTime()) / 86400000)[m
+ }[m
+ [m
+[32m+[m[32m/** Calculate days since last sale, falling back to registration date if there's no sale */[m
+[32m+[m[32mexport function calcDiasSemVendaOuCadastro(ultimaVenda: string, cadastro: string): number | null {[m
+[32m+[m[32m  if (ultimaVenda) {[m
+[32m+[m[32m    const dias = calcDiasSemVenda(ultimaVenda)[m
+[32m+[m[32m    if (dias !== null) return dias[m
+[32m+[m[32m  }[m
+[32m+[m[32m  if (!cadastro) return null[m
+[32m+[m[32m  const regDate = parseDdMmYyyy(cadastro)[m
+[32m+[m[32m  if (!regDate) return null[m
+[32m+[m[32m  const now = getNowBrasilia()[m
+[32m+[m[32m  const reg = new Date(regDate.getFullYear(), regDate.getMonth(), regDate.getDate())[m
+[32m+[m[32m  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())[m
+[32m+[m[32m  return Math.floor((today.getTime() - reg.getTime()) / 86400000)[m
+[32m+[m[32m}[m
+[32m+[m
+ /** Get the value of a record field by key name */[m
+ export function getRecordValue(r: ClienteRecord, key: string): string {[m
+   const map: Record<string, string> = {[m

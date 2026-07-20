@@ -50,6 +50,10 @@ export async function PATCH(request: NextRequest) {
           vendedor: 'LISTA FRIA',
           dataAtribuicaoVendedor: null,
           dataEntradaBolsao: null,
+          carteiraLocked: true,
+          lockedAt: new Date(),
+          lockedBy: (session.user as any).id,
+          lockedReason: `Movido para LISTA_FRIA por ${(session.user as any).name}`,
         },
       })
       invalidateCache()
@@ -66,6 +70,10 @@ export async function PATCH(request: NextRequest) {
           fornecedor: true,
           dataAtribuicaoVendedor: null,
           dataEntradaBolsao: null,
+          carteiraLocked: true,
+          lockedAt: new Date(),
+          lockedBy: (session.user as any).id,
+          lockedReason: `Movido para FORNECEDOR por ${(session.user as any).name}`,
         },
       })
       invalidateCache()
@@ -81,6 +89,10 @@ export async function PATCH(request: NextRequest) {
           vendedor: 'BOLSÃO',
           dataAtribuicaoVendedor: null,
           dataEntradaBolsao: new Date(),
+          carteiraLocked: true,
+          lockedAt: new Date(),
+          lockedBy: (session.user as any).id,
+          lockedReason: `Movido para BOLSÃO por ${(session.user as any).name}`,
         },
       })
       invalidateCache()
@@ -126,6 +138,10 @@ export async function PATCH(request: NextRequest) {
           dataEntradaBolsao: null,
           // If was a fornecedor and now assigned to regular vendedor, clear flag
           ...(cliente.fornecedor ? { fornecedor: false } : {}),
+          carteiraLocked: true,
+          lockedAt: new Date(),
+          lockedBy: (session.user as any).id,
+          lockedReason: `Atribuído a ${vendedor.name} por ${(session.user as any).name}`,
         },
       })
     }

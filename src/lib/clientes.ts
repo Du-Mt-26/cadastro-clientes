@@ -100,6 +100,21 @@ export function calcDiasSemVenda(ultimaVenda: string): number | null {
   return Math.floor((today.getTime() - sale.getTime()) / 86400000)
 }
 
+/** Calculate days since last sale, falling back to registration date if there's no sale */
+export function calcDiasSemVendaOuCadastro(ultimaVenda: string, cadastro: string): number | null {
+  if (ultimaVenda) {
+    const dias = calcDiasSemVenda(ultimaVenda)
+    if (dias !== null) return dias
+  }
+  if (!cadastro) return null
+  const regDate = parseDdMmYyyy(cadastro)
+  if (!regDate) return null
+  const now = getNowBrasilia()
+  const reg = new Date(regDate.getFullYear(), regDate.getMonth(), regDate.getDate())
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.floor((today.getTime() - reg.getTime()) / 86400000)
+}
+
 /** Get the value of a record field by key name */
 export function getRecordValue(r: ClienteRecord, key: string): string {
   const map: Record<string, string> = {
