@@ -51,8 +51,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get("sort_order") || searchParams.get("sortOrder") || "asc";
 
     // ── Build where clauses ──
-    const hasActiveSearch = Boolean(search) && search.trim().length > 0
-    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail, hasActiveSearch);
+    const visibilityWhere = buildVisibilityWhere(role, userId, userEmail);
     const filterWhere = buildFilterWhere({
       situacaoCadastral,
       vendedor,
@@ -85,7 +84,6 @@ export async function GET(request: NextRequest) {
             page,
             limit,
             showAll,
-            userId,
           });
         }
 
@@ -131,7 +129,6 @@ export async function GET(request: NextRequest) {
               : !['EXCLUÍDO', 'BAIXADA'].includes(situacaoUpper);
             (record as any).ativo = isAtivo;
             (record as any).filial = c.cnpjBase || '';
-            (record as any).isMine = c.vendedorId === userId;
             return record;
           }),
         };

@@ -65,37 +65,28 @@ export function buildVisibilityWhere(
   role: Role,
   userId: string,
   _userEmail?: string,
-  hasActiveSearch: boolean = false,
 ): Prisma.ClienteWhereInput {
   if (canSeeAllClients(role)) {
+    // Non-VENDEDOR: can see all, but fornecedor-flagged clients only if they have permission
     if (canSeeFornecedor(role)) return {}
     return {
       OR: [
         { fornecedor: false },
-        { carteira: 'FORNECEDOR' },
+        { carteira: 'FORNECEDOR' }, // can still see FORNECEDOR carteira clients
       ],
     }
   }
 
-  // VENDEDOR com busca ativa: vê TODOS (exceto FORNECEDOR e LISTA_FRIA)
-  if (hasActiveSearch) {
-    return {
-      AND: [
-        { fornecedor: false },
-        { carteira: { not: 'LISTA_FRIA' } },
-      ],
-    }
-  }
-
-  // VENDEDOR sem busca: só próprios + BOLSÃO
+  // VENDEDOR visibility: own clients + BOLSAO
   const orConditions: Prisma.ClienteWhereInput[] = [
-    { vendedorId: userId },
-    { carteira: 'BOLSAO' },
+    { vendedorId: userId },             // own clients
+    { carteira: 'BOLSAO' },             // bolsão — all vendedores can see
   ]
 
   return {
     AND: [
       { OR: orConditions },
+      // Fornecedor-flagged clients hidden from VENDEDOR
       { fornecedor: false },
     ],
   }
@@ -406,7 +397,6 @@ export async function handleComputedSort(params: {
   page: number
   limit: number
   showAll: boolean
-  userId: string
 }): Promise<{ records: ClienteRecord[]; total: number }> {
   const { fullWhere, sortBy, sortOrder, page, limit, showAll } = params
 
@@ -485,7 +475,6 @@ export async function handleComputedSort(params: {
       : !['EXCLUÍDO', 'BAIXADA'].includes(situacaoUpper)
     ;(record as any).ativo = isAtivo
     ;(record as any).filial = c.cnpjBase || ''
-    ;(record as any).isMine = c.vendedorId === userId
     return record
   })
 

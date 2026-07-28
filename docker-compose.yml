@@ -24,6 +24,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: mtech-crm-app
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mtech-crm.rule=Host(`clientes.nikki.com.br`)"
+      - "traefik.http.routers.mtech-crm.entrypoints=websecure"
+      - "traefik.http.routers.mtech-crm.tls=true"
+      - "traefik.http.services.mtech-crm.loadbalancer.server.port=3000"
+      - "traefik.docker.network=duda-bot_duda-network"
     restart: unless-stopped
     depends_on:
       mtech-db:

@@ -262,13 +262,6 @@ export default function HomeClient() {
   const [debouncedSearch, setDebouncedSearch] = useState(search)
   const [saving, setSaving] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState(searchParams.get('sort_by') || '')
-
-  // ─── NOVO: verifica se usuário pode editar este cliente ───
-  const canEditClient = (r: any) => {
-    if (!r) return false
-    if (role !== 'VENDEDOR') return true
-    return r.isMine !== false
-  }
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>((searchParams.get('sort_order') as 'asc' | 'desc') || 'asc')
   const [favoritos, setFavoritos] = useState<string[]>([])
   const tableContainerRef = useRef<HTMLDivElement>(null)
@@ -577,24 +570,6 @@ export default function HomeClient() {
       const favSet = new Set(favoritos)
       const favOrder = new Map(favoritos.map((c, i) => [c, i]))
       const favs = result.filter(r => favSet.has(r.parsed.codigo))
-
-                      {/* ─── NOVO: banner de aviso se cliente não é do vendedor ─── */}
-                      {r && (r as any).isMine === false && role === 'VENDEDOR' && (
-                        <div className="mx-4 mt-2 p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 flex items-start gap-2">
-                          <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
-                          <div className="text-xs">
-                            <p className="font-semibold text-amber-800 dark:text-amber-300">
-                              Este cliente pertence a outro vendedor
-                            </p>
-                            <p className="text-amber-700 dark:text-amber-400 mt-0.5">
-                              Vendedor responsável: <strong>{(r as any).vendedorUser?.name || r.parsed.vendedor || '—'}</strong>
-                            </p>
-                            <p className="text-amber-600 dark:text-amber-500 mt-1 text-[11px]">
-                              Você pode visualizar os dados, mas apenas o vendedor responsável ou um gerente pode editá-los.
-                            </p>
-                          </div>
-                        </div>
-                      )}
       const rest = result.filter(r => !favSet.has(r.parsed.codigo))
       // Sort favorites by their favoritos order
       favs.sort((a, b) => (favOrder.get(a.parsed.codigo) ?? 0) - (favOrder.get(b.parsed.codigo) ?? 0))
@@ -1330,18 +1305,6 @@ export default function HomeClient() {
                           // For vendedor column: if Linvix text is empty but vendedorUser exists, use system user name
                           if (col.key === 'vendedor' && (!val || val === '—') && (r as any).vendedorUser?.name) {
                             displayVal = (r as any).vendedorUser.name
-                          }
-                          // ─── NOVO: badge de "cliente de outro vendedor" ───
-                          if (col.key === 'vendedor' && (r as any).isMine === false && role === 'VENDEDOR') {
-                            const donoNome = (r as any).vendedorUser?.name || val || 'outro vendedor'
-                            return (
-                              <div key={col.key} className="px-2 py-1 flex items-center gap-1">
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-                                  <Lock className="h-2.5 w-2.5" />
-                                  {donoNome}
-                                </span>
-                              </div>
-                            )
                           }
                           let docTipo: 'CNPJ' | 'CPF' | 'INVALIDO' | null = null
                           if (col.key === 'cnpj' && val) {
